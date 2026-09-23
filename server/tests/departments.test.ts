@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import { Department } from '../src/modules/departments/model.js';
+import { createDoctor } from './helpers/fixtures.js';
 import { auditEntries, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
 import { api, expectErrorShape } from './helpers/testApp.js';
 
@@ -85,6 +86,28 @@ describe('/departments', () => {
     it('401 for a bad token (not silently public)', async () => {
       const res = await api().get('/api/v1/departments').set({ Authorization: 'Bearer nope' });
       expect(res.status).toBe(401);
+    });
+
+    it('admins see the number of active doctors per department', async () => {
+      const ped = await Department.findOne({ code: 'PED' }).lean();
+      await createDoctor({}, { department: ped!._id });
+      await createDoctor({}, { department: ped!._id });
+      await createDoctor({ isActive: false }, { department: ped!._id });
+      const res = await api().get('/api/v1/departments').set(admin.auth);
+      expect(
+        res.body.data.map((d: { code: string; activeDoctors: number }) => [
+          d.code,
+          d.activeDoctors,
+        ]),
+      ).toEqual([
+        ['ENT', 0],
+        ['PED', 2],
+      ]);
+      const one = await api().get(`/api/v1/departments/${ped!._id}`).set(admin.auth);
+      expect(one.body.data.activeDoctors).toBe(2);
+      expect((await api().get('/api/v1/departments')).body.data[0]).not.toHaveProperty(
+        'activeDoctors',
+      );
     });
 
     it('searches by name or code', async () => {

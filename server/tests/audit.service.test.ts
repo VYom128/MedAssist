@@ -96,7 +96,8 @@ describe('audit.record', () => {
         before: { passwordHash: 'old', profile: { apiToken: 't1', name: 'A' } },
         after: { PASSWORD: 'new', profile: { nested: [{ clientSecret: 's' }], name: 'B' } },
       },
-      metadata: { resetToken: 'abc', reason: 'x' },
+      // Secrets must not be hex-like: hashes and ObjectIds in the stored JSON are hex.
+      metadata: { resetToken: 'zz-reset-token', reason: 'x' },
     });
     expect(entry?.changes).toEqual({
       fields: ['passwordHash', 'profile'],
@@ -108,7 +109,9 @@ describe('audit.record', () => {
     });
     expect(entry?.metadata).toEqual({ resetToken: '[REDACTED]', reason: 'x' });
     const stored = JSON.stringify(await AuditLog.find().lean());
-    for (const secret of ['old', 'new', 't1', '"s"', 'abc']) expect(stored).not.toContain(secret);
+    for (const secret of ['old', 'new', 't1', '"s"', 'zz-reset-token']) {
+      expect(stored).not.toContain(secret);
+    }
   });
 
   it('never throws when a write fails: logs at error level, returns null, and recovers', async () => {

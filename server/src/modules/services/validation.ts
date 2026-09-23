@@ -26,6 +26,8 @@ export const listServicesSchema = {
     q: z.string().trim().min(1).max(100).optional(),
     /** Admins only; ignored for everyone else. */
     includeInactive: booleanQuery,
+    /** Admins only: only active (true) or only inactive (false) services. */
+    isActive: booleanQuery,
   }),
 };
 

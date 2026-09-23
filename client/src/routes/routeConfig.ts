@@ -1,4 +1,12 @@
-import { LayoutDashboard, ScrollText, Users, type LucideIcon } from 'lucide-react';
+import {
+  Building2,
+  LayoutDashboard,
+  Receipt,
+  ScrollText,
+  Settings,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import type { ComponentType } from 'react';
 import { ROLES, type Role } from '../constants/roles';
 
@@ -61,10 +69,28 @@ export const APP_ROUTES: AppRoute[] = [
     load: () => import('../features/users/pages/UserDetailPage'),
   },
   {
+    path: '/admin/departments',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/departments/pages/DepartmentsPage'),
+    nav: { label: 'Departments', icon: Building2 },
+  },
+  {
+    path: '/admin/services',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/services/pages/ServicesPage'),
+    nav: { label: 'Services', icon: Receipt },
+  },
+  {
     path: '/admin/audit-logs',
     roles: [ROLES.ADMIN],
     load: () => import('../features/audit/pages/AuditLogsPage'),
     nav: { label: 'Audit logs', icon: ScrollText },
+  },
+  {
+    path: '/admin/settings',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/settings/pages/SettingsPage'),
+    nav: { label: 'Settings', icon: Settings },
   },
 ];
 

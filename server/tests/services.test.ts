@@ -138,6 +138,17 @@ describe('/services', () => {
       expect(notAdmin.body.data).toHaveLength(2);
     });
 
+    it('admins can filter by status', async () => {
+      const codes = async (qs: string, auth = admin.auth) =>
+        (await api().get(`/api/v1/services?${qs}`).set(auth)).body.data.map(
+          (s: { code: string }) => s.code,
+        );
+      expect(await codes('isActive=false')).toEqual(['OLD']);
+      expect(await codes('isActive=true')).toEqual(['CONS-GEN', 'CONS-PED', 'NEB']);
+      const doctor = await loginAs('doctor');
+      expect(await codes('isActive=false', doctor.auth)).toEqual(['CONS-GEN', 'CONS-PED', 'NEB']);
+    });
+
     it('GET /services/:id hides inactive services from non-admins', async () => {
       const all = await api().get('/api/v1/services?includeInactive=true').set(admin.auth);
       const old = all.body.data.find((s: { code: string }) => s.code === 'OLD');

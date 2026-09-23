@@ -48,7 +48,8 @@ async function assertCodeFree(code: string, exceptId?: string) {
 
 /**
  * GET /services – filters `department`, `type`, `q`. Everyone except admins with
- * `includeInactive=true` sees only active services outside inactive departments.
+ * `includeInactive=true` sees only active services outside inactive departments. Admins can
+ * also filter by `isActive`.
  */
 export async function listServices(
   viewer: AuthUser | undefined,
@@ -58,7 +59,9 @@ export async function listServices(
   const filter: FilterQuery<ServiceDoc> = {};
   if (query.type) filter.type = query.type;
   if (query.q) filter.$or = [{ name: containsRegex(query.q) }, { code: containsRegex(query.q) }];
-  if (!(isAdmin(viewer) && query.includeInactive)) {
+  if (isAdmin(viewer) && query.isActive !== undefined) {
+    filter.isActive = query.isActive;
+  } else if (!(isAdmin(viewer) && query.includeInactive)) {
     filter.isActive = true;
     const inactive = await Department.find({ isActive: false }, { _id: 1 }).lean();
     if (inactive.length > 0) filter.department = { $nin: inactive.map((d) => d._id) };

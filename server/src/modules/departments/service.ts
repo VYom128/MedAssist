@@ -17,7 +17,6 @@ import type {
 } from './validation.js';
 
 const isAdmin = (viewer?: AuthUser) => viewer?.role === ROLES.ADMIN;
-const viewFor = (viewer?: AuthUser) => (isAdmin(viewer) ? toAdminView : toPublicView);
 
 const invalidTransition = (message: string) =>
   new ApiError(409, message, ERROR_CODES.INVALID_STATUS_TRANSITION);
@@ -33,6 +32,25 @@ export async function countActiveDoctorsIn(departmentId: string | Types.ObjectId
   const userIds = await DoctorProfile.distinct('user', { department: departmentId });
   if (userIds.length === 0) return 0;
   return User.countDocuments({ _id: { $in: userIds }, role: ROLES.DOCTOR, isActive: true });
+}
+
+/** Active doctors per department, for the admin list (one aggregate, not one query each). */
+async function activeDoctorCounts(ids: Types.ObjectId[]): Promise<Map<string, number>> {
+  const rows = await DoctorProfile.aggregate<{ _id: Types.ObjectId; n: number }>([
+    { $match: { department: { $in: ids } } },
+    {
+      $lookup: {
+        from: User.collection.name,
+        localField: 'user',
+        foreignField: '_id',
+        as: 'u',
+        pipeline: [{ $match: { role: ROLES.DOCTOR, isActive: true } }, { $project: { _id: 1 } }],
+      },
+    },
+    { $match: { 'u.0': { $exists: true } } },
+    { $group: { _id: '$department', n: { $sum: 1 } } },
+  ]);
+  return new Map(rows.map((r) => [r._id.toString(), r.n]));
 }
 
 /**
@@ -81,9 +99,18 @@ export async function listDepartments(
     Department.find(filter).sort({ name: 1, _id: 1 }).skip(skip).limit(limit).lean(),
     Department.countDocuments(filter),
   ]);
-  const view = viewFor(viewer);
+  if (!isAdmin(viewer)) {
+    return {
+      items: items.map((d) => toPublicView(d as DepartmentLike)),
+      meta: buildMeta({ page, limit, total }),
+    };
+  }
+  const counts = await activeDoctorCounts(items.map((d) => d._id));
   return {
-    items: items.map((d) => view(d as DepartmentLike)),
+    items: items.map((d) => ({
+      ...toAdminView(d as DepartmentLike),
+      activeDoctors: counts.get(d._id.toString()) ?? 0,
+    })),
     meta: buildMeta({ page, limit, total }),
   };
 }
@@ -91,8 +118,11 @@ export async function listDepartments(
 /** GET /departments/:id – inactive departments are only visible to admins (404 otherwise). */
 export async function getDepartment(viewer: AuthUser | undefined, id: string) {
   const d = await findDepartment(id);
-  if (!d.isActive && !isAdmin(viewer)) throw ApiError.notFound('Department not found');
-  return viewFor(viewer)(d);
+  if (!isAdmin(viewer)) {
+    if (!d.isActive) throw ApiError.notFound('Department not found');
+    return toPublicView(d);
+  }
+  return { ...toAdminView(d), activeDoctors: await countActiveDoctorsIn(d._id) };
 }
 
 export async function createDepartment(
