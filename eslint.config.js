@@ -53,6 +53,12 @@ export default tseslint.config(
     },
   },
 
+  // Tests (Vitest globals, in case a test uses them without importing)
+  {
+    files: ['**/*.test.{ts,tsx}', '**/tests/**/*.{ts,tsx}'],
+    languageOptions: { globals: { ...globals.node, ...globals.vitest } },
+  },
+
   // Must be last: turn off rules that conflict with Prettier.
   prettier,
 );

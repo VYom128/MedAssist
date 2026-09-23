@@ -2,7 +2,7 @@
   "name": "med-assist",
   "version": "0.1.0",
   "private": true,
-  "description": "MedAssist – Clinic Operations & Patient Care Portal",
+  "description": "MedAssist \u2013 Clinic Operations & Patient Care Portal",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -12,7 +12,9 @@
     "client"
   ],
   "scripts": {
-    "dev": "concurrently -k -n server,client -c blue,magenta \"npm run dev -w server\" \"npm run dev -w client\"",
+    "dev": "concurrently -k -n server,client -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
     "build": "npm run build -w server && npm run build -w client",
     "start": "npm run start -w server",
     "test": "npm test -w server",
