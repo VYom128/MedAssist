@@ -296,10 +296,8 @@ export async function getMe(authUser: AuthUser) {
 /** Updates the caller's name and/or phone. Audited with field names; phone values redacted. */
 export async function updateMe(authUser: AuthUser, input: UpdateMeInput, meta: RequestMeta) {
   const before = await loadUser(authUser.id);
-  const fields = (Object.keys(input) as (keyof UpdateMeInput)[]).filter(
-    (k) => input[k] !== before[k],
-  );
-  if (fields.length === 0) return toSelfView(before);
+  const changes = audit.diffChanges(before, { ...before, ...input }, Object.keys(input));
+  if (changes.fields.length === 0) return toSelfView(before);
 
   const updated = (await User.findByIdAndUpdate(
     authUser.id,
@@ -312,23 +310,9 @@ export async function updateMe(authUser: AuthUser, input: UpdateMeInput, meta: R
     actor: authActor(authUser),
     resource: { type: 'user', id: authUser.id },
     request: meta,
-    changes: redactedChanges(fields, before, updated),
+    changes,
   });
   return toSelfView(updated);
-}
-
-/** Fields whose before/after values may be stored in the audit log; others are redacted. */
-const AUDITABLE_VALUES = new Set(['firstName', 'lastName', 'isActive', 'role']);
-
-/** Changed field names with before/after; values of sensitive fields become '[REDACTED]'. */
-export function redactedChanges(
-  fields: string[],
-  before: Record<string, unknown>,
-  after: Record<string, unknown>,
-) {
-  const pick = (src: Record<string, unknown>) =>
-    Object.fromEntries(fields.map((f) => [f, AUDITABLE_VALUES.has(f) ? src[f] : '[REDACTED]']));
-  return { fields, before: pick(before), after: pick(after) };
 }
 
 /** The generic rules run in validation; this adds the name/email rule once the user is known. */

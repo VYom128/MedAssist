@@ -11,13 +11,13 @@ const { ObjectId, Mixed } = Schema.Types;
 const auditLogSchema = new Schema(
   {
     seq: { type: Number, required: true, unique: true },
-    at: { type: Date, required: true, index: true },
+    at: { type: Date, required: true },
     actor: {
       user: { type: ObjectId, ref: 'User', default: null }, // null = system job or anonymous
       role: { type: String, default: null },
       name: { type: String, default: null },
     },
-    action: { type: String, required: true, index: true },
+    action: { type: String, required: true },
     resource: {
       type: { type: String },
       id: { type: ObjectId },
@@ -45,8 +45,12 @@ const auditLogSchema = new Schema(
   { collection: 'audit_logs', versionKey: false },
 );
 
-auditLogSchema.index({ patient: 1, at: -1 });
+// _id breaks ties between entries in the same millisecond (verifyChain reads in this order).
+auditLogSchema.index({ at: -1, _id: -1 });
+auditLogSchema.index({ action: 1, at: -1 });
 auditLogSchema.index({ 'actor.user': 1, at: -1 });
+auditLogSchema.index({ patient: 1, at: -1 });
+// recordRead() debounce lookup
 auditLogSchema.index({ 'actor.user': 1, action: 1, 'resource.id': 1, at: -1 });
 
 applyAppendOnly(auditLogSchema, 'Audit logs');

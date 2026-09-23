@@ -8,7 +8,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { buildMeta, type Pagination } from '../../utils/pagination.js';
 import { hashPassword } from '../../utils/password.js';
 import type { AuditActor, RequestMeta } from '../../utils/requestContext.js';
-import { createPasswordResetToken, redactedChanges } from '../auth/service.js';
+import { createPasswordResetToken } from '../auth/service.js';
 import * as sessions from '../sessions/service.js';
 import { User, type UserDoc } from './model.js';
 import { toAdminView } from './serializer.js';
@@ -90,15 +90,13 @@ export async function updateUser(
   meta: RequestMeta,
 ) {
   const before = await findUser(id);
-  const fields = (Object.keys(input) as (keyof UpdateUserInput)[]).filter(
-    (k) => input[k] !== before[k],
-  );
-  if (fields.length === 0) return toAdminView(before);
+  const changes = audit.diffChanges(before, { ...before, ...input }, Object.keys(input));
+  if (changes.fields.length === 0) return toAdminView(before);
 
   if (input.email && input.email !== before.email && (await User.exists({ email: input.email }))) {
     throw ApiError.conflict('An account with this email already exists', { fields: ['email'] });
   }
-  const emailChanged = fields.includes('email');
+  const emailChanged = changes.fields.includes('email');
   const updated = (await User.findByIdAndUpdate(
     id,
     {
@@ -113,7 +111,7 @@ export async function updateUser(
     actor: actorOf(admin),
     resource: { type: 'user', id },
     request: meta,
-    changes: redactedChanges(fields, before, updated),
+    changes,
   });
   return toAdminView(updated);
 }
@@ -149,7 +147,7 @@ export async function deactivateUser(admin: AuthUser, id: string, meta: RequestM
     actor: actorOf(admin),
     resource: { type: 'user', id },
     request: meta,
-    changes: redactedChanges(['isActive'], { isActive: true }, { isActive: false }),
+    changes: audit.diffChanges({ isActive: true }, { isActive: false }, ['isActive']),
     metadata: { sessionsRevoked: revoked },
   });
   return toAdminView(updated);
@@ -170,7 +168,7 @@ export async function activateUser(admin: AuthUser, id: string, meta: RequestMet
     actor: actorOf(admin),
     resource: { type: 'user', id },
     request: meta,
-    changes: redactedChanges(['isActive'], { isActive: false }, { isActive: true }),
+    changes: audit.diffChanges({ isActive: false }, { isActive: true }, ['isActive']),
   });
   return toAdminView(updated);
 }

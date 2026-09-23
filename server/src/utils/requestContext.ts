@@ -17,15 +17,15 @@ export interface AuditActor {
 const MAX_USER_AGENT = 256;
 
 /**
- * Where a request came from, for audit entries (spec §10.4). The path has no query string:
- * queries can hold search terms such as patient names.
+ * Where a request came from, for audit entries (spec §10.4). The path is `originalUrl` without
+ * the query string: queries can hold search terms such as patient names.
  */
 export function buildRequestMeta(req: Request): RequestMeta {
   const userAgent = req.get('user-agent')?.slice(0, MAX_USER_AGENT);
   return {
     id: String(req.id),
     method: req.method,
-    path: `${req.baseUrl}${req.path}`,
+    path: req.originalUrl.split('?')[0] ?? '',
     ...(req.ip ? { ip: req.ip } : {}),
     ...(userAgent ? { userAgent } : {}),
   };
@@ -36,9 +36,4 @@ export function actorFromRequest(req: Request): AuditActor {
   const u = req.user;
   if (!u) return { user: null, role: null, name: null };
   return { user: u.id, role: u.role, name: `${u.firstName} ${u.lastName}` };
-}
-
-/** `{ actor, request }` for audit.record() from an authenticated request. */
-export function auditContext(req: Request): { actor: AuditActor; request: RequestMeta } {
-  return { actor: actorFromRequest(req), request: buildRequestMeta(req) };
 }

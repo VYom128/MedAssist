@@ -54,14 +54,17 @@ describe('/audit-logs', () => {
     await loginAs('patient');
 
     const ok = await api().get('/api/v1/audit-logs/verify').set(admin.auth);
-    expect(ok.body.data).toEqual({ valid: true, checked: 2, firstBroken: null });
+    expect(ok.body.data).toEqual({ ok: true, checked: 2 });
 
     await AuditLog.collection.updateOne({ seq: 2 }, { $set: { 'actor.role': 'admin' } });
     const broken = await api().get('/api/v1/audit-logs/verify').set(admin.auth);
     expect(broken.body.message).toBe('Audit chain is broken');
-    expect(broken.body.data).toMatchObject({
-      valid: false,
-      firstBroken: { seq: 2, reason: 'hash_mismatch' },
+    const second = await AuditLog.findOne({ seq: 2 }).lean();
+    expect(broken.body.data).toEqual({
+      ok: false,
+      checked: 2,
+      firstBrokenId: second?._id.toString(),
+      reason: 'hash_mismatch',
     });
   });
 

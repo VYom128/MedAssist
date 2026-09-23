@@ -3,7 +3,6 @@ import { AUDIT_ACTIONS, type Role } from '../config/constants.js';
 import * as audit from '../services/audit.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { auditContext } from '../utils/requestContext.js';
 
 /**
  * Allows only the given roles (deny by default, spec §2.2). Must run after `authenticate`.
@@ -17,7 +16,7 @@ export function authorize(...roles: Role[]): RequestHandler {
       await audit.record({
         action: AUDIT_ACTIONS.ACCESS_DENIED,
         outcome: 'denied',
-        ...auditContext(req),
+        req,
         metadata: { reason: 'role', allowedRoles: roles },
       });
       throw ApiError.forbidden();

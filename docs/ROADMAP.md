@@ -105,7 +105,8 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - Client: Redux store + RTK Query `axiosBaseQuery` over `utils/http.ts` with a shared refresh mutex; session restored on page load; `ProtectedRoute` / `RoleRoute` / `PublicOnlyRoute`; lazy role bundles; role sidebar with mobile drawer; auth, profile, change-password and sessions pages; placeholder dashboards. Admin Users and Audit log pages are built with the other admin pages in Phase 2 (D23).
 - Client tests: Vitest + jsdom + React Testing Library (`npm test` now runs server and client).
 - Follow-up (step 1 prompt): `AUTH_LIMITS`, `'deactivated'` revoke reason, `COOKIE_SECURE` required in production, `checkPasswordStrength()` with the name/email rule, `User.fullName` / `comparePassword()` / `toJSON` hiding secrets, email templates, `utils/cookies.ts` with the session's `expiresAt`, unit tests in `server/tests/unit/` (D24–D27).
-- Tests: 285 server (was 53) + 17 client.
+- Follow-up (step 2 prompt): `audit.record({ req, … })`, nested secret redaction, `diffChanges()`, `verifyChain()` → `{ ok, checked, firstBrokenId, reason }` in `(at, _id)` order, audit indexes `{ at: -1, _id: -1 }` and `{ action: 1, at: -1 }`, `canonicalJson` unit tests (D28).
+- Tests: 299 server (was 53) + 17 client.
 
 ---
 
