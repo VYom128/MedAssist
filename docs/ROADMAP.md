@@ -108,7 +108,9 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - Follow-up (step 2 prompt): `audit.record({ req, … })`, nested secret redaction, `diffChanges()`, `verifyChain()` → `{ ok, checked, firstBrokenId, reason }` in `(at, _id)` order, audit indexes `{ at: -1, _id: -1 }` and `{ action: 1, at: -1 }`, `canonicalJson` unit tests (D28).
 - Follow-up (step 3 prompt): register takes `dateOfBirth` + `acceptTerms`; session checked before user in `authenticate`; `req.user` adds `sessionId`, `email`, `mustChangePassword`; change password starts a fresh session; `newPassword` on reset; per-IP password-reset limiters; pure `canAccessPatient` with `SCOPES` (D29–D33).
 - Follow-up (step 4 prompt): staff creation includes doctors with a forced password change; `?sort=` on `/users`; prefix `action` filter on `/audit-logs`; upserting seed with a login table; exact-status RBAC matrix; README auth overview and env table (D34–D36).
-- Tests: 321 server (was 53) + 20 client.
+- Follow-up (step 5–6 prompts): UI kit (FormField, Input, Select, PasswordInput, Card, Badge, EmptyState, Modal, ConfirmDialog, Table with phone cards, Pagination), routeConfig-driven routes and sidebar, top-bar user menu, toasts, live password checklist, admin Users (list/detail/add staff/actions) and Audit log (filters, expandable rows, integrity check) pages, MSW client tests (D37–D39).
+- Browser check (Chrome via Playwright, seeded local DB): every demo account lands on its dashboard, patient → /403 on admin pages, reload keeps the session, no token in web storage, logout, admin users/filters/audit verify, 360 px layouts. It found the refresh-body bug (D37).
+- Tests: 321 server (was 53) + 35 client.
 
 ---
 
@@ -123,7 +125,7 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - [ ] Weekly schedules and leave
 - [ ] Lab test catalogue with parameters and reference ranges
 - [ ] Counter service for human-readable numbers
-- [ ] Admin pages: settings (tabs), departments, services, doctors (profile/schedule/leave), lab tests, users, audit logs (APIs from Phase 1)
+- [ ] Admin pages: settings (tabs), departments, services, doctors (profile/schedule/leave), lab tests (users and audit logs were built in Phase 1)
 - [ ] Seed script v1 (`npm run seed`, `--reset`)
 - [ ] Tests for validation, permissions and schedule overlap rules
 

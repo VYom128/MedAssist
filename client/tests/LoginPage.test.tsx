@@ -1,12 +1,11 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http } from 'msw';
 import { routes } from '../src/routes/routes';
-import { authState, fail, makeUser, mockHttp, ok, renderRoutes } from './helpers';
+import { authState, makeUser, renderRoutes } from './helpers';
+import { fail, ok, server, url } from './msw/server';
 
 describe('LoginPage', () => {
-  let mock: ReturnType<typeof mockHttp> | undefined;
-  afterEach(() => mock?.restore());
-
   const fill = async (email: string, password: string) => {
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Email'), email);
@@ -15,26 +14,66 @@ describe('LoginPage', () => {
   };
 
   it('shows field errors without calling the API', async () => {
-    mock = mockHttp(() => ok(null));
+    let called = false;
+    server.use(
+      http.post(url('/auth/login'), () => {
+        called = true;
+        return ok(null);
+      }),
+    );
     renderRoutes(routes, '/login', authState(null));
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Sign in' }));
     expect(await screen.findByText('Enter your email')).toBeInTheDocument();
     expect(screen.getByText('Enter your password')).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'true');
-    expect(mock.calls).toHaveLength(0);
+    expect(called).toBe(false);
   });
 
   it('shows the server message for wrong credentials', async () => {
-    mock = mockHttp(() => fail(401, 'INVALID_CREDENTIALS', 'Invalid email or password'));
+    server.use(
+      http.post(url('/auth/login'), () =>
+        fail(401, 'INVALID_CREDENTIALS', 'Invalid email or password'),
+      ),
+    );
     renderRoutes(routes, '/login', authState(null));
     await screen.findByRole('heading', { name: 'Sign in' });
     await fill('dr.mehta@medassist.dev', 'wrong-pass1');
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password');
   });
 
+  it('shows the lockout message with the minutes remaining', async () => {
+    server.use(
+      http.post(url('/auth/login'), () =>
+        fail(
+          423,
+          'ACCOUNT_LOCKED',
+          'Too many failed attempts. Try again in 12 minutes or reset your password.',
+        ),
+      ),
+    );
+    renderRoutes(routes, '/login', authState(null));
+    await screen.findByRole('heading', { name: 'Sign in' });
+    await fill('dr.mehta@medassist.dev', 'Password@123');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Try again in 12 minutes');
+  });
+
+  it('toggles password visibility', async () => {
+    renderRoutes(routes, '/login', authState(null));
+    const input = await screen.findByLabelText('Password');
+    expect(input).toHaveAttribute('type', 'password');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show password' }));
+    expect(input).toHaveAttribute('type', 'text');
+  });
+
   it('stores the session in memory and lands on the role dashboard', async () => {
     const doctor = makeUser('doctor', { firstName: 'Anil' });
-    mock = mockHttp(() => ok({ accessToken: 'abc', expiresIn: 900, user: doctor }, 'Logged in'));
+    let body: unknown;
+    server.use(
+      http.post(url('/auth/login'), async ({ request }) => {
+        body = await request.json();
+        return ok({ accessToken: 'abc', expiresIn: 900, user: doctor }, { message: 'Logged in' });
+      }),
+    );
     const { router, store } = renderRoutes(routes, '/login', authState(null));
     await screen.findByRole('heading', { name: 'Sign in' });
     await fill('dr.mehta@medassist.dev', 'Password@123');
@@ -42,19 +81,20 @@ describe('LoginPage', () => {
     expect(await screen.findByRole('heading', { name: 'Welcome, Anil' })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/doctor/dashboard');
     expect(store.getState().auth).toMatchObject({ accessToken: 'abc', status: 'authenticated' });
-    expect(JSON.parse(mock.calls[0]?.data as string)).toEqual({
-      email: 'dr.mehta@medassist.dev',
-      password: 'Password@123',
-    });
+    expect(body).toEqual({ email: 'dr.mehta@medassist.dev', password: 'Password@123' });
     expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
   });
 
   it('follows a safe ?next= path and ignores an external one', async () => {
     const admin = makeUser('admin');
-    mock = mockHttp(() => ok({ accessToken: 'abc', expiresIn: 900, user: admin }));
+    server.use(
+      http.post(url('/auth/login'), () => ok({ accessToken: 'abc', expiresIn: 900, user: admin })),
+    );
 
     const first = renderRoutes(routes, '/login?next=%2Fprofile', authState(null));
     await screen.findByRole('heading', { name: 'Sign in' });
+    server.use(http.get(url('/auth/me'), () => ok(admin)));
     await fill('admin@medassist.dev', 'Password@123');
     await waitFor(() => expect(first.router.state.location.pathname).toBe('/profile'));
     first.unmount();

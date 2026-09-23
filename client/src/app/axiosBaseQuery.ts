@@ -39,8 +39,10 @@ let refreshing: Promise<boolean> | null = null;
  * Also used on page load to restore the session.
  */
 export function refreshSession(dispatch: Dispatch): Promise<boolean> {
+  // No body: axios would send the JSON text "null" for a null body, which the server's strict
+  // JSON parser rejects with 400.
   refreshing ??= http
-    .post<ApiSuccess<RefreshPayload>>('/auth/refresh', null, { headers: CSRF_HEADERS })
+    .post<ApiSuccess<RefreshPayload>>('/auth/refresh', undefined, { headers: CSRF_HEADERS })
     .then((res) => {
       dispatch(credentialsReceived(res.data.data));
       return true;

@@ -9,6 +9,11 @@ export const ROLES = {
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
 
+export const ROLE_VALUES = Object.values(ROLES) as Role[];
+
+/** Staff roles an admin can create (server STAFF_ROLES). */
+export const STAFF_ROLES = [ROLES.ADMIN, ROLES.DOCTOR, ROLES.RECEPTIONIST, ROLES.LABTECH] as const;
+
 export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Admin',
   doctor: 'Doctor',

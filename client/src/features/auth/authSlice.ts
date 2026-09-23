@@ -21,19 +21,16 @@ export interface AuthState {
   user: CurrentUser | null;
   /** Kept in memory only – never localStorage (spec §10.1). */
   accessToken: string | null;
-  /** idle → loading (restoring the session on page load) → authenticated | guest */
-  status: 'idle' | 'loading' | 'authenticated' | 'guest';
+  /** restoring (page load: exchanging the refresh cookie) → authenticated | guest */
+  status: 'restoring' | 'authenticated' | 'guest';
 }
 
-const initialState: AuthState = { user: null, accessToken: null, status: 'idle' };
+const initialState: AuthState = { user: null, accessToken: null, status: 'restoring' };
 
 const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    sessionRestoreStarted(state) {
-      if (state.status === 'idle') state.status = 'loading';
-    },
     credentialsReceived(state, action: PayloadAction<{ accessToken: string; user: CurrentUser }>) {
       state.accessToken = action.payload.accessToken;
       state.user = action.payload.user;
@@ -43,13 +40,12 @@ const authSlice = createSlice({
       state.user = action.payload;
     },
     loggedOut() {
-      return { ...initialState, status: 'guest' as const };
+      return { user: null, accessToken: null, status: 'guest' as const };
     },
   },
 });
 
-export const { sessionRestoreStarted, credentialsReceived, userUpdated, loggedOut } =
-  authSlice.actions;
+export const { credentialsReceived, userUpdated, loggedOut } = authSlice.actions;
 export default authSlice.reducer;
 
 export const selectAuth = (state: { auth: AuthState }) => state.auth;

@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
@@ -9,14 +9,13 @@ import { applyServerFieldErrors, safeNextPath } from '../../../utils/forms';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { useLoginMutation } from '../api';
 import AuthCard from '../components/AuthCard';
-import PasswordField from '../components/PasswordField';
+import PasswordInput from '../../../components/ui/PasswordInput';
 import { loginSchema, type LoginValues } from '../schemas';
 
 export default function LoginPage() {
   const [login, { isLoading }] = useLoginMutation();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const notice = (useLocation().state as { notice?: string } | null)?.notice;
   const {
     register,
     handleSubmit,
@@ -55,7 +54,6 @@ export default function LoginPage() {
       }
     >
       <form onSubmit={onSubmit} noValidate className="space-y-4">
-        {notice && <Alert tone="success">{notice}</Alert>}
         {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
         <Input
           label="Email"
@@ -64,7 +62,7 @@ export default function LoginPage() {
           error={errors.email?.message}
           {...register('email')}
         />
-        <PasswordField
+        <PasswordInput
           label="Password"
           autoComplete="current-password"
           error={errors.password?.message}

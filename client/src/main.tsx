@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Toaster } from 'react-hot-toast';
 import { Provider } from 'react-redux';
 import SessionRestorer from './app/SessionRestorer';
 import { store } from './app/store';
@@ -15,6 +16,7 @@ createRoot(rootElement).render(
       <SessionRestorer>
         <AppRoutes />
       </SessionRestorer>
+      <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
     </Provider>
   </StrictMode>,
 );

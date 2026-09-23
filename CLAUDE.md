@@ -46,6 +46,7 @@ Read the relevant spec sections for the current phase before planning. Do not re
 ## Frontend conventions
 - Feature folders in `client/src/features/<feature>/` (`api.js`, `components/`, `pages/`, `schemas.js`).
 - Server data via RTK Query only; access token kept in memory, never localStorage.
+- Role pages go in `client/src/routes/routeConfig.ts` (builds routes and the sidebar). Use the `components/ui` kit; tables use `Table` (cards below 768 px). Client tests mock the API with MSW (`client/tests/msw/server.ts`).
 - Every list/page has loading, empty and error states. Mobile-friendly from 360 px.
 - Show dates in the clinic timezone and money as ₹ formatted from paise.
 

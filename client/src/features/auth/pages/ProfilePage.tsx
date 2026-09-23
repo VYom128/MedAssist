@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
+import toast from 'react-hot-toast';
 import PageHeader from '../../../components/PageHeader';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
@@ -13,7 +14,7 @@ import { profileSchema, type ProfileValues } from '../schemas';
 
 export default function ProfilePage() {
   const { data: me, isLoading, isError, error, refetch } = useGetMeQuery();
-  const [updateMe, { isLoading: saving, isSuccess }] = useUpdateMeMutation();
+  const [updateMe, { isLoading: saving }] = useUpdateMeMutation();
   const {
     register,
     handleSubmit,
@@ -29,6 +30,7 @@ export default function ProfilePage() {
   const onSubmit = handleSubmit(async (values) => {
     try {
       const updated = await updateMe(values).unwrap();
+      toast.success('Profile updated');
       reset({
         firstName: updated.firstName,
         lastName: updated.lastName,
@@ -65,7 +67,6 @@ export default function ProfilePage() {
 
         {me && (
           <form onSubmit={onSubmit} noValidate className="space-y-4">
-            {isSuccess && !isDirty && <Alert tone="success">Profile updated.</Alert>}
             {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
             <dl className="grid gap-3 text-sm sm:grid-cols-2">
               <div>

@@ -1,29 +1,50 @@
+import { LogOut, MonitorSmartphone } from 'lucide-react';
+import { useState } from 'react';
+import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import PageHeader from '../../../components/PageHeader';
 import Alert from '../../../components/ui/Alert';
+import Badge from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
+import ConfirmDialog from '../../../components/ui/ConfirmDialog';
+import EmptyState from '../../../components/ui/EmptyState';
+import { formatDateTime } from '../../../utils/dates';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { describeUserAgent } from '../../../utils/userAgent';
-import { useGetSessionsQuery, useLogoutAllMutation, useRevokeSessionMutation } from '../api';
+import {
+  useGetSessionsQuery,
+  useLogoutAllMutation,
+  useRevokeSessionMutation,
+  type SessionInfo,
+} from '../api';
 
-const formatDate = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
-
-/** Active sessions (devices) with sign-out per device and everywhere. */
+/** Devices where the user is signed in, with sign-out per device and everywhere. */
 export default function SessionsPage() {
   const navigate = useNavigate();
   const { data: sessions, isLoading, isError, error, refetch } = useGetSessionsQuery();
-  const [revoke, { isLoading: revoking, originalArgs: revokingId }] = useRevokeSessionMutation();
+  const [revoke, { isLoading: revoking }] = useRevokeSessionMutation();
   const [logoutAll, { isLoading: loggingOutAll }] = useLogoutAllMutation();
+  const [toRevoke, setToRevoke] = useState<SessionInfo | null>(null);
+  const [confirmAll, setConfirmAll] = useState(false);
+
+  const onRevoke = async () => {
+    if (!toRevoke) return;
+    try {
+      await revoke(toRevoke.id).unwrap();
+      toast.success('That device has been signed out');
+    } catch (err) {
+      toast.error(getQueryErrorMessage(err));
+    } finally {
+      setToRevoke(null);
+    }
+  };
 
   const onLogoutAll = async () => {
     await logoutAll()
       .unwrap()
       .catch(() => undefined);
-    navigate('/login', {
-      replace: true,
-      state: { notice: 'You have been signed out everywhere.' },
-    });
+    toast.success('You have been signed out of all devices');
+    navigate('/login', { replace: true });
   };
 
   return (
@@ -32,8 +53,8 @@ export default function SessionsPage() {
         title="Active sessions"
         description="Devices where you are signed in."
         actions={
-          <Button variant="danger" onClick={() => void onLogoutAll()} loading={loggingOutAll}>
-            Sign out everywhere
+          <Button variant="danger" onClick={() => setConfirmAll(true)}>
+            <LogOut className="h-4 w-4" aria-hidden="true" /> Log out of all devices
           </Button>
         }
       />
@@ -56,11 +77,7 @@ export default function SessionsPage() {
         </div>
       )}
 
-      {sessions?.length === 0 && (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          No active sessions.
-        </div>
-      )}
+      {sessions?.length === 0 && <EmptyState icon={MonitorSmartphone} title="No active sessions" />}
 
       {sessions && sessions.length > 0 && (
         <ul className="space-y-3">
@@ -69,25 +86,23 @@ export default function SessionsPage() {
               key={s.id}
               className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
             >
-              <div>
-                <p className="font-medium">
-                  {describeUserAgent(s.userAgent)}
-                  {s.current && (
-                    <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                      This device
-                    </span>
-                  )}
-                </p>
-                <p className="mt-1 text-sm text-slate-500">
-                  {s.ip ?? 'Unknown IP'} · Last active {formatDate(s.lastUsedAt)}
-                </p>
+              <div className="flex items-start gap-3">
+                <MonitorSmartphone
+                  className="mt-0.5 h-5 w-5 shrink-0 text-slate-400"
+                  aria-hidden="true"
+                />
+                <div>
+                  <p className="flex flex-wrap items-center gap-2 font-medium">
+                    {describeUserAgent(s.userAgent)}
+                    {s.current && <Badge tone="success">This device</Badge>}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {s.ip ?? 'Unknown IP'} · Last used {formatDateTime(s.lastUsedAt)}
+                  </p>
+                </div>
               </div>
               {!s.current && (
-                <Button
-                  variant="secondary"
-                  onClick={() => void revoke(s.id)}
-                  loading={revoking && revokingId === s.id}
-                >
+                <Button variant="secondary" onClick={() => setToRevoke(s)}>
                   Sign out
                 </Button>
               )}
@@ -95,6 +110,34 @@ export default function SessionsPage() {
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={toRevoke !== null}
+        title="Sign out this device?"
+        confirmLabel="Sign out"
+        tone="danger"
+        loading={revoking}
+        onConfirm={() => void onRevoke()}
+        onCancel={() => setToRevoke(null)}
+      >
+        {toRevoke && (
+          <p>
+            {describeUserAgent(toRevoke.userAgent)} ({toRevoke.ip ?? 'unknown IP'}) will need to
+            sign in again.
+          </p>
+        )}
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={confirmAll}
+        title="Log out of all devices?"
+        confirmLabel="Log out everywhere"
+        tone="danger"
+        loading={loggingOutAll}
+        onConfirm={() => void onLogoutAll()}
+        onCancel={() => setConfirmAll(false)}
+      >
+        <p>Every device, including this one, will be signed out.</p>
+      </ConfirmDialog>
     </section>
   );
 }

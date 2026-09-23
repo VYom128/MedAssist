@@ -1,56 +1,29 @@
+import { Menu, X } from 'lucide-react';
 import { useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../app/hooks';
-import Button from '../components/ui/Button';
-import { ROLE_HOME, ROLE_LABELS } from '../constants/roles';
+import { ROLE_HOME } from '../constants/roles';
 import { useLogoutMutation } from '../features/auth/api';
 import { selectCurrentUser } from '../features/auth/authSlice';
-import { ACCOUNT_NAV, navItemsFor, type NavItem } from '../routes/routeConfig';
+import { navItemsFor } from '../routes/routeConfig';
 import { env } from '../utils/env';
+import UserMenu from './UserMenu';
 
-function NavList({ items, title }: { items: NavItem[]; title?: string }) {
-  return (
-    <div>
-      {title && (
-        <p className="px-3 pb-1 text-xs font-semibold tracking-wide text-slate-400 uppercase">
-          {title}
-        </p>
-      )}
-      <ul className="space-y-1">
-        {items.map((item) => (
-          <li key={item.to}>
-            <NavLink
-              to={item.to}
-              className={({ isActive }) =>
-                `block rounded-lg px-3 py-2 text-sm font-medium ${
-                  isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/** Logged-in shell: role-based sidebar (drawer on mobile) and a top bar with the user menu. */
+/**
+ * Logged-in shell: sidebar built from routeConfig for the user's role (a drawer below 768 px) and
+ * a top bar with the account menu. While a password change is forced, only that page is shown.
+ */
 export default function AppLayout() {
   const user = useAppSelector(selectCurrentUser);
-  // The mobile drawer remembers the path it was opened on, so navigating closes it.
-  const [menuOpenedAt, setMenuOpenedAt] = useState<string | null>(null);
-  const [logout, { isLoading: loggingOut }] = useLogoutMutation();
+  const [logout] = useLogoutMutation();
   const navigate = useNavigate();
   const location = useLocation();
-
+  // The drawer remembers the path it was opened on, so navigating closes it.
+  const [menuOpenedAt, setMenuOpenedAt] = useState<string | null>(null);
   const menuOpen = menuOpenedAt === location.pathname;
-  const closeMenu = () => setMenuOpenedAt(null);
 
   if (!user) return null;
-  // While a password change is pending, only the change-password page is reachable.
-  const locked = user.mustChangePassword;
+  const forced = user.mustChangePassword;
 
   const onLogout = async () => {
     await logout()
@@ -59,73 +32,80 @@ export default function AppLayout() {
     navigate('/login', { replace: true });
   };
 
-  const sidebar = (
-    <nav aria-label="Main" className="space-y-6 p-4">
-      {!locked && <NavList items={navItemsFor(user.role)} />}
-      {!locked && <NavList title="Account" items={ACCOUNT_NAV} />}
+  const nav = (
+    <nav aria-label="Main" className="p-3">
+      <ul className="space-y-1">
+        {navItemsFor(user.role).map(({ to, label, icon: Icon }) => (
+          <li key={to}>
+            <NavLink
+              to={to}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand-600 ${
+                  isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
+                }`
+              }
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+              {label}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
     </nav>
   );
 
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
-        <div className="flex h-14 items-center gap-3 px-4">
-          <button
-            type="button"
-            className="-ml-2 rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
-            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={menuOpen}
-            aria-controls="mobile-nav"
-            onClick={() => setMenuOpenedAt(menuOpen ? null : location.pathname)}
-          >
-            <svg
-              viewBox="0 0 24 24"
-              className="h-5 w-5"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
+        <div className="flex h-14 items-center gap-2 px-4">
+          {!forced && (
+            <button
+              type="button"
+              className="-ml-2 rounded-lg p-2 text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-600 md:hidden"
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen}
+              aria-controls="mobile-nav"
+              onClick={() => setMenuOpenedAt(menuOpen ? null : location.pathname)}
             >
-              <path
-                strokeLinecap="round"
-                d={menuOpen ? 'M6 6l12 12M18 6L6 18' : 'M4 7h16M4 12h16M4 17h16'}
-              />
-            </svg>
-          </button>
-          <Link to={ROLE_HOME[user.role]} className="text-lg font-semibold text-brand-700">
+              {menuOpen ? (
+                <X className="h-5 w-5" aria-hidden="true" />
+              ) : (
+                <Menu className="h-5 w-5" aria-hidden="true" />
+              )}
+            </button>
+          )}
+          <Link
+            to={forced ? '/change-password' : ROLE_HOME[user.role]}
+            className="text-lg font-semibold text-brand-700"
+          >
             {env.appName}
           </Link>
-          <div className="ml-auto flex items-center gap-3">
-            <div className="hidden text-right sm:block">
-              <p className="text-sm font-medium">
-                {user.firstName} {user.lastName}
-              </p>
-              <p className="text-xs text-slate-500">{ROLE_LABELS[user.role]}</p>
-            </div>
-            <Button variant="secondary" onClick={() => void onLogout()} loading={loggingOut}>
-              Sign out
-            </Button>
+          <div className="ml-auto">
+            <UserMenu user={user} limited={forced} onLogout={() => void onLogout()} />
           </div>
         </div>
       </header>
 
       <div className="flex flex-1">
-        <aside className="hidden w-60 shrink-0 border-r border-slate-200 bg-white md:block">
-          {sidebar}
-        </aside>
+        {!forced && (
+          <aside className="hidden w-60 shrink-0 border-r border-slate-200 bg-white md:block">
+            {nav}
+          </aside>
+        )}
 
-        {menuOpen && (
+        {!forced && menuOpen && (
           <div className="fixed inset-0 z-20 md:hidden">
             <button
               type="button"
               aria-label="Close menu"
               className="absolute inset-0 bg-slate-900/30"
-              onClick={closeMenu}
+              onClick={() => setMenuOpenedAt(null)}
             />
             <aside
               id="mobile-nav"
               className="absolute inset-y-0 left-0 mt-14 w-64 bg-white shadow-lg"
             >
-              {sidebar}
+              {nav}
             </aside>
           </div>
         )}

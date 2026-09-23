@@ -1,8 +1,6 @@
-import type { ComponentType } from 'react';
 import type { RouteObject } from 'react-router-dom';
 import ForbiddenPage from '../components/ForbiddenPage';
 import NotFoundPage from '../components/NotFoundPage';
-import { ROLE_BASE, ROLES, type Role } from '../constants/roles';
 import ChangePasswordPage from '../features/auth/pages/ChangePasswordPage';
 import ForgotPasswordPage from '../features/auth/pages/ForgotPasswordPage';
 import LoginPage from '../features/auth/pages/LoginPage';
@@ -17,58 +15,32 @@ import HomeRedirect from './HomeRedirect';
 import ProtectedRoute from './ProtectedRoute';
 import PublicOnlyRoute from './PublicOnlyRoute';
 import RoleRoute from './RoleRoute';
+import { APP_ROUTES } from './routeConfig';
 
-type PageModule = { default: ComponentType };
-const page = (load: () => Promise<PageModule>) => async () => ({
-  Component: (await load()).default,
-});
-
-/** Each role's area is lazy-loaded (spec §13.1). Pages are added per phase. */
-const ROLE_ROUTES: Record<Role, RouteObject[]> = {
-  admin: [
-    { path: 'dashboard', lazy: page(() => import('../features/dashboards/pages/AdminDashboard')) },
-  ],
-  doctor: [
-    { path: 'dashboard', lazy: page(() => import('../features/dashboards/pages/DoctorDashboard')) },
-  ],
-  receptionist: [
-    {
-      path: 'dashboard',
-      lazy: page(() => import('../features/dashboards/pages/ReceptionDashboard')),
-    },
-  ],
-  labtech: [
-    { path: 'dashboard', lazy: page(() => import('../features/dashboards/pages/LabDashboard')) },
-  ],
-  patient: [
-    {
-      path: 'dashboard',
-      lazy: page(() => import('../features/dashboards/pages/PatientDashboard')),
-    },
-  ],
-};
-
-const roleAreas: RouteObject[] = Object.values(ROLES).map((role) => ({
-  path: ROLE_BASE[role],
-  element: <RoleRoute roles={[role]} />,
-  children: ROLE_ROUTES[role],
+/** Role pages from routeConfig, each behind RoleRoute and lazy-loaded. */
+const rolePages: RouteObject[] = APP_ROUTES.map((r) => ({
+  element: <RoleRoute roles={r.roles} />,
+  children: [{ path: r.path, lazy: async () => ({ Component: (await r.load()).default }) }],
 }));
 
 /** The route tree (spec §13.1). Rendered by AppRoutes; tests use it with a memory router. */
 export const routes: RouteObject[] = [
+  { index: true, element: <HomeRedirect /> },
   {
     element: <AuthLayout />,
     children: [
       {
+        // Signed-in users are sent to their dashboard.
         element: <PublicOnlyRoute />,
         children: [
           { path: '/login', element: <LoginPage /> },
           { path: '/register', element: <RegisterPage /> },
+          { path: '/forgot-password', element: <ForgotPasswordPage /> },
+          { path: '/reset-password/:token', element: <ResetPasswordPage /> },
         ],
       },
-      { path: '/forgot-password', element: <ForgotPasswordPage /> },
-      { path: '/reset-password/:token', element: <ResetPasswordPage /> },
       { path: '/status', element: <HomePage /> },
+      { path: '/404', element: <NotFoundPage /> },
     ],
   },
   {
@@ -77,15 +49,14 @@ export const routes: RouteObject[] = [
       {
         element: <AppLayout />,
         children: [
-          { index: true, element: <HomeRedirect /> },
           { path: '/profile', element: <ProfilePage /> },
           { path: '/sessions', element: <SessionsPage /> },
           { path: '/change-password', element: <ChangePasswordPage /> },
           { path: '/403', element: <ForbiddenPage /> },
-          ...roleAreas,
-          { path: '*', element: <NotFoundPage /> },
+          ...rolePages,
         ],
       },
     ],
   },
+  { path: '*', element: <NotFoundPage /> },
 ];

@@ -168,9 +168,11 @@ server/
 client/
   src/
     app/     store, apiSlice (RTK Query), axiosBaseQuery (Bearer token + refresh on 401)
-    routes/  routes.tsx, ProtectedRoute, RoleRoute, PublicOnlyRoute, routeConfig (sidebar)
+    routes/  routeConfig.ts (role pages + sidebar, one list), routes.tsx, ProtectedRoute, RoleRoute
+    components/ui/  Button, Input, Select, PasswordInput, Card, Badge, Modal, ConfirmDialog,
+             Table (cards below 768 px), Pagination, EmptyState, Alert, Spinner
     layouts/ AuthLayout, AppLayout   features/<feature>/  components/ (ui/)  constants/  utils/
-  tests/     Vitest + React Testing Library
+  tests/     Vitest + React Testing Library + MSW (tests/msw)
 docs/                   PROJECT_SPEC.md, ROADMAP.md
 ```
 

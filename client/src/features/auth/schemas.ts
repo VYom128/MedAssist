@@ -16,6 +16,28 @@ export const passwordRules = z
   .max(72, 'Must be at most 72 characters')
   .refine((p) => /\p{L}/u.test(p) && /\d/.test(p), 'Must contain a letter and a number');
 
+/**
+ * The password rules as a checklist for live hints (mirrors server checkPasswordStrength, except
+ * the common-password list, which only the server has).
+ */
+export function passwordChecks(
+  password: string,
+  personal: { email?: string; firstName?: string } = {},
+): { label: string; ok: boolean }[] {
+  const lower = password.toLowerCase();
+  const parts = [personal.email?.split('@')[0], personal.firstName]
+    .map((p) => p?.trim().toLowerCase())
+    .filter((p): p is string => Boolean(p && p.length >= 3));
+  return [
+    { label: 'At least 8 characters', ok: password.length >= 8 && password.length <= 72 },
+    { label: 'A letter and a number', ok: /\p{L}/u.test(password) && /\d/.test(password) },
+    {
+      label: 'Does not contain your name or email',
+      ok: password.length > 0 && !parts.some((p) => lower.includes(p)),
+    },
+  ];
+}
+
 export const loginSchema = z.object({
   email,
   password: z.string().min(1, 'Enter your password'),

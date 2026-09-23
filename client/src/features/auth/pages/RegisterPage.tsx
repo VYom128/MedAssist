@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
@@ -9,7 +9,8 @@ import { applyServerFieldErrors } from '../../../utils/forms';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { useRegisterMutation } from '../api';
 import AuthCard from '../components/AuthCard';
-import PasswordField from '../components/PasswordField';
+import PasswordChecklist from '../components/PasswordChecklist';
+import PasswordInput from '../../../components/ui/PasswordInput';
 import { registerSchema, type RegisterValues } from '../schemas';
 
 const FIELDS = [
@@ -30,8 +31,13 @@ export default function RegisterPage() {
     register,
     handleSubmit,
     setError,
+    control,
     formState: { errors },
   } = useForm<RegisterValues>({ resolver: zodResolver(registerSchema) });
+  const [password = '', email, firstName] = useWatch({
+    control,
+    name: ['password', 'email', 'firstName'],
+  });
 
   const onSubmit = handleSubmit(async ({ confirmPassword: _confirm, ...values }) => {
     try {
@@ -96,14 +102,14 @@ export default function RegisterPage() {
           error={errors.dateOfBirth?.message}
           {...register('dateOfBirth')}
         />
-        <PasswordField
+        <PasswordInput
           label="Password"
           autoComplete="new-password"
-          hint="At least 8 characters, with a letter and a number. Avoid your name or email."
+          hint={<PasswordChecklist password={password} email={email} firstName={firstName} />}
           error={errors.password?.message}
           {...register('password')}
         />
-        <PasswordField
+        <PasswordInput
           label="Confirm password"
           autoComplete="new-password"
           error={errors.confirmPassword?.message}

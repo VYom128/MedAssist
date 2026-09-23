@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAppSelector } from '../app/hooks';
-import Spinner from '../components/ui/Spinner';
+import FullPageLoader from '../components/FullPageLoader';
 import { selectAuth } from '../features/auth/authSlice';
 
 /**
@@ -11,14 +11,7 @@ export default function ProtectedRoute() {
   const { status, user } = useAppSelector(selectAuth);
   const location = useLocation();
 
-  if (status === 'idle' || status === 'loading') {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-brand-600" role="status">
-        <Spinner className="h-8 w-8" />
-        <span className="sr-only">Loading…</span>
-      </div>
-    );
-  }
+  if (status === 'restoring') return <FullPageLoader />;
 
   if (status === 'guest' || !user) {
     const next = `${location.pathname}${location.search}`;
