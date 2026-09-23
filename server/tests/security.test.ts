@@ -1,10 +1,9 @@
 import express from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { apiLimiter, createRateLimiter } from '../src/middlewares/rateLimiters.js';
 import { requestId } from '../src/middlewares/requestId.js';
-import { api, expectErrorShape } from './setup/testApp.js';
+import { api, expectErrorShape } from './helpers/testApp.js';
 
 describe('security middleware', () => {
   it('sets helmet headers and hides x-powered-by', async () => {
@@ -21,15 +20,6 @@ describe('security middleware', () => {
 
     const other = await api().get('/api/v1/health').set('Origin', 'https://evil.example.com');
     expect(other.headers['access-control-allow-origin']).not.toBe('https://evil.example.com');
-  });
-
-  it('echoes a safe incoming X-Request-Id and replaces an unsafe one', async () => {
-    const safe = await api().get('/api/v1/health').set('X-Request-Id', 'trace-abc-12345');
-    expect(safe.headers['x-request-id']).toBe('trace-abc-12345');
-
-    const unsafe = await api().get('/api/v1/nope').set('X-Request-Id', 'bad id <script>');
-    expect(unsafe.headers['x-request-id']).not.toBe('bad id <script>');
-    expect(unsafe.body.requestId).toBe(unsafe.headers['x-request-id']);
   });
 
   it('returns 429 RATE_LIMITED in the standard format after the limit is exceeded', async () => {

@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest';
 import { ERROR_CODES, ERROR_HTTP_STATUS } from '../src/config/constants.js';
 import { ApiError } from '../src/utils/ApiError.js';
 

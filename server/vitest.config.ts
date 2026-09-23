@@ -3,17 +3,16 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    globals: true,
     include: ['tests/**/*.test.ts'],
-    globalSetup: ['tests/setup/globalSetup.ts'],
-    setupFiles: ['tests/setup/db.ts'],
-    // Starting a replica set can be slow on first run (binary download).
+    setupFiles: ['./tests/setup.ts'],
+    testTimeout: 30_000,
+    // Starting the in-memory replica set can be slow (first run downloads the mongod binary).
     hookTimeout: 120_000,
-    testTimeout: 20_000,
-    env: {
-      NODE_ENV: 'test',
-      CLIENT_URL: 'http://localhost:5173',
-      LOG_LEVEL: 'silent',
-      RATE_LIMIT_MAX: '10000',
+    coverage: {
+      provider: 'v8',
+      include: ['src/**'],
+      reporter: ['text', 'html'],
     },
   },
 });

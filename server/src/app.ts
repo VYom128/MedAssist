@@ -1,7 +1,7 @@
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import express, { type Express, type Request } from 'express';
+import express, { type Express, type Request, type Router } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { API_PREFIX, BODY_LIMIT } from './config/constants.js';
@@ -14,12 +14,12 @@ import apiRoutes from './routes/index.js';
 import { logger } from './utils/logger.js';
 
 export interface CreateAppOptions {
-  /** Extra routers mounted before the 404 handler (used by tests). */
-  mount?: (app: Express) => void;
+  /** Test-only routes, mounted after the API routes and before notFound/errorHandler. */
+  extraRoutes?: Router;
 }
 
 /** Builds the Express app (middleware, routes, error handling) without listening. */
-export function createApp({ mount }: CreateAppOptions = {}): Express {
+export function createApp({ extraRoutes }: CreateAppOptions = {}): Express {
   const app = express();
 
   app.disable('x-powered-by');
@@ -61,7 +61,7 @@ export function createApp({ mount }: CreateAppOptions = {}): Express {
 
   app.use('/api', apiLimiter);
   app.use(API_PREFIX, apiRoutes);
-  mount?.(app);
+  if (extraRoutes) app.use(extraRoutes);
 
   app.use(notFound);
   app.use(errorHandler);

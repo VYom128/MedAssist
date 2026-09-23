@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest';
 import { buildMeta, parsePagination } from '../src/utils/pagination.js';
 
 describe('parsePagination', () => {

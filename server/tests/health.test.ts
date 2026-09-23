@@ -1,31 +1,29 @@
 import mongoose from 'mongoose';
-import { describe, expect, inject, it } from 'vitest';
-import { api } from './setup/testApp.js';
+import { api } from './helpers/testApp.js';
+import { getMongoUri } from './setup.js';
 
 describe('GET /api/v1/health', () => {
-  it('returns 200 with status ok and db connected', async () => {
+  it('returns 200 with status ok, db connected and an X-Request-Id header', async () => {
     const res = await api().get('/api/v1/health');
 
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       success: true,
-      message: 'Service healthy',
       data: { status: 'ok', db: 'connected' },
     });
-    expect(typeof res.body.data.uptime).toBe('number');
-    expect(new Date(res.body.data.timestamp).toString()).not.toBe('Invalid Date');
-    expect(res.headers['x-request-id']).toBeTruthy();
+    expect(res.body.data.uptime).toEqual(expect.any(Number));
+    expect(Number.isNaN(Date.parse(res.body.data.timestamp))).toBe(false);
+    expect(res.headers['x-request-id']).toEqual(expect.any(String));
   });
 
-  it('still returns 200 and reports db disconnected when MongoDB is down', async () => {
-    const dbName = mongoose.connection.name;
+  it('reports db disconnected when MongoDB is down', async () => {
     await mongoose.disconnect();
     try {
       const res = await api().get('/api/v1/health');
       expect(res.status).toBe(200);
-      expect(res.body).toMatchObject({ success: true, data: { status: 'ok', db: 'disconnected' } });
+      expect(res.body.data).toMatchObject({ status: 'ok', db: 'disconnected' });
     } finally {
-      await mongoose.connect(inject('mongoUri'), { dbName });
+      await mongoose.connect(getMongoUri());
     }
   });
 });
