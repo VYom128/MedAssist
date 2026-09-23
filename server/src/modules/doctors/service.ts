@@ -108,7 +108,13 @@ export async function getDoctor(viewer: AuthUser | undefined, doctorId: string) 
  * profile in one transaction; if either fails, neither is saved. The welcome email with the
  * "set your password" link is sent only after the commit.
  */
-export async function createDoctor(admin: AuthUser, input: CreateDoctorInput, meta: RequestMeta) {
+export async function createDoctor(
+  admin: AuthUser,
+  input: CreateDoctorInput,
+  meta: RequestMeta,
+  /** The seed sets demo passwords instead of emailing links. */
+  { sendWelcome = true }: { sendWelcome?: boolean } = {},
+) {
   const { firstName, lastName, email, phone, ...profile } = input;
   await assertActiveDepartment(profile.department);
 
@@ -125,7 +131,7 @@ export async function createDoctor(admin: AuthUser, input: CreateDoctorInput, me
     return account;
   });
 
-  sendWelcomeEmail(user, token);
+  if (sendWelcome) sendWelcomeEmail(user, token);
   await audit.record({
     action: AUDIT_ACTIONS.USER_CREATE,
     actor: actorOf(admin),

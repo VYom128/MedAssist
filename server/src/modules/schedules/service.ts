@@ -104,12 +104,14 @@ export async function replaceSchedule(
   doctorId: string,
   input: ReplaceScheduleInput,
   meta: RequestMeta,
+  /** Seed only (never from the API): lets a template start in the past for demo history. */
+  { allowPastStart = false }: { allowPastStart?: boolean } = {},
 ) {
   await assertCanManageDoctor(user, doctorId, meta);
   const profile = await findDoctor(doctorId);
   const settings = await getSettings();
   const today = clinicToday(settings.timezone);
-  if (input.effectiveFrom < today) {
+  if (input.effectiveFrom < today && !allowPastStart) {
     throw ApiError.unprocessable('A new schedule cannot start in the past', [
       { field: 'body.effectiveFrom', message: `Must be ${today} or later` },
     ]);

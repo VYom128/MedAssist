@@ -232,6 +232,16 @@ describe('/lab-tests', () => {
       expect(await auditEntries('lab_test.update')).toHaveLength(1);
     });
 
+    it('re-sending the same parameters is not a change (no write, no audit)', async () => {
+      const created = await create(cbc());
+      const res = await api()
+        .patch(`/api/v1/lab-tests/${created.body.data.id}`)
+        .set(admin.auth)
+        .send({ parameters: cbc().parameters });
+      expect(res.body.data.updatedAt).toBe(created.body.data.updatedAt);
+      expect(await auditEntries('lab_test.update')).toHaveLength(0);
+    });
+
     it('deactivate / activate with transition errors', async () => {
       const created = await create(cbc());
       const url = `/api/v1/lab-tests/${created.body.data.id}`;

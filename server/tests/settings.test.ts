@@ -194,3 +194,13 @@ describe('/settings', () => {
     });
   });
 });
+
+describe('settings cache loads', () => {
+  it('reading the settings never changes updatedAt', async () => {
+    await resetDb();
+    const first = await getSettings();
+    clearSettingsCache();
+    const again = await getSettings();
+    expect(again.updatedAt?.getTime()).toBe(first.updatedAt?.getTime());
+  });
+});

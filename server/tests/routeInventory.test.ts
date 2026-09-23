@@ -85,7 +85,7 @@ describe('route inventory', () => {
   it.each(PROTECTED)('%s → 401 without a token (authenticate)', async (route) => {
     const [method, path] = route.split(' ') as [string, string];
     const res = await api()[method.toLowerCase() as 'get'](`/api/v1${withIds(path)}`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   describe('admin-only routes', () => {
@@ -108,7 +108,7 @@ describe('route inventory', () => {
       const res = await api()
         [method.toLowerCase() as 'get'](`/api/v1${withIds(path)}`)
         .set(patientAuth);
-      expect(res.status).toBe(403);
+      expect(res.status, JSON.stringify(res.body)).toBe(403);
     });
   });
 });

@@ -15,6 +15,9 @@ let cache: { value: SettingsLike; loadedAt: number } | null = null;
 
 /** Loads the settings document, creating it with the §6.5 defaults if it does not exist yet. */
 async function load(): Promise<SettingsLike> {
+  // Read first: an upserting update would bump updatedAt (timestamps) on every load.
+  const existing = await ClinicSettings.findOne({ key: SETTINGS_KEY }).lean();
+  if (existing) return existing as SettingsLike;
   const doc = await ClinicSettings.findOneAndUpdate(
     { key: SETTINGS_KEY },
     { $setOnInsert: { key: SETTINGS_KEY } },

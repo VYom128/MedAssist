@@ -19,19 +19,36 @@ export function toPatientView(t: LabTestLike) {
   };
 }
 
+interface ParameterLike {
+  key: string;
+  name: string;
+  unit?: string | null;
+  valueType: string;
+  options?: readonly string[] | null;
+  ranges?: readonly object[] | null;
+}
+
+/**
+ * A parameter in its response shape (missing unit → null, missing lists → [], no empty range
+ * fields). Also used to compare incoming parameters with stored ones.
+ */
+export function parameterView(p: ParameterLike) {
+  return {
+    key: p.key,
+    name: p.name,
+    unit: p.unit ?? null,
+    valueType: p.valueType,
+    options: [...(p.options ?? [])],
+    ranges: (p.ranges ?? []).map((r) => clean({ ...r })),
+  };
+}
+
 /** Staff: the full catalogue entry with parameters and reference ranges. */
 export function toStaffView(t: LabTestLike) {
   return {
     ...toPatientView(t),
     turnaroundHours: t.turnaroundHours ?? null,
-    parameters: t.parameters.map((p) => ({
-      key: p.key,
-      name: p.name,
-      unit: p.unit ?? null,
-      valueType: p.valueType,
-      options: [...p.options],
-      ranges: p.ranges.map((r) => clean({ ...r })),
-    })),
+    parameters: t.parameters.map(parameterView),
   };
 }
 

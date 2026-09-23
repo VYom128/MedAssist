@@ -7,7 +7,13 @@ import { buildMeta, type Pagination } from '../../utils/pagination.js';
 import { containsRegex } from '../../utils/regex.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { LabTest, type LabTestDoc } from './model.js';
-import { toAdminView, toPatientView, toStaffView, type LabTestLike } from './serializer.js';
+import {
+  parameterView,
+  toAdminView,
+  toPatientView,
+  toStaffView,
+  type LabTestLike,
+} from './serializer.js';
 import type { CreateLabTestInput, ListLabTestsQuery, UpdateLabTestInput } from './validation.js';
 
 const isAdmin = (viewer: AuthUser) => viewer.role === ROLES.ADMIN;
@@ -88,7 +94,12 @@ export async function updateLabTest(
     ...toStaffView(before),
     turnaroundHours: before.turnaroundHours ?? null,
   } as Record<string, unknown>;
-  const afterValues = { ...beforeValues, ...input };
+  // Compare parameters in their stored shape, so re-sending the same list is not a change.
+  const afterValues = {
+    ...beforeValues,
+    ...input,
+    ...(input.parameters ? { parameters: input.parameters.map(parameterView) } : {}),
+  };
   const changes = audit.diffChanges(
     JSON.parse(JSON.stringify(beforeValues)),
     JSON.parse(JSON.stringify(afterValues)),

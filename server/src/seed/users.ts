@@ -13,7 +13,10 @@ export interface DemoAccount {
   role: Role;
 }
 
-/** One login per role, plus the second doctor and patient listed in spec §15.3. */
+/**
+ * Staff and patient demo logins (spec §15.3: 1 admin, 2 receptionists, 2 lab techs). Doctors are
+ * seeded with their profiles by seed/doctors.ts.
+ */
 export const DEMO_ACCOUNTS: readonly DemoAccount[] = [
   { email: 'admin@medassist.dev', firstName: 'Asha', lastName: 'Rao', role: ROLES.ADMIN },
   {
@@ -22,21 +25,43 @@ export const DEMO_ACCOUNTS: readonly DemoAccount[] = [
     lastName: 'Kumar',
     role: ROLES.RECEPTIONIST,
   },
+  {
+    email: 'reception2@medassist.dev',
+    firstName: 'Meena',
+    lastName: 'Pillai',
+    role: ROLES.RECEPTIONIST,
+  },
   { email: 'lab1@medassist.dev', firstName: 'Lakshmi', lastName: 'Nair', role: ROLES.LABTECH },
-  { email: 'dr.mehta@medassist.dev', firstName: 'Anil', lastName: 'Mehta', role: ROLES.DOCTOR },
-  { email: 'dr.iyer@medassist.dev', firstName: 'Kavya', lastName: 'Iyer', role: ROLES.DOCTOR },
+  { email: 'lab2@medassist.dev', firstName: 'Arjun', lastName: 'Reddy', role: ROLES.LABTECH },
   // Patient records and linking arrive in Phase 3; these are portal logins only for now.
   { email: 'patient1@medassist.dev', firstName: 'Priya', lastName: 'Sharma', role: ROLES.PATIENT },
   { email: 'patient2@medassist.dev', firstName: 'Rahul', lastName: 'Verma', role: ROLES.PATIENT },
 ];
 
+/** Hash of the demo password (computed once per seed run). */
+export const demoPasswordHash = () => hashPassword(DEMO_PASSWORD);
+
 /**
- * Upserts the demo accounts: creates missing ones and resets existing ones to a usable state
- * (demo password, active, unlocked, no forced password change).
+ * Update that puts an account in a usable demo state: demo password, active, unlocked, no forced
+ * password change, no pending reset link.
+ */
+export const demoAccountState = (passwordHash: string) => ({
+  $set: {
+    passwordHash,
+    mustChangePassword: false,
+    isActive: true,
+    failedLoginAttempts: 0,
+  },
+  $unset: { lockUntil: 1, lastFailedLoginAt: 1, passwordReset: 1 },
+});
+
+/**
+ * Upserts the demo accounts: creates missing ones and resets existing ones to a usable state.
  * @returns how many accounts were created and updated.
  */
 export async function seedUsers(): Promise<{ created: number; updated: number }> {
-  const passwordHash = await hashPassword(DEMO_PASSWORD);
+  const passwordHash = await demoPasswordHash();
+  const state = demoAccountState(passwordHash);
   let created = 0;
   let updated = 0;
 
@@ -45,15 +70,12 @@ export async function seedUsers(): Promise<{ created: number; updated: number }>
       { email: account.email },
       {
         $set: {
+          ...state.$set,
           firstName: account.firstName,
           lastName: account.lastName,
           role: account.role,
-          passwordHash,
-          mustChangePassword: false,
-          isActive: true,
-          failedLoginAttempts: 0,
         },
-        $unset: { lockUntil: 1, lastFailedLoginAt: 1, passwordReset: 1 },
+        $unset: state.$unset,
         $setOnInsert: { emailVerifiedAt: new Date() },
       },
       { upsert: true, new: true, includeResultMetadata: true, runValidators: true },
