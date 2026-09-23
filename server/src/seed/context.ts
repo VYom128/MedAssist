@@ -1,4 +1,4 @@
-import { ROLES } from '../config/constants.js';
+import { ROLES, type Role } from '../config/constants.js';
 import { User } from '../modules/users/model.js';
 import type { AuthUser } from '../types/express.js';
 import type { RequestMeta } from '../utils/requestContext.js';
@@ -17,15 +17,19 @@ export interface SeedCounts {
 export const counts = (): SeedCounts => ({ created: 0, updated: 0, unchanged: 0 });
 
 /**
- * The demo admin, as the actor for the services the seed calls (so their validation and audit
- * run as for a real admin; audit entries carry SEED_REQUEST). The users seeder runs first.
+ * A demo staff user (the admin by default) as the actor for the services the seed calls, so
+ * their validation and audit run as for a real user; audit entries carry SEED_REQUEST. The users
+ * seeder runs first.
  */
-export async function seedActor(email = 'admin@medassist.dev'): Promise<AuthUser> {
-  const admin = await User.findOne({ email, role: ROLES.ADMIN }).lean();
-  if (!admin) throw new Error(`Seed admin ${email} is missing; run the users seeder first`);
+export async function seedActor(
+  email = 'admin@medassist.dev',
+  role: Role = ROLES.ADMIN,
+): Promise<AuthUser> {
+  const admin = await User.findOne({ email, role }).lean();
+  if (!admin) throw new Error(`Seed ${role} ${email} is missing; run the users seeder first`);
   return {
     id: admin._id.toString(),
-    role: ROLES.ADMIN,
+    role,
     sessionId: 'seed',
     sessionFamily: 'seed',
     firstName: admin.firstName,

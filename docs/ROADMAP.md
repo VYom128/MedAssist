@@ -14,8 +14,8 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | 0 | Project setup | ✅ Done |
 | 1 | Authentication, RBAC and audit logging | ✅ Done |
 | 2 | Admin setup data | ✅ Done |
-| 3 | Patients | 🟡 In progress |
-| 4 | Appointments and queue | ⬜ Not started |
+| 3 | Patients | ✅ Done |
+| 4 | Appointments and queue | 🟡 In progress |
 | 5 | Visit notes and prescriptions | ⬜ Not started |
 | 6 | Lab workflow and documents | ⬜ Not started |
 | 7 | Billing | ⬜ Not started |
@@ -163,19 +163,51 @@ Verified 2026-09-23: `npm run seed -- --reset` on the local replica set, then `n
 **Goal:** register, search and manage patients; give patients portal access safely.
 **Spec:** §4.3–4.4, §6.11, §7.7, §12.1
 
-- [ ] Patient model with MRN, allergies, chronic conditions, consent
-- [ ] Create with duplicate check (+ audited override)
-- [ ] Search (MRN/phone/name), filters, pagination
-- [ ] Role-based serializers (field-level visibility, §2.5)
-- [ ] `/patients/me` for patients
-- [ ] Portal invite + self-signup linking with reception confirmation
-- [ ] Reception pages: patient list, new patient form, patient details
-- [ ] Patient profile page
-- [ ] Tests: duplicates, visibility per role, `patient.view` audit entries
+- [x] Patient model with MRN, allergies, chronic conditions, consent
+- [x] Create with duplicate check (+ audited override)
+- [x] Search (MRN/phone/name), filters, pagination
+- [x] Role-based serializers (field-level visibility, §2.5)
+- [x] `/patients/me` for patients
+- [x] Portal invite + self-signup linking with reception confirmation
+- [x] Reception pages: patient list, new patient form, patient details
+- [x] Patient profile page
+- [x] Tests: duplicates, visibility per role, `patient.view` audit entries
 
 **Done when:** reception registers and finds patients; a patient logs in and sees only their own profile.
+Verified 2026-09-24: `npm run seed -- --reset` then `npm run seed` (second run creates nothing), `npm run smoke` (31 checks, incl. patient1 → own record 200 / another record 404, phone search in national format, reception vs admin field sets, pending sign-up blocked, doctors see no patients, lab techs 403). Live API check: a patient gets 404 on another record and 403 on every staff endpoint; five reads by one receptionist → one `patient.view` entry. Browser check (Playwright + Chrome, 360 px and 1280 px): patients list, search, new patient, pending verifications, patient details, admin list, patient dashboard and profile, pending sign-up landing – no horizontal overflow. Full suite run 3 times in a row: all green.
 
-**Notes / decisions:**
+**Notes / decisions:** (recorded as D60–D78 in spec §20 "Decisions made")
+- **Access (D60–D62):** receptionists see and record **allergies** (new `allergies` access scope) but not chronic conditions; admins see neither and have read-only patient pages (plus deactivate/reactivate); lab technicians get no patient endpoints until Phase 6; doctors pass the role check on list/read/clinical profile but `canAccessPatient` returns false until Phase 5 (empty list / 404). Patients may open only their own record (`/patients/me` or their own id); any other id → 404.
+- **Linking (D63–D65):** self-signup matches phone + DOB in one transaction – no match → new record, linked; match without an account → user `pending_verification` (sees nothing; `authenticate` only sets `patientId` for linked users); every match already has an account → 422 with a generic message. Reception confirms (email "records available") or rejects (a new record with a new MRN, e.g. twins). `PATIENT_LINK_PENDING` (403) for `/patients/me` while pending. Registration now requires `consent.dataProcessing: true`.
+- **Data (D66–D69):** phones are E.164 via `libphonenumber-js` (default +91) for **every** phone field, including staff and settings; `nameKey` (lower-case, single spaces) for the name + DOB duplicate check; MRN `MRN-000001` from the counter inside the create transaction; ages in the clinic timezone.
+- **Search (D70):** MRN → exact; phone-like → exact E.164; otherwise every word must be an anchored, case-insensitive prefix of the first or last name (`^word`, escaped). No `$text` fallback yet (the text index exists). Older admin catalogue/user searches keep their escaped substring match.
+- **Audit (D71–D72):** new actions `patient.update_duplicate_override`, `patient.deactivate`, `patient.activate`, `patient.link_confirm`, `patient.link_reject`; patient updates record changed field names, with values only for gender, blood group, language, active status and consents (names, DOB, contact details and allergies are `[REDACTED]`). `patient.view` is debounced 5 min per user + patient; list and duplicate-check reads are not audited per row. `patient.clinical_profile_update` is covered with a stand-in care relationship until Phase 5.
+- **Endpoints beyond §7.7 (D73):** `GET /patients/pending-links`, `POST /patients/:id/reject-link`, `POST /patients/:id/activate`; `?force=true` became `force: true` + `reason` (≥ 10 chars) in the body; deactivate/activate need a reason (≥ 5).
+- **Seed + migration (D74):** 60 patients through the service (reception1 as actor), `patient1…8` linked, `pending1@medassist.dev` pending (reset to pending on every run), two "Amit Patel" records; `npm run migrate:link-patients` links pre-Phase 3 patient users (dev/test only, idempotent, lists users with missing data).
+- **Client (D75–D76):** pending patients start at `/patient/verify-identity` from login, register and the home redirects (`homeFor()`), so the redirects never race; live duplicate check on the new-patient form; the sidebar shows the pending-verification count (60 s poll). `Card` sections are now labelled by their title.
+- **Not built (D77):** `GET /audit-logs/patient/:id` (D21) – still open; patient timeline (Phase 8); global `/search`.
+- **Flaky tests fixed (D78):** the rare `Parse Error: Expected HTTP/` / "login failed: 404 {}" failures (also the three one-offs noted in Phase 2) came from supertest starting a server on `::` per request and connecting to `127.0.0.1:<port>`; on macOS another process (e.g. another worker's in-memory mongod) can hold that port on 127.0.0.1 and wins. Test servers now listen on 127.0.0.1 only: one shared server per test file (`api()`), `serve(app)` for small test apps.
+- Tests: 948 server (was 747) + 106 client (was 78). Phase 3 complete 2026-09-24.
+
+<details>
+<summary>Phase 3 manual test script (seeded DB, password <code>Password@123</code>)</summary>
+
+Receptionist (`reception1@medassist.dev`):
+1. Patients → type `98765` into Search: nothing happens until you pause; the URL gets `?q=…`. Search by an MRN (`MRN-000010`, or `mrn 10`) and by part of a first name (`amit`): both "Amit Patel" records appear.
+2. New patient → enter the name and date of birth of an existing patient (open "Amit Patel" first to copy them) or their phone + DOB. A "Possible existing patient" panel appears with "Open existing record". Click "This is a different person": an empty reason is refused; give one (≥ 10 characters) and the patient is saved with a new MRN (toast), and you land on the record.
+3. On a new patient with an email: "Invite to patient portal" (banner, or the Portal access tab) → confirm. The console-email log in the API terminal shows the set-password link; the Portal tab shows "Portal invited".
+4. Pending verifications (sidebar badge "1"): `pending1@medassist.dev` next to the matched record. "Confirm identity" → dialog reminds you to check photo ID → confirm; the list empties and the badge disappears. (Re-seed to reset it; or try "Not this person" with a reason → a separate record with a new MRN.)
+5. Open a patient with allergies: red chips in the header; Edit details → set the phone and date of birth to another patient's → the duplicate panel appears (Cancel to discard).
+
+Admin (`admin@medassist.dev`):
+6. Patients: no "New patient" button; open a patient: no allergies anywhere, no Edit button. Deactivate → reason required → the badge shows "Inactive"; it disappears from reception's list; "Show inactive only" finds it; Reactivate.
+
+Patient:
+7. Register (log out first) with new details → you land on the dashboard; "My details" shows an MRN.
+8. Register again (another email) with the phone + DOB of a seeded patient without a login (e.g. from reception's list, a patient with "No portal") → "Almost there – show your photo ID" page; the dashboard shows only the verification banner; My details says it is waiting. Register a third time with the same phone + DOB → "We couldn't create your account. Please contact the clinic." (+ the clinic phone).
+9. As `patient1@medassist.dev`: My details → name, DOB, gender, blood group are read-only ("Contact reception to change these"); change the city and save; turn off AI explanations (a dialog explains it first); allergies and conditions are read-only.
+10. At 360 px width (browser dev tools), repeat 1, 4 and 9: lists become cards, nothing scrolls sideways.
+</details>
 
 ---
 

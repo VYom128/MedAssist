@@ -1,5 +1,6 @@
-import { addDays, format, parseISO } from 'date-fns';
+import { addDays, format, parseISO, subYears } from 'date-fns';
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { PATIENT_RULES } from '../config/constants.js';
 
 /**
  * Clinic time helpers (spec §3.7): dates are stored in UTC; business days and schedule clock
@@ -130,4 +131,32 @@ export function calendarDateString(date: Date): string {
 /** Weekday (0 = Sunday) of a 'YYYY-MM-DD' calendar date. */
 export function weekdayOf(date: string): number {
   return calendarDate(date).getUTCDay();
+}
+
+/** 'YYYY-MM-DD' shifted back by `years` calendar years (29 Feb → 28 Feb in a common year). */
+export function subtractYears(date: string, years: number): string {
+  return format(subYears(parseISO(date), years), 'yyyy-MM-dd');
+}
+
+/**
+ * Age in whole years on `today` ('YYYY-MM-DD', the clinic date) of someone born on `dateOfBirth`
+ * (a calendar date at UTC midnight, or 'YYYY-MM-DD'). A 29 Feb birthday counts from 1 Mar in
+ * common years.
+ */
+export function ageOn(dateOfBirth: Date | string, today: string): number {
+  const dob = typeof dateOfBirth === 'string' ? dateOfBirth : calendarDateString(dateOfBirth);
+  const years = Number(today.slice(0, 4)) - Number(dob.slice(0, 4));
+  return today.slice(5) < dob.slice(5) ? years - 1 : years;
+}
+
+/**
+ * True for a real 'YYYY-MM-DD' date that is not after today and at most 120 years ago. "Today"
+ * is the latest calendar date anywhere (UTC + 14 h), so a baby born today in the clinic
+ * timezone is never rejected.
+ */
+export function isValidDateOfBirth(value: string, now = new Date()): boolean {
+  if (!isValidDateOnly(value)) return false;
+  const latestToday = new Date(now.getTime() + 14 * 3_600_000).toISOString().slice(0, 10);
+  const earliestToday = new Date(now.getTime() - 12 * 3_600_000).toISOString().slice(0, 10);
+  return value <= latestToday && value >= subtractYears(earliestToday, PATIENT_RULES.maxAgeYears);
 }

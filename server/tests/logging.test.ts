@@ -102,15 +102,18 @@ describe('request logs and auth flows', () => {
     const logs = captureLogs();
     const secrets: string[] = [PASSWORD, NEW_PASSWORD];
     try {
-      const reg = await api().post('/api/v1/auth/register').send({
-        firstName: 'Meera',
-        lastName: 'Check',
-        email: 'logcheck@example.com',
-        phone: '+919800000001',
-        dateOfBirth: '1990-01-01',
-        password: PASSWORD,
-        acceptTerms: true,
-      });
+      const reg = await api()
+        .post('/api/v1/auth/register')
+        .send({
+          firstName: 'Meera',
+          lastName: 'Check',
+          email: 'logcheck@example.com',
+          phone: '+919800000001',
+          dateOfBirth: '1990-01-01',
+          password: PASSWORD,
+          acceptTerms: true,
+          consent: { dataProcessing: true },
+        });
       const access = reg.body.data.accessToken as string;
       const cookie = refreshCookieFrom(reg) ?? '';
       secrets.push(access, cookie);

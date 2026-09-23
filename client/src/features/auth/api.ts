@@ -6,13 +6,29 @@ import type {
   ForgotPasswordValues,
   LoginValues,
   ProfileValues,
-  RegisterValues,
 } from './schemas';
 
 interface AuthPayload {
   accessToken: string;
   expiresIn: number;
   user: CurrentUser;
+}
+
+/** Sign-up result (spec §4.4): whether the account is linked to a record or waits for an ID check. */
+export interface RegisterPayload extends AuthPayload {
+  link: { status: 'linked' | 'pending_verification'; message: string };
+}
+
+/** POST /auth/register body. */
+export interface RegisterBody {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  password: string;
+  acceptTerms: true;
+  consent: { dataProcessing: true };
 }
 
 export interface SessionInfo {
@@ -52,13 +68,11 @@ export const authApi = apiSlice.injectEndpoints({
       transformResponse: (res: ApiSuccess<AuthPayload>) => res.data,
       onQueryStarted: storeCredentials,
     }),
-    register: build.mutation<
-      AuthPayload,
-      Omit<RegisterValues, 'confirmPassword' | 'acceptTerms'> & { acceptTerms: true }
-    >({
+    // The page stores the credentials itself, in the same tick as it navigates: it decides where
+    // the new patient lands (dashboard, or the ID-check screen when the link is pending).
+    register: build.mutation<RegisterPayload, RegisterBody>({
       query: (body) => ({ url: '/auth/register', method: 'POST', data: body }),
-      transformResponse: (res: ApiSuccess<AuthPayload>) => res.data,
-      onQueryStarted: storeCredentials,
+      transformResponse: (res: ApiSuccess<RegisterPayload>) => res.data,
     }),
     logout: build.mutation<void, void>({
       query: () => ({ url: '/auth/logout', method: 'POST' }),

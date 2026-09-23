@@ -7,7 +7,9 @@ import {
   Receipt,
   ScrollText,
   Settings,
+  ShieldCheck,
   Stethoscope,
+  UserRound,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -21,8 +23,11 @@ export interface AppRoute {
   /** Lazy page component, so each area is its own bundle (spec §13.1). */
   load: () => Promise<{ default: ComponentType }>;
   /** Sidebar entry; pages without it (e.g. details) are not in the menu. */
-  nav?: { label: string; icon: LucideIcon };
+  nav?: { label: string; icon: LucideIcon; badge?: NavBadgeKind };
 }
+
+/** Live counts shown next to a sidebar entry (see layouts/NavBadge). */
+export type NavBadgeKind = 'pendingLinks';
 
 const dashboard = (role: Role, path: string, load: AppRoute['load']): AppRoute => ({
   path,
@@ -62,6 +67,39 @@ export const APP_ROUTES: AppRoute[] = [
     () => import('../features/dashboards/pages/PatientDashboard'),
   ),
   {
+    path: '/reception/patients',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/patients/pages/PatientsPage'),
+    nav: { label: 'Patients', icon: UserRound },
+  },
+  {
+    path: '/reception/patients/new',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/patients/pages/NewPatientPage'),
+  },
+  {
+    path: '/reception/patients/:id',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/patients/pages/PatientDetailPage'),
+  },
+  {
+    path: '/reception/pending-links',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/patients/pages/PendingLinksPage'),
+    nav: { label: 'Pending verifications', icon: ShieldCheck, badge: 'pendingLinks' },
+  },
+  {
+    path: '/patient/profile',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/patients/pages/MyPatientProfilePage'),
+    nav: { label: 'My details', icon: UserRound },
+  },
+  {
+    path: '/patient/verify-identity',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/patients/pages/PendingVerificationPage'),
+  },
+  {
     path: '/admin/users',
     roles: [ROLES.ADMIN],
     load: () => import('../features/users/pages/UsersPage'),
@@ -71,6 +109,17 @@ export const APP_ROUTES: AppRoute[] = [
     path: '/admin/users/:id',
     roles: [ROLES.ADMIN],
     load: () => import('../features/users/pages/UserDetailPage'),
+  },
+  {
+    path: '/admin/patients',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/patients/pages/PatientsPage'),
+    nav: { label: 'Patients', icon: UserRound },
+  },
+  {
+    path: '/admin/patients/:id',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/patients/pages/PatientDetailPage'),
   },
   {
     path: '/admin/departments',
@@ -141,6 +190,7 @@ export interface NavItem {
   label: string;
   to: string;
   icon: LucideIcon;
+  badge?: NavBadgeKind;
 }
 
 /** Sidebar items for a role, from APP_ROUTES. */
@@ -149,5 +199,6 @@ export function navItemsFor(role: Role): NavItem[] {
     label: r.nav!.label,
     icon: r.nav!.icon,
     to: r.path,
+    ...(r.nav!.badge ? { badge: r.nav!.badge } : {}),
   }));
 }

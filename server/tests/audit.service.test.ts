@@ -1,10 +1,10 @@
 import express from 'express';
 import mongoose, { Types } from 'mongoose';
-import request from 'supertest';
 import { AUDIT_ACTIONS, AUDIT_GENESIS_HASH } from '../src/config/constants.js';
 import { AuditLog } from '../src/modules/audit/model.js';
 import * as audit from '../src/services/audit.service.js';
 import { logger } from '../src/utils/logger.js';
+import { serve } from './helpers/testApp.js';
 
 const { diffChanges, verifyChain } = audit;
 
@@ -71,7 +71,9 @@ describe('audit.record', () => {
       res.json(await audit.record({ action: AUDIT_ACTIONS.ACCESS_DENIED, req }));
     });
 
-    const res = await request(app)
+    const res = await (
+      await serve(app)
+    )()
       .get('/api/v1/things/42?q=Priya%20Sharma')
       .set('User-Agent', 'test-agent');
     expect(res.body).toMatchObject({

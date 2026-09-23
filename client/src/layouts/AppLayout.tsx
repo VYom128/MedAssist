@@ -7,6 +7,7 @@ import { useLogoutMutation } from '../features/auth/api';
 import { selectCurrentUser } from '../features/auth/authSlice';
 import { navItemsFor } from '../routes/routeConfig';
 import { env } from '../utils/env';
+import NavBadge from './NavBadge';
 import UserMenu from './UserMenu';
 
 /**
@@ -35,7 +36,7 @@ export default function AppLayout() {
   const nav = (
     <nav aria-label="Main" className="p-3">
       <ul className="space-y-1">
-        {navItemsFor(user.role).map(({ to, label, icon: Icon }) => (
+        {navItemsFor(user.role).map(({ to, label, icon: Icon, badge }) => (
           <li key={to}>
             <NavLink
               to={to}
@@ -47,6 +48,7 @@ export default function AppLayout() {
             >
               <Icon className="h-4 w-4" aria-hidden="true" />
               {label}
+              {badge && <NavBadge kind={badge} />}
             </NavLink>
           </li>
         ))}

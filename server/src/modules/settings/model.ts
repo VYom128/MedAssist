@@ -5,6 +5,8 @@ const { ObjectId } = Schema.Types;
 
 /** Key of the one settings document. */
 export const SETTINGS_KEY = 'clinic';
+/** Clinic timezone until an admin changes it (spec §6.5). */
+export const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 
 const addressSchema = new Schema(
   {
@@ -34,7 +36,7 @@ const clinicSettingsSchema = new Schema(
     phone: String,
     email: String,
     website: String,
-    timezone: { type: String, required: true, default: 'Asia/Kolkata' },
+    timezone: { type: String, required: true, default: DEFAULT_TIMEZONE },
     currency: { type: String, required: true, default: 'INR' },
     workingDays: { type: [Number], default: () => [1, 2, 3, 4, 5, 6] }, // 0 = Sunday
     appointment: {

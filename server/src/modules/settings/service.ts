@@ -2,7 +2,7 @@ import { AUDIT_ACTIONS, SETTINGS_CACHE_TTL_MS } from '../../config/constants.js'
 import * as audit from '../../services/audit.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
-import { ClinicSettings, SETTINGS_KEY } from './model.js';
+import { ClinicSettings, DEFAULT_TIMEZONE, SETTINGS_KEY } from './model.js';
 import { toAdminView, toPublicView, type SettingsLike } from './serializer.js';
 import type { UpdateSettingsInput } from './validation.js';
 
@@ -32,6 +32,14 @@ export async function getSettings(): Promise<SettingsLike> {
   const value = await load();
   cache = { value, loadedAt: Date.now() };
   return value;
+}
+
+/**
+ * The clinic timezone from the cache, without I/O (for synchronous code such as model virtuals).
+ * Falls back to the settings default before the settings have been loaded.
+ */
+export function cachedTimezone(): string {
+  return cache?.value.timezone ?? DEFAULT_TIMEZONE;
 }
 
 /** Drops the cache (tests and the seed, after writing settings directly). */

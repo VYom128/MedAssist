@@ -17,6 +17,9 @@ export const apiSlice = createApi({
     'Schedule',
     'Leave',
     'LabTest',
+    'Patient',
+    'PatientList',
+    'PendingLink',
   ],
   endpoints: () => ({}),
 });

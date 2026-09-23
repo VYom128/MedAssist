@@ -61,16 +61,16 @@ export interface StaffAccountInput {
 }
 
 /**
- * Creates a staff account with a random temporary password that nobody sees, and
- * `mustChangePassword: true`, plus a 72 h "set your password" token. Pass `session` to run inside
- * a transaction (POST /doctors). Send the welcome email with `sendWelcomeEmail` only after the
- * write has committed.
+ * Creates an account with a random password that nobody sees, plus a 72 h "set your password"
+ * token (reset-token flow). Pass `session` to run inside a transaction; send the email only
+ * after the write has committed.
+ * @param fields Extra user fields (e.g. the patient link for a portal invite).
  * @throws 409 CONFLICT for an email that is already taken.
  */
-export async function createStaffAccount(
-  admin: AuthUser,
-  input: StaffAccountInput,
-  { session }: { session?: ClientSession } = {},
+export async function createAccountWithSetupLink(
+  actor: AuthUser,
+  input: StaffAccountInput & { [field: string]: unknown },
+  { session, mustChangePassword }: { session?: ClientSession; mustChangePassword: boolean },
 ): Promise<{ user: UserWithId; token: string }> {
   if (await User.exists({ email: input.email }).session(session ?? null)) {
     throw ApiError.conflict('An account with this email already exists', { fields: ['email'] });
@@ -80,15 +80,27 @@ export async function createStaffAccount(
       {
         ...input,
         passwordHash: await hashPassword(randomBytes(32).toString('base64url')),
-        mustChangePassword: true,
-        createdBy: admin.id,
-        updatedBy: admin.id,
+        mustChangePassword,
+        createdBy: actor.id,
+        updatedBy: actor.id,
       },
     ],
     { session },
   );
   const token = await createPasswordResetToken(created!._id, ACCOUNT_SETUP_TTL_MS, { session });
   return { user: created!.toObject() as UserWithId, token };
+}
+
+/**
+ * Creates a staff account with `mustChangePassword: true` and a "set your password" token (see
+ * createAccountWithSetupLink). Used by POST /users and POST /doctors (inside its transaction).
+ */
+export function createStaffAccount(
+  admin: AuthUser,
+  input: StaffAccountInput,
+  { session }: { session?: ClientSession } = {},
+): Promise<{ user: UserWithId; token: string }> {
+  return createAccountWithSetupLink(admin, { ...input }, { session, mustChangePassword: true });
 }
 
 /** Emails the "set your password" link in the background (never blocks or fails the request). */

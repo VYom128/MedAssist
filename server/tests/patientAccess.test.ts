@@ -1,6 +1,12 @@
 import { Types } from 'mongoose';
 import type { PatientAccessScope, Role } from '../src/config/constants.js';
-import { assertCanAccessPatient, canAccessPatient, SCOPES } from '../src/policies/patientAccess.js';
+import {
+  assertCanAccessPatient,
+  canAccessPatient,
+  patientListFilter,
+  roleHasPatientScope,
+  SCOPES,
+} from '../src/policies/patientAccess.js';
 import type { AuthUser } from '../src/types/express.js';
 import { auditEntries, resetDb } from './helpers/auth.js';
 
@@ -18,17 +24,17 @@ const userOf = (role: Role, patient: string | null = null): AuthUser => ({
   patientId: patient,
 });
 
-/** Expected access per role for any patient in Phase 1 (spec §2.4). */
+/** Expected access per staff role for any patient (spec §2.4, Phase 3 decisions). */
 const EXPECTED: Record<Exclude<Role, 'patient'>, PatientAccessScope[]> = {
   admin: ['demographics', 'billing'],
-  receptionist: ['demographics', 'billing'],
-  labtech: ['demographics', 'lab'],
+  receptionist: ['demographics', 'billing', 'allergies'], // allergies: front-desk safety info
+  labtech: [], // through lab orders from Phase 6
   doctor: [], // care relationship arrives in Phase 5
 };
 
 describe('canAccessPatient', () => {
-  it('exports the four scopes', () => {
-    expect(SCOPES).toEqual(['demographics', 'clinical', 'billing', 'lab']);
+  it('exports the five scopes', () => {
+    expect(SCOPES).toEqual(['demographics', 'clinical', 'billing', 'lab', 'allergies']);
   });
 
   it('is synchronous and pure (no database needed)', () => {
@@ -40,6 +46,7 @@ describe('canAccessPatient', () => {
       const expected = allowed.includes(scope);
       it(`${role} → ${scope}: ${expected ? 'allowed' : 'denied'}`, () => {
         expect(canAccessPatient(userOf(role as Role), patientId, scope)).toBe(expected);
+        expect(roleHasPatientScope(userOf(role as Role), scope)).toBe(expected);
       });
     }
   }
@@ -47,6 +54,18 @@ describe('canAccessPatient', () => {
   it('admins and receptionists never get clinical access', () => {
     expect(canAccessPatient(userOf('admin'), patientId, 'clinical')).toBe(false);
     expect(canAccessPatient(userOf('receptionist'), patientId, 'clinical')).toBe(false);
+  });
+
+  it('admins and receptionists list every patient; doctors and others none (until Phase 5)', () => {
+    expect(patientListFilter(userOf('admin'))).toEqual({});
+    expect(patientListFilter(userOf('receptionist'))).toEqual({});
+    for (const role of ['doctor', 'labtech', 'patient'] as const) {
+      expect(patientListFilter(userOf(role))).toEqual({ _id: { $in: [] } });
+    }
+  });
+
+  it('a patient has no role-wide scope (only their own record)', () => {
+    for (const scope of SCOPES) expect(roleHasPatientScope(userOf('patient'), scope)).toBe(false);
   });
 
   it('a patient can access only their own record, in every scope', () => {

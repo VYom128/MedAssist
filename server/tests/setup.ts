@@ -19,9 +19,14 @@ export function getMongoUri(): string {
 beforeAll(async () => {
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   await mongoose.connect(replSet.getUri());
+  // Imported here, not at the top: config/env.ts must see NODE_ENV=test first.
+  const { startTestServer } = await import('./helpers/testApp.js');
+  await startTestServer();
 });
 
 afterAll(async () => {
+  const { closeTestServers } = await import('./helpers/testApp.js');
+  await closeTestServers();
   await mongoose.disconnect();
   await replSet?.stop();
 });

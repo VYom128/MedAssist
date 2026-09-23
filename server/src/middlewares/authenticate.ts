@@ -91,7 +91,9 @@ function createAuthenticate({
       lastName: user.lastName,
       email: user.email,
       mustChangePassword: user.mustChangePassword,
-      patientId: user.patient?.toString() ?? null,
+      // Only a confirmed link grants access to the record (spec §4.4): a self-registered user
+      // waiting for reception's identity check points at a Patient but must not see it.
+      patientId: user.patientLinkStatus === 'linked' ? (user.patient?.toString() ?? null) : null,
     };
 
     if (user.mustChangePassword && !allowPendingPasswordChange) {

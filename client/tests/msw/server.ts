@@ -58,6 +58,10 @@ export const PUBLIC_SETTINGS = {
 export const handlers = [
   http.post(url('/auth/refresh'), () => fail(401, 'SESSION_REVOKED', 'No active session')),
   http.get(url('/settings/public'), () => ok(PUBLIC_SETTINGS)),
+  // Reception's sidebar badge.
+  http.get(url('/patients/pending-links'), () =>
+    ok([], { meta: { page: 1, limit: 1, total: 0, totalPages: 0 } }),
+  ),
 ];
 
 export const server = setupServer(...handlers);

@@ -6,9 +6,12 @@ import { DoctorLeave } from '../src/modules/leaves/model.js';
 import { DoctorSchedule } from '../src/modules/schedules/model.js';
 import { Service } from '../src/modules/services/model.js';
 import { ClinicSettings } from '../src/modules/settings/model.js';
+import { Patient } from '../src/modules/patients/model.js';
 import { User } from '../src/modules/users/model.js';
 import { doctorSeeds } from '../src/seed/data/clinic.js';
 import { demoLogins, demoLoginTable, runSeed, summaryTable } from '../src/seed/index.js';
+import { patientSeeds } from '../src/seed/data/patients.js';
+import { PENDING_SIGNUP_EMAIL, patientLogins } from '../src/seed/patients.js';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../src/seed/users.js';
 import { resetDb } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
@@ -28,6 +31,7 @@ describe('seed', () => {
       services: { created: 12, updated: 0, unchanged: 0 },
       doctors: { created: 8, updated: 0, unchanged: 0, schedules: 8, leaves: 2 },
       labTests: { created: 15, updated: 0, unchanged: 0 },
+      patients: { created: 60, updated: 0, unchanged: 0, portalUsers: 8, pending: 1 },
     });
 
     const settings = await ClinicSettings.findOne().lean();
@@ -86,10 +90,59 @@ describe('seed', () => {
     emails.restore();
   });
 
+  it('seeds 60 patients with MRNs, allergies, conditions, portal logins and a pending sign-up', async () => {
+    await runSeed();
+    expect(await Patient.countDocuments()).toBe(60);
+    const mrns = (await Patient.find().lean()).map((p) => p.mrn).sort();
+    expect(mrns[0]).toBe('MRN-000001');
+    expect(mrns[59]).toBe('MRN-000060');
+    expect(await Patient.countDocuments({ 'allergies.0': { $exists: true } })).toBe(15);
+    expect(await Patient.countDocuments({ 'chronicConditions.0': { $exists: true } })).toBe(12);
+    expect(
+      await Patient.countDocuments({ 'insurance.provider': { $exists: true } }),
+    ).toBeGreaterThan(5);
+    expect(await Patient.countDocuments({ phone: { $not: /^\+91\d{10}$/ } })).toBe(0);
+    expect(new Set((await Patient.find().lean()).map((p) => p.gender)).size).toBeGreaterThanOrEqual(
+      3,
+    );
+    expect(await Patient.countDocuments({ nameKey: 'amit patel' })).toBe(2);
+    expect(await Patient.countDocuments({ user: { $type: 'objectId' } })).toBe(8);
+
+    const priya = await User.findOne({ email: 'patient1@medassist.dev' }).lean();
+    expect(priya).toMatchObject({ patientLinkStatus: 'linked', firstName: 'Priya' });
+    expect((await Patient.findById(priya!.patient).lean())?.user).toEqual(priya!._id);
+
+    const pending = await User.findOne({ email: PENDING_SIGNUP_EMAIL }).lean();
+    expect(pending?.patientLinkStatus).toBe('pending_verification');
+    const target = await Patient.findById(pending!.patient).lean();
+    expect(target?.user).toBeUndefined();
+    expect(target?.phone).toBe(pending?.phone);
+
+    // Patient ages span children to the elderly.
+    const years = patientSeeds().map((s) => Number(s.body.dateOfBirth.slice(0, 4)));
+    expect(Math.max(...years) - Math.min(...years)).toBeGreaterThan(80);
+  });
+
+  it('patient logins see their own record; the pending one is blocked', async () => {
+    await runSeed();
+    const login = (email: string) =>
+      api().post('/api/v1/auth/login').send({ email, password: DEMO_PASSWORD });
+    const priya = await login('patient1@medassist.dev');
+    const me = await api()
+      .get('/api/v1/patients/me')
+      .set({ Authorization: `Bearer ${priya.body.data.accessToken}` });
+    expect(me.body.data).toMatchObject({ fullName: 'Priya Sharma' });
+    const pending = await login(PENDING_SIGNUP_EMAIL);
+    const blocked = await api()
+      .get('/api/v1/patients/me')
+      .set({ Authorization: `Bearer ${pending.body.data.accessToken}` });
+    expect(blocked.status).toBe(403);
+  });
+
   it('every demo login works with the demo password, without a forced change', async () => {
     await runSeed();
     const logins = demoLogins();
-    expect(logins).toHaveLength(DEMO_ACCOUNTS.length + 8);
+    expect(logins).toHaveLength(DEMO_ACCOUNTS.length + 8 + 9);
     for (const { email } of logins) {
       const res = await api().post('/api/v1/auth/login').send({ email, password: DEMO_PASSWORD });
       expect(res.status, email).toBe(200);
@@ -100,8 +153,8 @@ describe('seed', () => {
   it('is idempotent: a second run creates and changes nothing', async () => {
     await runSeed();
     const countsBefore = await Promise.all(
-      [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest].map((m) =>
-        (m as typeof User).countDocuments(),
+      [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest, Patient].map(
+        (m) => (m as typeof User).countDocuments(),
       ),
     );
     const auditBefore = await AuditLog.countDocuments({ 'request.method': 'SEED' });
@@ -114,10 +167,11 @@ describe('seed', () => {
       services: { created: 0, updated: 0, unchanged: 12 },
       doctors: { created: 0, updated: 0, unchanged: 8, schedules: 0, leaves: 0 },
       labTests: { created: 0, updated: 0, unchanged: 15 },
+      patients: { created: 0, updated: 0, unchanged: 60, portalUsers: 8, pending: 1 },
     });
     const countsAfter = await Promise.all(
-      [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest].map((m) =>
-        (m as typeof User).countDocuments(),
+      [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest, Patient].map(
+        (m) => (m as typeof User).countDocuments(),
       ),
     );
     expect(countsAfter).toEqual(countsBefore);
@@ -158,10 +212,22 @@ describe('seed', () => {
     expect(lab?.lockUntil).toBeUndefined();
   });
 
+  it('puts the pending sign-up back to pending after a demo confirm', async () => {
+    await runSeed();
+    const pending = await User.findOne({ email: PENDING_SIGNUP_EMAIL }).lean();
+    await User.updateOne({ _id: pending!._id }, { $set: { patientLinkStatus: 'linked' } });
+    await Patient.updateOne({ _id: pending!.patient }, { $set: { user: pending!._id } });
+    await runSeed();
+    expect(await User.findById(pending!._id).lean()).toMatchObject({
+      patientLinkStatus: 'pending_verification',
+    });
+    expect((await Patient.findById(pending!.patient).lean())?.user).toBeUndefined();
+  });
+
   it('audits through the services, marked as the seed', async () => {
     await runSeed();
     const users = await AuditLog.find({ 'metadata.source': 'seed' }).lean();
-    expect(users).toHaveLength(DEMO_ACCOUNTS.length);
+    expect(users).toHaveLength(DEMO_ACCOUNTS.length + patientLogins().length);
     expect(users.every((e) => e.actor?.user === null && e.action === 'user.create')).toBe(true);
 
     const viaServices = await AuditLog.find({ 'request.method': 'SEED' }).lean();
@@ -174,6 +240,7 @@ describe('seed', () => {
       'doctor.schedule_update',
       'doctor.leave_create',
       'lab_test.create',
+      'patient.create',
     ]) {
       expect(actions.has(action as never), action).toBe(true);
     }

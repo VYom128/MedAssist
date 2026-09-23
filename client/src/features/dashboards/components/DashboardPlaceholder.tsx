@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useAppSelector } from '../../../app/hooks';
 import Badge from '../../../components/ui/Badge';
 import Card from '../../../components/ui/Card';
@@ -5,7 +6,14 @@ import { ROLE_LABELS } from '../../../constants/roles';
 import { selectCurrentUser } from '../../auth/authSlice';
 
 /** Placeholder until the real dashboards (spec §14) arrive in Phase 10. */
-export default function DashboardPlaceholder({ upcoming }: { upcoming: string[] }) {
+export default function DashboardPlaceholder({
+  upcoming,
+  children,
+}: {
+  upcoming: string[];
+  /** Real cards shown above the placeholder. */
+  children?: ReactNode;
+}) {
   const user = useAppSelector(selectCurrentUser);
   if (!user) return null;
   return (
@@ -15,6 +23,7 @@ export default function DashboardPlaceholder({ upcoming }: { upcoming: string[] 
         <Badge tone="info">{ROLE_LABELS[user.role]}</Badge>
       </div>
       <p className="text-sm text-slate-500">{ROLE_LABELS[user.role]} dashboard</p>
+      {children}
       <Card title="Coming in later phases">
         <ul className="list-inside list-disc space-y-1 text-sm text-slate-600">
           {upcoming.map((item) => (

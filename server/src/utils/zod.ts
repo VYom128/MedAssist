@@ -1,7 +1,14 @@
 import { isValidObjectId } from 'mongoose';
 import { z } from 'zod';
-import { isValidDateOnly, isValidTimeHHmm, isValidTimezone } from './dates.js';
+import {
+  calendarDate,
+  isValidDateOfBirth,
+  isValidDateOnly,
+  isValidTimeHHmm,
+  isValidTimezone,
+} from './dates.js';
 import { parseSort, type SortSpec } from './pagination.js';
+import { tryNormalisePhone } from './phone.js';
 
 /** A 24-character hex MongoDB ObjectId (spec §7.1: invalid ids → 400). */
 export const objectId = z
@@ -12,12 +19,44 @@ export const objectId = z
 /** `{ id }` path params. */
 export const idParams = z.object({ id: objectId });
 
-/** E.164-ish phone number: optional +, 10–15 digits (spaces and dashes stripped). */
+/**
+ * Phone number in any common format ('+91 98765 43210', '098765 43210', '9876543210'),
+ * normalised to E.164 ('+919876543210'). No country code = India (spec §20).
+ */
 export const phone = z
   .string()
   .trim()
-  .transform((v) => v.replace(/[\s-]/g, ''))
-  .pipe(z.string().regex(/^\+?\d{10,15}$/, 'Enter a valid phone number'));
+  .max(30, 'Enter a valid phone number')
+  .transform((v, ctx) => {
+    const e164 = tryNormalisePhone(v);
+    if (!e164) {
+      ctx.addIssue({ code: 'custom', message: 'Enter a valid phone number' });
+      return z.NEVER;
+    }
+    return e164;
+  });
+
+/**
+ * Date of birth 'YYYY-MM-DD' → a `Date` at UTC midnight (a calendar date, see `calendarDate`).
+ * A real date, not in the future, at most 120 years ago.
+ */
+export const dateOfBirth = z
+  .string()
+  .trim()
+  .transform((v, ctx) => {
+    if (!isValidDateOnly(v)) {
+      ctx.addIssue({ code: 'custom', message: 'Use a real date as YYYY-MM-DD' });
+      return z.NEVER;
+    }
+    if (!isValidDateOfBirth(v)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Date of birth must be in the past and at most 120 years ago',
+      });
+      return z.NEVER;
+    }
+    return calendarDate(v);
+  });
 
 /** Person name part: trimmed, 1–50 chars. */
 export const namePart = z.string().trim().min(1, 'Required').max(50, 'At most 50 characters');

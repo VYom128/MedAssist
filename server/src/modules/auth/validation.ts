@@ -4,23 +4,11 @@ import {
   checkPasswordStrength,
   passwordSchema,
 } from '../../utils/password.js';
-import { email, idParams, namePart, phone } from '../../utils/zod.js';
-
-const MAX_AGE_YEARS = 120;
-
-/** YYYY-MM-DD date of birth: a real date, not in the future, at most 120 years ago. */
-const dateOfBirth = z.iso
-  .date('Use the format YYYY-MM-DD')
-  .transform((v) => new Date(`${v}T00:00:00.000Z`))
-  .refine((d) => d.getTime() <= Date.now(), 'Date of birth cannot be in the future')
-  .refine(
-    (d) => d.getUTCFullYear() >= new Date().getUTCFullYear() - MAX_AGE_YEARS,
-    'Enter a valid date of birth',
-  );
+import { dateOfBirth, email, idParams, namePart, phone } from '../../utils/zod.js';
 
 /**
- * POST /auth/register – patient self-signup. DOB is stored on the user until the Patient record
- * and phone+DOB matching arrive in Phase 3 (§4.4).
+ * POST /auth/register – patient self-signup (§4.4). Phone + DOB are matched against existing
+ * patient records; consent to data processing is required (§10.6).
  */
 export const registerSchema = {
   body: z
@@ -32,6 +20,16 @@ export const registerSchema = {
       dateOfBirth,
       password: passwordSchema,
       acceptTerms: z.literal(true, 'You must accept the terms to create an account'),
+      consent: z.strictObject(
+        {
+          dataProcessing: z.literal(true, 'Consent to data processing is required'),
+          aiExplanations: z.boolean().optional(),
+          communications: z
+            .strictObject({ email: z.boolean().optional(), sms: z.boolean().optional() })
+            .optional(),
+        },
+        'Consent to data processing is required',
+      ),
     })
     .superRefine((b, ctx) => {
       const problems = checkPasswordStrength(b.password, b);

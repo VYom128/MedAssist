@@ -66,3 +66,29 @@ export type RangeGender = (typeof RANGE_GENDERS)[number];
 export const capitalise = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export const optionsOf = <T extends string>(values: readonly T[], labels?: Record<T, string>) =>
   values.map((v) => ({ value: v, label: labels?.[v] ?? capitalise(v) }));
+
+/** Patient record enums (server/src/config/constants.ts, spec §6.11). */
+export const GENDERS = ['male', 'female', 'other', 'unknown'] as const;
+export type Gender = (typeof GENDERS)[number];
+export const GENDER_LABELS: Record<Gender, string> = {
+  male: 'Male',
+  female: 'Female',
+  other: 'Other',
+  unknown: 'Not recorded',
+};
+/** "M", "F", "O", "–" for compact "34 y · F" labels. */
+export const GENDER_SHORT: Record<Gender, string> = {
+  male: 'M',
+  female: 'F',
+  other: 'O',
+  unknown: '–',
+};
+export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'unknown'] as const;
+export type BloodGroup = (typeof BLOOD_GROUPS)[number];
+export const BLOOD_GROUP_LABELS = Object.fromEntries(
+  BLOOD_GROUPS.map((g) => [g, g === 'unknown' ? 'Not known' : g]),
+) as Record<BloodGroup, string>;
+export const ALLERGY_SEVERITIES = ['mild', 'moderate', 'severe'] as const;
+export type AllergySeverity = (typeof ALLERGY_SEVERITIES)[number];
+export const PATIENT_LANGUAGES = EXPLANATION_LANGUAGES;
+export type PatientLanguage = ExplanationLanguage;

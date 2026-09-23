@@ -38,6 +38,17 @@ export interface Ctx {
   /** An active and an inactive lab test. */
   labTestId: string;
   inactiveLabTestId: string;
+  /** A patient the caller may open: their own record when the caller is a patient. */
+  patientId: string;
+  /** Another patient (not the caller's own). */
+  otherPatientId: string;
+  /** An inactive patient (for activate). */
+  inactivePatientId: string;
+  /** A patient with an email and no portal account (for portal-invite). */
+  invitablePatientId: string;
+  /** A self-registered user waiting for verification against `pendingPatientId`. */
+  pendingUserId: string;
+  pendingPatientId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -48,6 +59,11 @@ export interface Row {
   body?: (c: Ctx) => object;
   roles: readonly Role[];
   status: number;
+  /**
+   * Allowed roles that get another status: roles that pass `authorize` but are stopped by the
+   * patient-access policy (404, spec §10.2).
+   */
+  statusFor?: Partial<Record<Role, number>>;
 }
 
 export const ALL = ROLE_VALUES;
@@ -55,6 +71,10 @@ export const ADMIN: readonly Role[] = ['admin'];
 const ADMIN_DOCTOR: readonly Role[] = ['admin', 'doctor'];
 const ADMIN_DOCTOR_RECEPTION: readonly Role[] = ['admin', 'doctor', 'receptionist'];
 const ADMIN_RECEPTION: readonly Role[] = ['admin', 'receptionist'];
+const DOCTOR: readonly Role[] = ['doctor'];
+const PATIENT: readonly Role[] = ['patient'];
+const RECEPTION: readonly Role[] = ['receptionist'];
+const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'patient'];
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
 const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
@@ -298,6 +318,103 @@ export const ENDPOINTS: Row[] = [
   },
 ];
 
+ENDPOINTS.push(
+  // Patients (spec §7.7). Doctors pass the role check but see no patients until care
+  // relationships exist (Phase 5); patients may open only their own record (others → 404).
+  { method: 'get', path: () => '/patients', roles: ADMIN_DOCTOR_RECEPTION, status: 200 },
+  {
+    method: 'get',
+    path: () => '/patients/check-duplicate?phone=9876543210&dateOfBirth=1985-06-15',
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: () => '/patients',
+    body: (c) => ({
+      firstName: 'Matrix',
+      lastName: `Row${letters(c.n)}`,
+      dateOfBirth: '1990-01-01',
+      gender: 'male',
+      phone: `+9197${String(c.n).padStart(8, '0')}`,
+      consent: { dataProcessing: true },
+    }),
+    roles: ADMIN_RECEPTION,
+    status: 201,
+  },
+  { method: 'get', path: () => '/patients/me', roles: PATIENT, status: 200 },
+  {
+    method: 'patch',
+    path: () => '/patients/me',
+    body: () => ({ preferredLanguage: 'hi' }),
+    roles: PATIENT,
+    status: 200,
+  },
+  { method: 'get', path: () => '/patients/pending-links', roles: ADMIN_RECEPTION, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/patients/${c.invitablePatientId}/portal-invite`,
+    roles: ADMIN_RECEPTION,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/patients/${c.pendingPatientId}/confirm-link`,
+    body: (c) => ({ userId: c.pendingUserId }),
+    roles: RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/patients/${c.pendingPatientId}/reject-link`,
+    body: (c) => ({ userId: c.pendingUserId, reason: 'Different person (twin)' }),
+    roles: RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/patients/${c.patientId}`,
+    roles: PATIENT_READERS,
+    status: 200,
+    statusFor: { doctor: 404 },
+  },
+  {
+    method: 'get',
+    path: (c) => `/patients/${c.otherPatientId}`,
+    roles: PATIENT_READERS,
+    status: 200,
+    statusFor: { doctor: 404, patient: 404 },
+  },
+  {
+    method: 'patch',
+    path: (c) => `/patients/${c.patientId}`,
+    body: (c) => ({ adminNotes: `Matrix note ${c.n}` }),
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/patients/${c.patientId}/clinical-profile`,
+    body: () => ({ chronicConditions: [{ name: 'Asthma' }] }),
+    roles: DOCTOR,
+    status: 404, // no care relationship until Phase 5
+  },
+  {
+    method: 'post',
+    path: (c) => `/patients/${c.patientId}/deactivate`,
+    body: () => ({ reason: 'Moved away' }),
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/patients/${c.inactivePatientId}/activate`,
+    body: () => ({ reason: 'Returned' }),
+    roles: ADMIN,
+    status: 200,
+  },
+);
+
 /**
  * Public reads (no token needed). rbac.test.ts checks every role and an anonymous caller get
  * `status`; routeInventory.test.ts checks each is in its PUBLIC list.
@@ -326,8 +443,15 @@ export const PATTERN_CTX = {
   leaveId: ':leaveId',
   labTestId: ':id',
   inactiveLabTestId: ':id',
+  patientId: ':id',
+  otherPatientId: ':id',
+  inactivePatientId: ':id',
+  invitablePatientId: ':id',
+  pendingUserId: ':userId',
+  pendingPatientId: ':id',
   n: 0,
 } as unknown as Ctx;
 
-/** "GET /users/:id" for a row. */
-export const routeKey = (row: Row) => `${row.method.toUpperCase()} ${row.path(PATTERN_CTX)}`;
+/** "GET /users/:id" for a row (query string dropped). */
+export const routeKey = (row: Row) =>
+  `${row.method.toUpperCase()} ${row.path(PATTERN_CTX).split('?')[0]}`;

@@ -1,5 +1,4 @@
 import express from 'express';
-import request from 'supertest';
 import { AUTH_LIMITS, REFRESH_COOKIE } from '../src/config/constants.js';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { createLoginLimiter } from '../src/middlewares/rateLimiters.js';
@@ -8,7 +7,7 @@ import { Session } from '../src/modules/sessions/model.js';
 import { User } from '../src/modules/users/model.js';
 import { verifyAccessToken } from '../src/utils/tokens.js';
 import { auditEntries, createUser, resetDb, TEST_PASSWORD } from './helpers/auth.js';
-import { api, expectErrorShape } from './helpers/testApp.js';
+import { api, expectErrorShape, serve } from './helpers/testApp.js';
 
 const login = (email: string, password = TEST_PASSWORD) =>
   api().post('/api/v1/auth/login').send({ email, password });
@@ -169,13 +168,15 @@ describe('login rate limiter', () => {
     app.use(errorHandler);
 
     for (let i = 0; i < 10; i++) {
-      expect((await request(app).post('/login').send({ email: 'a@x.dev' })).status).toBe(200);
+      expect((await (await serve(app))().post('/login').send({ email: 'a@x.dev' })).status).toBe(
+        200,
+      );
     }
-    const blocked = await request(app).post('/login').send({ email: 'A@x.dev' });
+    const blocked = await (await serve(app))().post('/login').send({ email: 'A@x.dev' });
     expect(blocked.status).toBe(429);
     expectErrorShape(blocked.body, 'RATE_LIMITED');
 
     // A different email from the same IP has its own budget.
-    expect((await request(app).post('/login').send({ email: 'b@x.dev' })).status).toBe(200);
+    expect((await (await serve(app))().post('/login').send({ email: 'b@x.dev' })).status).toBe(200);
   });
 });

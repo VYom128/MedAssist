@@ -1,9 +1,8 @@
 import express from 'express';
-import request from 'supertest';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { apiLimiter, createRateLimiter } from '../src/middlewares/rateLimiters.js';
 import { requestId } from '../src/middlewares/requestId.js';
-import { api, expectErrorShape } from './helpers/testApp.js';
+import { api, expectErrorShape, serve } from './helpers/testApp.js';
 
 describe('security middleware', () => {
   it('sets helmet headers and hides x-powered-by', async () => {
@@ -41,9 +40,9 @@ describe('security middleware', () => {
     app.use(errorHandler);
 
     for (let i = 0; i < 3; i++) {
-      expect((await request(app).get('/ping')).status).toBe(200);
+      expect((await (await serve(app))().get('/ping')).status).toBe(200);
     }
-    const res = await request(app).get('/ping');
+    const res = await (await serve(app))().get('/ping');
     expect(res.status).toBe(429);
     expectErrorShape(res.body, 'RATE_LIMITED');
   });
@@ -52,7 +51,7 @@ describe('security middleware', () => {
     const app = express();
     app.use(apiLimiter);
     app.get('/ping', (_req, res) => res.json({ ok: true }));
-    const res = await request(app).get('/ping');
+    const res = await (await serve(app))().get('/ping');
     expect(res.headers['ratelimit-policy']).toBeUndefined();
   });
 });

@@ -1,7 +1,12 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { config } from '../config/env.js';
 import { logger, serializeError } from '../utils/logger.js';
-import { passwordResetEmail, staffWelcomeEmail } from './email.templates.js';
+import {
+  passwordResetEmail,
+  patientPortalInviteEmail,
+  patientRecordsLinkedEmail,
+  staffWelcomeEmail,
+} from './email.templates.js';
 
 export interface EmailMessage {
   to: string;
@@ -62,6 +67,19 @@ export const emailService = {
   /** Welcome + "set your password" link for a new staff account (valid 72 h). */
   sendAccountSetup(to: string, firstName: string, token: string) {
     return emailService.send({ to, ...staffWelcomeEmail(firstName, resetLink(token)) });
+  },
+
+  /** Patient portal invitation + "set your password" link (valid 72 h). */
+  sendPatientPortalInvite(to: string, firstName: string, token: string) {
+    return emailService.send({ to, ...patientPortalInviteEmail(firstName, resetLink(token)) });
+  },
+
+  /** A self-registered patient's link was confirmed by reception. */
+  sendPatientRecordsLinked(to: string, firstName: string) {
+    return emailService.send({
+      to,
+      ...patientRecordsLinkedEmail(firstName, `${config.clientUrl}/login`),
+    });
   },
 };
 
