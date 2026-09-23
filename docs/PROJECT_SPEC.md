@@ -119,7 +119,9 @@ Legend: **C** create · **R** read · **U** update · **D** deactivate/cancel ·
 | Departments / services | C R U D | R | R | R | R |
 | Doctor profiles & schedules | C R U D | R, U own schedule & leave | R | R | R (public fields) |
 | Lab test catalogue | C R U D | R | R | R | R (name, price) |
-| Patients – demographics | R | R rel | C R U | R (minimal) | R U own |
+| Patients – demographics | R | R rel | C R U | R (minimal, via lab orders – Phase 6) | R U own (contact details) |
+| Patients – allergies | — | R U rel | C R U | R (via lab orders – Phase 6) | R own |
+| Patients – chronic conditions | — | R U rel | — | — | R own |
 | Appointments | R | R own, U status own | C R U D | — | C R D own (policy) |
 | Queue | R | R U own | R U | — | R own position |
 | Encounters / clinical notes | — | C R U own; R rel | — | — | R own **signed** (summary view) |
@@ -140,11 +142,14 @@ Legend: **C** create · **R** read · **U** update · **D** deactivate/cancel ·
 |---|---|---|---|---|---|
 | Name, MRN, age, sex | ✔ | ✔ | ✔ | ✔ | ✔ |
 | Phone, email, address | ✔ | ✔ | ✔ | ✘ | ✔ |
-| Allergies, chronic conditions | ✘ | ✔ | ✘ | ✔ (allergies only) | ✔ |
+| Allergies | ✘ | ✔ | ✔ (safety information – D60) | ✔ | ✔ |
+| Chronic conditions | ✘ | ✔ | ✘ | ✘ | ✔ |
 | Insurance | ✔ | ✘ | ✔ | ✘ | ✔ |
 | Internal admin notes | ✔ | ✘ | ✔ | ✘ | ✘ |
 
 Implement with per-role **serializers** (`toAdminView`, `toDoctorView`, …) in each module, never by returning raw Mongoose documents.
+
+Phase 3 (D60–D62): receptionists see and record allergies but not chronic conditions; admins have read-only access to demographics (no allergies or conditions); lab technicians get patient data only through lab orders (Phase 6); patients see everything about themselves except internal admin notes. Access scopes in `canAccessPatient`: `demographics | clinical | billing | lab | allergies`.
 
 ---
 
@@ -555,7 +560,7 @@ erDiagram
   passwordChangedAt: Date          // tokens issued before this are rejected
   passwordReset: { tokenHash: String, expiresAt: Date }   // select: false
   patient: ObjectId ref Patient     // only for role=patient
-  patientLinkStatus: enum ['linked','pending_verification']  // §4.4
+  patientLinkStatus: enum ['linked','pending_verification']  // §4.4; only 'linked' grants access (D63)
   dateOfBirth: Date                 // self-registered patients; used for the Phase 3 match (§20 D29)
   termsAcceptedAt: Date             // consent at registration (§10.6)
   avatarUrl: String
@@ -683,15 +688,16 @@ validation: sessions within a day must not overlap; start < end
 {
   mrn: String, required, unique              // 'MRN-000123' from Counter
   firstName, lastName: String, required
+  nameKey: String, required                  // 'priya sharma' – name + DOB duplicate check (D67)
   dateOfBirth: Date, required
   gender: enum ['male','female','other','unknown'], required
   bloodGroup: enum ['A+','A-','B+','B-','AB+','AB-','O+','O-','unknown']
-  phone: String, required, indexed
+  phone: String, required, indexed          // E.164 ('+919876543210', D66)
   email: String, lowercase
   address: { line1, line2, city, state, postalCode, country }
   emergencyContact: { name, relation, phone }
   allergies: [{ substance: String, reaction: String, severity: enum ['mild','moderate','severe'], recordedBy: ref User, recordedAt: Date }]
-  chronicConditions: [{ name: String, since: Date, notes: String }]
+  chronicConditions: [{ name: String, since: Date, notes: String, recordedBy: ref User, recordedAt: Date }]
   insurance: { provider, policyNumber, validTill: Date }
   preferredLanguage: enum ['en','hi'], default 'en'
   consent: {
@@ -699,7 +705,7 @@ validation: sessions within a day must not overlap; start < end
     aiExplanations: { given: Boolean, at: Date }     // patient may opt out of AI features
     communications: { email: Boolean, sms: Boolean }
   }
-  user: ObjectId ref User                    // portal account, if any
+  user: ObjectId ref User                    // portal account once linked (unique); a pending user points here via users.patient
   adminNotes: String                          // front-desk notes, not clinical
   isActive: Boolean, default true
   mergedInto: ObjectId ref Patient            // stretch: duplicate merge
@@ -707,7 +713,10 @@ validation: sessions within a day must not overlap; start < end
 }
 indexes:
   { mrn: 1 } unique
-  { phone: 1, dateOfBirth: 1 }               // duplicate detection
+  { phone: 1, dateOfBirth: 1 }               // duplicate detection, self-signup match
+  { nameKey: 1, dateOfBirth: 1 }             // duplicate detection
+  { lastName: 1, firstName: 1 }              // anchored name-prefix search
+  { user: 1 } unique partial
   text index on firstName, lastName, mrn, phone, email
 virtuals: fullName, age
 ```
@@ -1153,18 +1162,21 @@ GET /api/v1/doctors/66f…/slots?date=2026-10-05&serviceId=66a…
 ### 7.7 Patients — `/patients`
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/patients` | A, R, D (rel only), L (minimal, via lab orders) | `q` (name/MRN/phone), `gender`, `ageMin/ageMax`, `registeredFrom/To`, `hasPortal`. |
-| POST | `/patients` | R, A | Runs duplicate check; `?force=true` + `reason` to override. |
-| GET | `/patients/check-duplicate` | R, A | `?phone&dateOfBirth&firstName&lastName`. |
-| GET | `/patients/me` | P | Own record. |
-| PATCH | `/patients/me` | P | Contact details, emergency contact, preferred language, consents. Not name/DOB (reception does that). |
-| GET | `/patients/:id` | R, A, D (rel), L (minimal) | Serialized per role (§2.5). Audited (`patient.view`). |
-| PATCH | `/patients/:id` | R, A | Demographics. |
-| PATCH | `/patients/:id/clinical-profile` | D (rel) | Allergies, chronic conditions. |
-| POST | `/patients/:id/portal-invite` | R, A | Create/link patient user + email set-password link. |
-| POST | `/patients/:id/confirm-link` | R | Confirm pending self-signup link after ID check. |
-| GET | `/patients/:id/timeline` | D (rel), P (own via `/patients/me/timeline`), R (non-clinical items only) | §8.8. `?types=appointment,encounter,prescription,lab,invoice,document&from&to&page`. |
-| POST | `/patients/:id/deactivate` | A | |
+| GET | `/patients` | A, R, D (rel only – empty until Phase 5); L via lab orders (Phase 6) | `q` (MRN, phone in any format, or name prefixes – §12.1), `gender`, `ageMin/ageMax`, `registeredFrom/To` (clinic dates), `hasPortal`, `isActive` (admin only; default active), `sort` (`lastName`, `createdAt`, `mrn`). Returns list items. |
+| POST | `/patients` | R, A | Runs duplicate check → 409 `DUPLICATE_PATIENT` with `details.matches`; body `force: true` + `reason` (≥ 10 chars) overrides (audited). Requires `consent.dataProcessing: true`. Allergies from receptionists only (admin → 403). |
+| GET | `/patients/check-duplicate` | R, A | `?dateOfBirth` + `phone` and/or `firstName` + `lastName` → `{ matches: [{ id, mrn, fullName, dateOfBirth, phone, isActive, matchedOn: ['phone_dob' \| 'name_dob'] }] }`. |
+| GET | `/patients/me` | P | Own record. 403 `PATIENT_LINK_PENDING` while the self-signup link is pending; 404 if no record. Audited (`patient.view`, debounced). |
+| PATCH | `/patients/me` | P (linked) | Phone, email, address, emergency contact, preferred language, `consent.aiExplanations`, `consent.communications`. Not name/DOB/gender (reception does that). |
+| GET | `/patients/pending-links` | R, A | Self-signups waiting for the ID check, each with the signup details and the matched record (D64). |
+| GET | `/patients/:id` | R, A, D (rel), P (own only; others → 404) | Serialized per role (§2.5); staff views include `portal { hasAccount, email, linkStatus, lastLoginAt }`. Audited (`patient.view`, debounced 5 min per user + patient). |
+| PATCH | `/patients/:id` | R, A | Demographics, contact, emergency contact, insurance, language, admin notes; allergies (receptionist). Changing phone or DOB re-runs the duplicate check (409 unless `force` + `reason`). |
+| PATCH | `/patients/:id/clinical-profile` | D (rel) | Allergies, chronic conditions; `recordedBy/At` set by the server. Every doctor gets 404 until care relationships exist (Phase 5). |
+| POST | `/patients/:id/portal-invite` | R, A | Patient needs an email and no portal account; creates a linked patient user and emails a 72 h set-password link. |
+| POST | `/patients/:id/confirm-link` | R | `{ userId }` – confirm a pending self-signup after checking photo ID; emails "records available". |
+| POST | `/patients/:id/reject-link` | R | `{ userId, reason }` – not this person: a new patient record (new MRN) is created from the signup and linked (D64). |
+| GET | `/patients/:id/timeline` | D (rel), P (own via `/patients/me/timeline`), R (non-clinical items only) | Phase 8. §8.8. `?types=appointment,encounter,prescription,lab,invoice,document&from&to&page`. |
+| POST | `/patients/:id/deactivate` | A | `{ reason }` (≥ 5 chars). Hidden from default lists. |
+| POST | `/patients/:id/activate` | A | `{ reason }`. |
 
 ### 7.8 Appointments — `/appointments`
 | Method | Path | Roles | Description |
@@ -1488,7 +1500,7 @@ Inside a MongoDB transaction:
 - No PHI in logs, URLs (use ids, not names), error messages, notifications' email bodies (emails say "You have a new lab report – log in to view").
 
 ### 10.4 Audit log — action catalogue
-`auth.login` · `auth.login_failed` · `auth.logout` · `auth.refresh_reuse` · `auth.password_changed` · `auth.password_reset` · `user.create` · `user.update` · `user.deactivate` · `user.activate` · `settings.update` · `department.*` · `service.*` · `doctor.schedule_update` · `doctor.leave_create` · `patient.create` · `patient.create_duplicate_override` · `patient.view` · `patient.update` · `patient.clinical_profile_update` · `patient.portal_invite` · `appointment.create|reschedule|cancel|check_in|start|complete|no_show` · `encounter.view|update|sign|amend` · `summary.generate|approve|reject` · `prescription.issue|cancel|view` · `explanation.generate|blocked` · `lab_order.create|collect|reject_sample|results_enter|verify|release|revise|cancel|view` · `invoice.create|issue|void` · `payment.create|refund` · `document.upload|download|delete` · `followup.create|respond|schedule|close` · `audit.export` · `access.denied` · `access.break_glass`.
+`auth.login` · `auth.login_failed` · `auth.logout` · `auth.refresh_reuse` · `auth.password_changed` · `auth.password_reset` · `user.create` · `user.update` · `user.deactivate` · `user.activate` · `settings.update` · `department.*` · `service.*` · `doctor.schedule_update` · `doctor.leave_create` · `patient.create` · `patient.create_duplicate_override` · `patient.view` · `patient.update` · `patient.clinical_profile_update` · `patient.portal_invite` · `patient.update_duplicate_override` · `patient.link_confirm` · `patient.link_reject` · `patient.deactivate` · `patient.activate` (Phase 3, D71) · `appointment.create|reschedule|cancel|check_in|start|complete|no_show` · `encounter.view|update|sign|amend` · `summary.generate|approve|reject` · `prescription.issue|cancel|view` · `explanation.generate|blocked` · `lab_order.create|collect|reject_sample|results_enter|verify|release|revise|cancel|view` · `invoice.create|issue|void` · `payment.create|refund` · `document.upload|download|delete` · `followup.create|respond|schedule|close` · `audit.export` · `access.denied` · `access.break_glass`.
 
 Rules: record **who, what, which record, which patient, when, from where, outcome**, plus changed field names and redacted before/after for updates. Reads of clinical data are logged (debounced: the same user viewing the same record within 5 min = one entry).
 
@@ -1534,6 +1546,7 @@ Rules: record **who, what, which record, which patient, when, from where, outcom
 - Global search bar (`/search?q=`): patients (name, MRN, phone), appointments (number), invoices (number), lab orders (number / sample id) — only types the role can see; max 5 each.
 - List pages: filter chips + date range + status multi-select + sort + pagination; filters mirror the query string so URLs are shareable.
 - Patient search uses: exact match on MRN/phone first, then prefix regex on names (case-insensitive, anchored), then text index.
+  Phase 3 (D70): `buildPatientSearchQuery()` – MRN → exact; phone-like (any format) → exact E.164; otherwise every word is an escaped `^word` prefix of first or last name. The `$text` fallback is not used yet.
 
 ### 12.2 Documents
 - Upload UI with drag-and-drop, progress bar, category select; preview for PDF/images in a modal.
@@ -1676,16 +1689,19 @@ Reports (§7.18) render as table + chart, filterable by date range, exportable t
 | `NOT_FOUND` | 404 | Missing or not visible to the caller |
 | `CONFLICT` | 409 | Duplicate / stale version |
 | `DUPLICATE_PATIENT` | 409 | Possible duplicate (`details.matches`) |
+| `PATIENT_LINK_PENDING` | 403 | Self-registered patient whose record link waits for reception's identity check (Phase 3) |
 | `SLOT_UNAVAILABLE` | 409 | Slot taken or outside availability |
 | `PATIENT_DOUBLE_BOOKED` | 409 | Patient already booked at that time / same doctor same day |
 | `DOCTOR_UNAVAILABLE` | 409 | Leave / not accepting / inactive |
 | `INVALID_STATUS_TRANSITION` | 409 | State machine violation |
 | `RECORD_LOCKED` | 409 | Signed / issued / released record edit |
+| `BUSINESS_RULE_VIOLATION` | 422 | Valid input that breaks a business rule without a more specific code (Phase 0; e.g. the generic self-signup rejection) |
 | `CANCELLATION_WINDOW_PASSED` | 422 | Patient too late to cancel/reschedule |
 | `BOOKING_LIMIT_REACHED` | 422 | Too many active bookings |
 | `SELF_VERIFICATION_NOT_ALLOWED` | 422 | Same lab tech entering and verifying |
 | `PAYMENT_EXCEEDS_BALANCE` | 422 | Overpayment |
 | `DISCOUNT_REQUIRES_ADMIN` | 422 | Discount over allowed limit |
+| `PAYLOAD_TOO_LARGE` | 413 | JSON body over the size limit (Phase 0) |
 | `FILE_TOO_LARGE` | 413 | Upload over limit |
 | `UNSUPPORTED_FILE_TYPE` | 415 | Not PDF/JPG/PNG |
 | `RATE_LIMITED` | 429 | Too many requests |
@@ -1754,6 +1770,8 @@ Record decisions here as they are made (date, decision, reason).
 | 6 | File storage in production | Cloudinary (free tier) |
 
 ### Decisions made
+Phase 3 key decisions: receptionists see and record allergies, not chronic conditions (D60); doctors see no patients until Phase 5 and lab technicians none until Phase 6 (D61); self-signup links by phone + DOB, pending links grant no access until reception confirms (D63, D64); phones are E.164 everywhere (D66); anchored prefix search (D70); patient audit entries redact identifying values (D71); test servers bind to 127.0.0.1 (D78).
+
 Phase 2 key decisions: doctors are identified by their User id and created only through `POST /doctors` (D41, D42); money is integer paise in the API (D46); weekly schedules are versioned (D47); `affectedAppointments` waits for Phase 4 (D43); the audit writer reads the chain head from the database on every write (D55).
 
 Phase 1 key decisions: patient self-registration creates a User only, with no Patient record until Phase 3 (D1, D29); `bcryptjs` (D2); opaque refresh token stored hashed, so no `JWT_REFRESH_SECRET` (D3); `'rotated'` revoke reason (D4); 10 s refresh grace window (D5); console email transport in dev/test (D8); audit failures never break requests (D13).
@@ -1819,3 +1837,22 @@ Phase 1 key decisions: patient self-registration creates a User only, with no Pa
 | D57 | 2026-09-23 | Dates: `date-fns` + `date-fns-tz` on server and client. The client loads `GET /settings/public` once at app start; its timezone drives every displayed date (`05 Oct 2026, 9:00 AM`), replacing the constant in D38. | §3.7, §13.3. |
 | D58 | 2026-09-23 | Counter service: `nextSequence(key, { session })` (atomic `$inc` + upsert; inside a transaction an aborted write uses no number) and `formatNumber(prefix, seq, { year })` per §8.10. First used for MRNs in Phase 3. | §6.27. |
 | D59 | 2026-09-23 | `authorize` stays the first check on every write; doctor "own" checks happen in the service through the policy. Client admin pages keep filters in the URL (`useListParams`) and guard unsaved forms (`useUnsavedChanges`). | Consistency across modules. |
+| D60 | 2026-09-24 | Receptionists may view and record **allergies** (safety information at the front desk) but not chronic conditions; admins see neither. New access scope `allergies` in `canAccessPatient` (receptionist: demographics, billing, allergies; admin: demographics, billing). Admins sending `allergies` get 403. Updates §2.4/§2.5. | Allergy safety at check-in; minimum necessary for admins. |
+| D61 | 2026-09-24 | Lab technicians get no patient endpoints until Phase 6 (patients only through lab orders). Doctors pass `authorize` on `GET /patients`, `GET /patients/:id` and `PATCH /patients/:id/clinical-profile`, but `canAccessPatient` returns false until the care relationship (Phase 5): empty list, 404. `patientListFilter(user)` in the policy scopes lists. | Care relationship is Phase 5. |
+| D62 | 2026-09-24 | Patients may call `GET /patients/:id` for their own record; any other id → 404 (never 403), audited as `access.denied`. Admin patient pages are read-only apart from deactivate/reactivate (§2.4: admin R). | §10.2; §2.4. |
+| D63 | 2026-09-24 | `authenticate` sets `req.user.patientId` only when `patientLinkStatus === 'linked'`; `/auth/me` returns `patientLinkStatus`. `/patients/me` → 403 `PATIENT_LINK_PENDING` (new code) while pending. | A pending user points at a record they must not see. |
+| D64 | 2026-09-24 | Self-signup (one transaction): no Patient with the same phone + DOB → new record, linked; a match without an account (linked or pending) → user `pending_verification`; every match has an account → 422 "We couldn't create your account. Please contact the clinic." (audited `auth.register` failure). Twins: the first match without an account is used. Reception confirms (`POST /:id/confirm-link`, email "records available") or rejects (`POST /:id/reject-link` + reason → new record, new MRN, linked, also emailed). `GET /patients/pending-links` lists them. Supersedes D1/D29. | §4.4 without revealing who is a patient. |
+| D65 | 2026-09-24 | Registration requires `consent: { dataProcessing: true }` (plus `acceptTerms`); a self-registered patient's record gets gender `unknown` for reception to complete. Portal invite: record needs an email and no account; linked user, no forced password change, 72 h set-password link. | §10.6; §4.3 step 5. |
+| D66 | 2026-09-24 | Phone numbers are stored in E.164 via `libphonenumber-js` (default country IN) for every phone field – patients, emergency contacts, users, settings (`phone` Zod helper, `normalisePhone`/`formatPhone` on server and client). | One format for matching and search. |
+| D67 | 2026-09-24 | `patients.nameKey` = lower-case "first last" with single spaces, kept in sync by the service; duplicates = same phone + DOB or same `nameKey` + DOB, inactive records included. | §4.3 name + DOB without collation tricks. |
+| D68 | 2026-09-24 | MRN `MRN-000001` from `nextSequence('mrn')` inside the create transaction (never reused, no gaps from aborted creates). DOB is a calendar date (UTC midnight), 0–120 years; ages are computed in the clinic timezone. | §8.10; §3.7. |
+| D69 | 2026-09-24 | Allergies/conditions are replaced as a list; an entry sent back with its `id` and unchanged keeps `recordedBy/recordedAt`, anything new or changed is recorded by the caller. | Keeps who recorded what. |
+| D70 | 2026-09-24 | Patient search (`buildPatientSearchQuery`): MRN (`MRN-000123`, `mrn 123`) → exact; phone-like → exact E.164 (invalid → no match); otherwise each word (max 4) must be an escaped, anchored, case-insensitive prefix of `firstName` or `lastName`. No `$text` fallback yet. Existing admin catalogue/user searches keep their escaped substring match. | Index-friendly, no leading-wildcard regex. |
+| D71 | 2026-09-24 | New audit actions: `patient.update_duplicate_override`, `patient.deactivate`, `patient.activate`, `patient.link_confirm`, `patient.link_reject`. Patient update/clinical/self-update entries record changed field names, with values only for gender, blood group, language, active status and consents; names, DOB, contact details, address, insurance and allergies are `[REDACTED]`. | §10.4 redaction; no PHI in audit values. |
+| D72 | 2026-09-24 | `patient.view` (for `/patients/:id` and `/patients/me`) is debounced 5 min per user + patient (`recordRead`). List, duplicate-check and pending-link reads are not audited per row. `patient.clinical_profile_update` is tested with a stand-in care relationship and excluded from the audit-coverage walk until Phase 5. | §10.4. |
+| D73 | 2026-09-24 | Endpoints beyond §7.7: `GET /patients/pending-links`, `POST /patients/:id/reject-link`, `POST /patients/:id/activate`. Duplicate override is `force: true` + `reason` (≥ 10) in the body, not `?force=true`; deactivate/activate take a reason (≥ 5). PATCH re-runs the duplicate check when phone or DOB changes. | Needed by the linking flow and admin status. |
+| D74 | 2026-09-24 | Seed: 60 patients (faker `en_IN`, fixed seed and reference date) created through the service by reception1; 15 with allergies, 12 with chronic conditions (written directly as dr.mehta until Phase 5); `patient1…8` linked; `pending1@medassist.dev` pending and reset to pending on every run; two "Amit Patel" records with different DOBs. `npm run migrate:link-patients` (dev/test only, idempotent) links pre-Phase 3 patient users with name, phone and DOB and lists the rest. | §15.3; existing dev databases. |
+| D75 | 2026-09-24 | Client: `homeFor(user)` – pending patients start at `/patient/verify-identity` from login, register, and the public-only/home redirects, so these redirects never race (lazy routes made a register-page navigate lose to the public-only redirect). | Deterministic landing page. |
+| D76 | 2026-09-24 | Client: live duplicate check on the patient form (debounced) with a "Possible existing patient" panel, also shown on a 409; reception sidebar shows the pending-verification count (60 s poll); `Card` sections are labelled by their title; the portal state "invited" = linked account that never logged in. | §4.3; accessibility. |
+| D77 | 2026-09-24 | Not built in Phase 3: `GET /audit-logs/patient/:id` (D21, still open), the patient timeline (Phase 8), global `/search` (§12.1). | Scope. |
+| D78 | 2026-09-24 | Test servers listen on 127.0.0.1 only (one shared server per test file for `api()`, `serve(app)` for small apps). supertest's per-request server on `::` could collide with a 127.0.0.1-only socket on the same port (e.g. another worker's mongod) on macOS – the cause of rare "Parse Error: Expected HTTP/" and "404 {}" failures, including the Phase 2 one-offs. | Flaky tests. |

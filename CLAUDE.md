@@ -8,7 +8,7 @@ MERN capstone: a clinic management system for admins, doctors, receptionists, la
 Read the relevant spec sections for the current phase before planning. Do not read the whole spec every time.
 
 ## Current phase
-**Phase 3 – Patients.** Spec: §4.3–4.4, §6.11, §7.7, §12.1 (and §2.3/§2.5 for access and field visibility). Only build what the current phase prompt asks for. Do not build features from later phases early. If something from a later phase seems needed, ask first.
+**Phase 4 – Appointments and queue.** Spec: §4.5–4.6, §4.13, §5.1, §6.12, §7.8–7.9, §8.1–8.4, §8.11 (and §2.3 for who may see which appointments). Only build what the current phase prompt asks for. Do not build features from later phases early. If something from a later phase seems needed, ask first.
 
 ## Stack
 - Monorepo with npm workspaces: `server/` and `client/`
@@ -22,8 +22,9 @@ Read the relevant spec sections for the current phase before planning. Do not re
 - `npm run dev` – run server + client (`dev:server` / `dev:client` for one side). Dev API port is 5001 (macOS AirPlay holds 5000).
 - `npm test` – server then client tests (`npm run test:client` for client only); `npm run test:coverage -w server` for coverage
 - `npm run lint` / `npm run lint:fix` / `npm run format` / `npm run format:check` / `npm run typecheck`
-- `npm run seed` – seed demo data (clinic set-up, staff, 8 doctors, lab tests; password `Password@123`); `npm run seed -- --reset` wipes first. Needs MongoDB as a replica set.
-- `npm run smoke` – API smoke test against the seeded DB (auth, RBAC, audit chain, Phase 2 data, public field exposure, all demo logins). Reuses a server already running on `PORT` (and leaves it running); otherwise starts a temporary one on a free port and stops only that.
+- `npm run seed` – seed demo data (clinic set-up, staff, 8 doctors, lab tests, 60 patients with logins `patient1…8` and the pending sign-up `pending1`; password `Password@123`); `npm run seed -- --reset` wipes first. Needs MongoDB as a replica set.
+- `npm run smoke` – API smoke test against the seeded DB (auth, RBAC, audit chain, Phase 2 data, public field exposure, patients and field visibility, all demo logins). Reuses a server already running on `PORT` (and leaves it running); otherwise starts a temporary one on a free port and stops only that.
+- `npm run migrate:link-patients` – dev/test only: links patient users created before Phase 3 to new patient records (idempotent; lists users with missing data).
 
 ## Backend conventions (always follow)
 - Features live in `server/src/modules/<feature>/` with `model.js`, `service.js`, `controller.js`, `routes.js`, `validation.js`, `serializer.js`.
@@ -78,6 +79,16 @@ Read the relevant spec sections for the current phase before planning. Do not re
 - **Tests**: `createDepartment()`, `createDoctor()`, `loginAsDoctor()` in `tests/helpers/fixtures.ts`. The RBAC matrix fails if an allowed write writes no audit entry. Extend `npm run smoke` for new seeded data.
 - **Seed**: one seeder per data type in `server/src/seed/`, upserting through the services and their Zod schemas (idempotent); fixed faker seed.
 - **Client UI kit**: `MoneyInput`, `TimeInput`, `Switch`, `Tabs`, `TagInput`, `SearchableSelect`, `Textarea`, `FilterBar`, `StatusBadge`, `ListSkeleton`, `ErrorState`, `Modal` (`variant="drawer"`, `size="lg"`), `StatusToggleButton`; hooks `useListParams` (filters in the URL) and `useUnsavedChanges`; `applyServerFieldErrors` / `applyServerFieldErrorsByPath` for server field errors (incl. field arrays). Enums mirrored in `constants/catalog.ts`.
+
+## Phase 3 building blocks (reuse, don't reinvent)
+- **Patient views per role**: never return a Patient document; use `modules/patients/serializer.ts` – `viewForRole(role, patient, portal?)` (admin: no allergies/conditions; reception: + allergies; doctor: no insurance/admin notes; patient: no admin notes), `toListItem`, `toDuplicateMatch`. `viewFor(user, patient)` in the patients service adds the portal info for staff. §2.5 was updated (D60).
+- **Patient access**: every service call on a patient starts with `await assertCanAccessPatient(user, patientId, scope, meta)` (scopes `demographics | clinical | billing | lab | allergies`) – 404 + `access.denied` audit on denial. Lists use `patientListFilter(user)`; actions without a patient yet use `roleHasPatientScope(user, scope)`. Doctors are denied until the care relationship – **Phase 5 changes `canAccessPatient` (and it will need DB lookups, D33)**. `req.user.patientId` is set only for linked patient users; pending self-signups have `patientLinkStatus: 'pending_verification'`.
+- **Patients**: `loadPatient(id)`, `insertPatient(fields, { session })` (MRN from the counter inside the transaction), `findDuplicates()`, `portalInfo()` in `modules/patients/service.ts`; linking and invites in `portal.service.ts`. Test fixtures: `createPatient()`, `loginAsPatient()`, `uniquePhone()` in `tests/helpers/fixtures.ts`.
+- **Phones**: stored in E.164. Validate with the `phone` Zod helper (`utils/zod.ts`); server `normalisePhone` / `tryNormalisePhone` / `formatPhone` (`utils/phone.ts`); client `normalisePhone` / `formatPhone` / `PHONE_PREFIX` (`client/src/utils/phone.ts`). Dates of birth: `dateOfBirth` Zod helper (calendar date); ages with `ageOn()`.
+- **Search**: never build a regex from user input yourself. Patients: `buildPatientSearchQuery(q)` (`utils/search.ts` – exact MRN/phone, else anchored `^prefix` per word). Other lists: `escapeRegex` / `exactRegex` / `containsRegex` (`utils/regex.ts`). No leading-wildcard regex on large collections.
+- **Read auditing**: reads of patient/clinical records use `audit.recordRead({ action, actor, resource: { type, id, number }, patient })` – debounced 5 min per user + action + record. Patient update audits record field names; use `patientChanges()` so identifying values are `[REDACTED]`.
+- **Tests**: `api()` uses one shared test server per file on 127.0.0.1; for a small custom Express app use `const call = await serve(app)` – never `request(app)` (port collision on macOS, D78). RBAC rows may set `statusFor: { doctor: 404 }` for roles stopped by the patient policy. Client: fixtures in `client/tests/patients.fixtures.ts`; the default MSW handlers include `/patients/pending-links` (reception sidebar badge).
+- **Client**: patient pages in `features/patients` (`PatientFormSections`, `DuplicatePanel` + `useDuplicateCheck`, `ReasonDialog` for audited reasons, `AllergyChips`, `PortalBadge`); `patientsBase(role)` for `/reception` vs `/admin` paths; `homeFor(user)` (`routes/home.ts`) is where a user lands after login/register.
 
 ## Frontend conventions
 - Feature folders in `client/src/features/<feature>/` (`api.js`, `components/`, `pages/`, `schemas.js`).
