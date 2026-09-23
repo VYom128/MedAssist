@@ -1,8 +1,10 @@
 import type { Role } from '../src/config/constants.js';
+import { AuditLog } from '../src/modules/audit/model.js';
 import { Department } from '../src/modules/departments/model.js';
 import { LabTest } from '../src/modules/labTests/model.js';
 import { DoctorLeave } from '../src/modules/leaves/model.js';
 import { Service } from '../src/modules/services/model.js';
+import { flushAudit } from '../src/services/audit.service.js';
 import { verifyAccessToken } from '../src/utils/tokens.js';
 import { createUser, loginAs, resetDb, TEST_PASSWORD } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
@@ -104,6 +106,20 @@ const send = (row: Row, c: Ctx | null) => {
   return req;
 };
 
+/** Keys a public (no token) response must never contain. */
+const PRIVATE_KEYS =
+  /"(email|phone|registrationNumber|roomNumber|slotMinutes|gstin|invoicePrefix|isActive|activeDoctors|lockVersion|createdBy|updatedBy|passwordHash)"/;
+
+/** Public clinic settings include the clinic's own contact email/phone (spec §7.4), nothing else. */
+const PRIVATE_SETTINGS_KEYS =
+  /"(registrationNumber|gstin|invoicePrefix|defaultTaxRateBps|requireDualVerification|updatedBy)"/;
+
+/** Audit entries other than denials, after queued writes finish. */
+async function auditCount() {
+  await flushAudit();
+  return AuditLog.countDocuments({ action: { $ne: 'access.denied' } });
+}
+
 describe('RBAC matrix', () => {
   let emails: ReturnType<typeof captureEmails>;
   beforeAll(async () => {
@@ -118,8 +134,14 @@ describe('RBAC matrix', () => {
       const expected = allowed ? row.status : 403;
       const label = routeKey(row);
       it(`${label} as ${role} → ${expected}`, async () => {
-        const res = await send(row, await buildContext(role));
+        const c = await buildContext(role);
+        const before = await auditCount();
+        const res = await send(row, c);
         expect(res.status, JSON.stringify(res.body)).toBe(expected);
+        // Every write an allowed role makes is audited (spec §10.4).
+        if (allowed && row.method !== 'get') {
+          expect(await auditCount(), `${label} wrote no audit entry`).toBeGreaterThan(before);
+        }
       });
     }
   }
@@ -132,6 +154,12 @@ describe('RBAC matrix', () => {
         if (role !== 'anonymous') req = req.set(c.me.auth);
         const res = await req;
         expect(res.status, JSON.stringify(res.body)).toBe(row.status);
+        if (role === 'anonymous') {
+          // Public responses never carry contact details, registration numbers or admin fields.
+          const privateKeys =
+            routeKey(row) === 'GET /settings/public' ? PRIVATE_SETTINGS_KEYS : PRIVATE_KEYS;
+          expect(JSON.stringify(res.body)).not.toMatch(privateKeys);
+        }
       });
     }
   }

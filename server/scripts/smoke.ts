@@ -9,6 +9,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { fileURLToPath } from 'node:url';
 import { config as loadDotenv } from 'dotenv';
+import { demoLogins } from '../src/seed/index.js';
 
 loadDotenv({ quiet: true });
 
@@ -78,6 +79,12 @@ interface Json {
   error?: { code?: string };
 }
 
+type Item = Record<string, unknown> & { id: string };
+
+/** Keys that must never appear in a public (no token) response. */
+const PRIVATE_KEYS =
+  /"(email|phone|registrationNumber|roomNumber|gstin|isActive|lockVersion|passwordHash)"/;
+
 async function call(api: string, path: string, init: RequestInit = {}) {
   const res = await fetch(`${api}${path}`, {
     ...init,
@@ -144,6 +151,8 @@ async function runChecks(api: string): Promise<boolean> {
     check('doctor logs in', false, `status ${doctor.res.status}`);
   }
 
+  await phase2Checks(api, check, login);
+
   for (const [name, ok, detail] of results) {
     out(`${ok ? 'PASS' : 'FAIL'}  ${name}${!ok && detail ? ` (${detail})` : ''}`);
   }
@@ -151,6 +160,114 @@ async function runChecks(api: string): Promise<boolean> {
   if (!passed && admin.res.status === 401)
     out('Hint: run `npm run seed` to create the demo accounts.');
   return passed;
+}
+
+/** Phase 2: the seeded clinic set-up, public field exposure and every demo login. */
+async function phase2Checks(
+  api: string,
+  check: (name: string, ok: boolean, detail?: string) => void,
+  login: (email: string) => ReturnType<typeof call>,
+) {
+  const list = async (path: string, headers: Record<string, string> = {}) => {
+    const r = await call(api, path, { headers });
+    return {
+      status: r.res.status,
+      items: (r.body.data as unknown as Item[]) ?? [],
+      raw: JSON.stringify(r.body),
+    };
+  };
+
+  // Public endpoints: data present, nothing private.
+  const settings = await call(api, '/settings/public');
+  const publicRaw = JSON.stringify(settings.body);
+  check(
+    'public settings exist (clinic timezone set)',
+    settings.res.status === 200 && Boolean(settings.body.data?.timezone),
+    publicRaw.slice(0, 120),
+  );
+  check(
+    'public settings hide admin fields',
+    !/gstin|invoicePrefix|registrationNumber/.test(publicRaw),
+  );
+
+  const departments = await list('/departments?limit=100');
+  check('5 departments', departments.items.length === 5, `got ${departments.items.length}`);
+  const services = await list('/services?limit=100');
+  check(
+    'about 12 services',
+    services.items.length >= 10 && services.items.length <= 15,
+    `got ${services.items.length}`,
+  );
+  check(
+    'service prices are integer paise',
+    services.items.every((x) => Number.isInteger(x.pricePaise)),
+  );
+  const doctors = await list('/doctors?limit=100');
+  check('8 doctors with profiles', doctors.items.length === 8, `got ${doctors.items.length}`);
+  for (const [name, r] of [
+    ['departments', departments],
+    ['services', services],
+    ['doctors', doctors],
+  ] as const) {
+    check(`public ${name} expose no private fields`, !PRIVATE_KEYS.test(r.raw));
+  }
+  if (doctors.items[0]) {
+    const one = await call(api, `/doctors/${doctors.items[0].id}`);
+    check(
+      'public doctor detail exposes no private fields',
+      !PRIVATE_KEYS.test(JSON.stringify(one.body)),
+    );
+  }
+
+  // Staff views: schedules, leave, lab tests.
+  const admin = await login('admin@medassist.dev');
+  const token = admin.body.data?.accessToken;
+  if (!token) {
+    check('admin logs in for Phase 2 checks', false, `status ${admin.res.status}`);
+    return;
+  }
+  const auth = { Authorization: `Bearer ${token}` };
+  let withSchedule = 0;
+  let withLeave = 0;
+  for (const d of doctors.items) {
+    const sched = await call(api, `/doctors/${d.id}/schedule`, { headers: auth });
+    const current = sched.body.data?.current as { days?: { sessions: unknown[] }[] } | null;
+    if (current?.days?.some((day) => day.sessions.length > 0)) withSchedule += 1;
+    const leaves = await list(`/doctors/${d.id}/leaves`, auth);
+    if (leaves.items.length > 0) withLeave += 1;
+  }
+  check(
+    'every doctor has a weekly schedule',
+    withSchedule === doctors.items.length,
+    `${withSchedule}/${doctors.items.length}`,
+  );
+  check('2 doctors have upcoming leave', withLeave === 2, `got ${withLeave}`);
+  const labTests = await list('/lab-tests?limit=100', auth);
+  check(
+    'about 15 lab tests',
+    labTests.items.length >= 13 && labTests.items.length <= 17,
+    `got ${labTests.items.length}`,
+  );
+  check(
+    'lab tests have parameters',
+    labTests.items.every((t) => Array.isArray(t.parameters) && t.parameters.length > 0),
+  );
+  await call(api, '/auth/logout', { method: 'POST', headers: auth });
+
+  // Every demo account (spec §15.3 + seeded doctors) logs in without a forced password change.
+  const failed: string[] = [];
+  for (const { email } of demoLogins()) {
+    const r = await login(email);
+    const t = r.body.data?.accessToken;
+    const user = r.body.data?.user as { mustChangePassword?: boolean } | undefined;
+    if (r.res.status !== 200 || user?.mustChangePassword) failed.push(`${email} (${r.res.status})`);
+    if (t)
+      await call(api, '/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${t}` },
+      });
+  }
+  check(`all ${demoLogins().length} demo accounts log in`, failed.length === 0, failed.join(', '));
 }
 
 async function main() {

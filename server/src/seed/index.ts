@@ -52,7 +52,6 @@ async function resetData() {
     LabTest.deleteMany({}),
     Counter.deleteMany({}),
   ]);
-  audit.resetAuditChainCache();
   clearSettingsCache();
 }
 
