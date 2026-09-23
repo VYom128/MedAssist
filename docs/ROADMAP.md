@@ -12,8 +12,8 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Project setup | ✅ Done |
-| 1 | Authentication, RBAC and audit logging | 🟡 In progress |
-| 2 | Admin setup data | ⬜ Not started |
+| 1 | Authentication, RBAC and audit logging | ✅ Done |
+| 2 | Admin setup data | 🟡 In progress |
 | 3 | Patients | ⬜ Not started |
 | 4 | Appointments and queue | ⬜ Not started |
 | 5 | Visit notes and prescriptions | ⬜ Not started |
@@ -74,23 +74,37 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 **Goal:** secure login for all five roles, role-based access, and an append-only audit trail.
 **Spec:** §2, §6.3, §6.4, §6.25, §7.2, §7.3, §10.1–10.5, §13.1–13.2
 
-- [ ] User and Session models
-- [ ] Register (patient), login, refresh (rotation + reuse detection), logout, logout-all, me
-- [ ] Change password, forgot/reset password, session list/revoke
-- [ ] Account lockout after failed logins; `mustChangePassword`
-- [ ] `authenticate` and `authorize(...roles)` middleware
-- [ ] `canAccessPatient` policy module (skeleton, filled in as modules arrive)
-- [ ] Audit service + AuditLog model (append-only hooks, hash chain) + `GET /audit-logs`
-- [ ] Admin user management (`/users`)
-- [ ] Rate limits on login/register
-- [ ] Client: Redux store + RTK Query with auto-refresh, login/register/forgot/reset pages
-- [ ] Client: `ProtectedRoute`, `RoleRoute`, app layout with role-based sidebar, placeholder dashboards per role
-- [ ] Seed: one account per role
-- [ ] Tests: auth flows, lockout, refresh reuse, RBAC denial cases, audit immutability
+- [x] User and Session models
+- [x] Register (patient), login, refresh (rotation + reuse detection), logout, logout-all, me
+- [x] Change password, forgot/reset password, session list/revoke
+- [x] Account lockout after failed logins; `mustChangePassword`
+- [x] `authenticate` and `authorize(...roles)` middleware
+- [x] `canAccessPatient` policy module (skeleton, filled in as modules arrive)
+- [x] Audit service + AuditLog model (append-only hooks, hash chain) + `GET /audit-logs`
+- [x] Admin user management (`/users`)
+- [x] Rate limits on login/register
+- [x] Client: Redux store + RTK Query with auto-refresh, login/register/forgot/reset pages
+- [x] Client: `ProtectedRoute`, `RoleRoute`, app layout with role-based sidebar, placeholder dashboards per role
+- [x] Seed: one account per role
+- [x] Tests: auth flows, lockout, refresh reuse, RBAC denial cases, audit immutability
 
 **Done when:** each role logs in and lands on its own dashboard; wrong roles get 403; audit entries appear for logins.
 
-**Notes / decisions:**
+**Notes / decisions:** (all recorded as D1–D23 in spec §20 "Decisions made")
+- Patient signup creates a `patient` User only; Patient record, DOB and linking come in Phase 3 (D1).
+- Sessions: refresh token = 64 random bytes, SHA-256 stored, rotated on every refresh, sliding 7-day expiry, `'rotated'` revoke reason, 10-s reuse grace window, later reuse revokes the family + `auth.refresh_reuse` (D3–D5, D20).
+- `authenticate` checks user + session on every request, so revocation is immediate. Access tokens of a rotated session stay valid while the family (one login on one device) is live; logout and device revocation act on the whole family (D6, D7).
+- Server-side `mustChangePassword` enforcement (D12). Lockout via new `lastFailedLoginAt` (D10). Enumeration-safe login responses (D11).
+- New staff get a "set your password" email link, not a temp password (D9). `POST /users` creates admin/receptionist/labtech only; doctors come from the seed now and `POST /doctors` in Phase 2 (D17).
+- Email service: `console` (dev/test, prints links) and `smtp` transports; `EMAIL_TRANSPORT` must be `smtp` in production (D8).
+- Audit: in-process queue, `seq` field, HMAC chain from `GENESIS`, append-only hooks (all update/delete/replace queries, document saves, `insertMany`, `bulkWrite` → 409 `RECORD_LOCKED`), `recordRead()` with 5-min debounce ready for Phase 3, failures never fail requests (D13–D16). `GET /audit-logs`, `GET /audit-logs/verify`; `/audit-logs/patient/:id` waits for Phase 3 (D21).
+- `canAccessPatient(user, patientId, scope)` skeleton in `server/src/policies/patientAccess.ts`: doctors are denied until care relationships exist (Phase 4/5). `assertCanAccessPatient` → 404 + `access.denied` audit.
+- New env vars: `JWT_ACCESS_SECRET`, `JWT_ACCESS_EXPIRES_IN`, `REFRESH_TOKEN_TTL_DAYS`, `COOKIE_SECURE`, `COOKIE_SAMESITE`, `BCRYPT_ROUNDS`, `AUDIT_HASH_SECRET`, `EMAIL_TRANSPORT`, `SMTP_*`, `MAIL_FROM`. Secrets are required outside test (tests get placeholders). **Existing local `server/.env` files need `JWT_ACCESS_SECRET` and `AUDIT_HASH_SECRET` (≥ 32 chars).**
+- Common-password list (top 1,000 from SecLists, MIT) lives in `server/src/data/commonPasswords.ts` so it ships in the build.
+- Seed: `npm run seed` (users only, 7 demo accounts, password `Password@123`); `npm run seed -- --reset` (D22).
+- Client: Redux store + RTK Query `axiosBaseQuery` over `utils/http.ts` with a shared refresh mutex; session restored on page load; `ProtectedRoute` / `RoleRoute` / `PublicOnlyRoute`; lazy role bundles; role sidebar with mobile drawer; auth, profile, change-password and sessions pages; placeholder dashboards. Admin Users and Audit log pages are built with the other admin pages in Phase 2 (D23).
+- Client tests: Vitest + jsdom + React Testing Library (`npm test` now runs server and client).
+- Tests: 246 server (was 53) + 17 client.
 
 ---
 
@@ -105,7 +119,7 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - [ ] Weekly schedules and leave
 - [ ] Lab test catalogue with parameters and reference ranges
 - [ ] Counter service for human-readable numbers
-- [ ] Admin pages: settings (tabs), departments, services, doctors (profile/schedule/leave), lab tests, users
+- [ ] Admin pages: settings (tabs), departments, services, doctors (profile/schedule/leave), lab tests, users, audit logs (APIs from Phase 1)
 - [ ] Seed script v1 (`npm run seed`, `--reset`)
 - [ ] Tests for validation, permissions and schedule overlap rules
 

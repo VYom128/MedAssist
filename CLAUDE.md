@@ -8,7 +8,7 @@ MERN capstone: a clinic management system for admins, doctors, receptionists, la
 Read the relevant spec sections for the current phase before planning. Do not read the whole spec every time.
 
 ## Current phase
-**Phase 1 – Authentication, RBAC and audit logging.** Spec: §2, §6.3, §6.4, §6.25, §7.2, §7.3, §10.1–10.5, §13.1–13.2. Only build what the current phase prompt asks for. Do not build features from later phases early. If something from a later phase seems needed, ask first.
+**Phase 2 – Admin setup data.** Spec: §4.2, §6.5–6.10, §6.19, §7.4–7.6, §15.3. Only build what the current phase prompt asks for. Do not build features from later phases early. If something from a later phase seems needed, ask first.
 
 ## Stack
 - Monorepo with npm workspaces: `server/` and `client/`
@@ -20,9 +20,9 @@ Read the relevant spec sections for the current phase before planning. Do not re
 
 ## Commands
 - `npm run dev` – run server + client (`dev:server` / `dev:client` for one side). Dev API port is 5001 (macOS AirPlay holds 5000).
-- `npm test` – server tests; `npm run test:coverage -w server` for coverage
+- `npm test` – server then client tests (`npm run test:client` for client only); `npm run test:coverage -w server` for coverage
 - `npm run lint` / `npm run lint:fix` / `npm run format` / `npm run format:check` / `npm run typecheck`
-- `npm run seed` – seed demo data (from Phase 2 onward)
+- `npm run seed` – seed demo data (Phase 1: one account per role, password `Password@123`); `npm run seed -- --reset` wipes first
 
 ## Backend conventions (always follow)
 - Features live in `server/src/modules/<feature>/` with `model.js`, `service.js`, `controller.js`, `routes.js`, `validation.js`, `serializer.js`.
@@ -40,7 +40,8 @@ Read the relevant spec sections for the current phase before planning. Do not re
 - Validation errors are `details: [{ field: 'body.email', message }]`. Let Zod/Mongoose errors bubble to `errorHandler`; never format error responses in controllers.
 - Mount new modules in `server/src/routes/index.ts`. Use `parsePagination()` / `buildMeta()` from `utils/pagination.ts` for lists.
 - Logging: use `logger` (never `console`). Log errors via `serializeError(err)`, never raw error objects (they can carry request bodies or duplicate-key values).
-- Tests: each file gets its own in-memory replica set (`tests/setup.ts`); use `api(router)` from `tests/helpers/testApp.ts` to mount test-only routes; assert errors with `expectErrorShape()`.
+- Tests: each file gets its own in-memory replica set (`tests/setup.ts`); use `api(router)` from `tests/helpers/testApp.ts` to mount test-only routes; assert errors with `expectErrorShape()`; log in with `loginAs(role)` and reset with `resetDb()` from `tests/helpers/auth.ts`; capture emails with `captureEmails()`.
+- Auth: `authenticate` → `authorize(...roles)`; `req.user` is `AuthUser` (`types/express.d.ts`). Audit with `audit.record()` / `audit.recordRead()` from `services/audit.service.ts` (never throws; await it). Patient data goes through `assertCanAccessPatient()` in `policies/patientAccess.ts`.
 
 ## Frontend conventions
 - Feature folders in `client/src/features/<feature>/` (`api.js`, `components/`, `pages/`, `schemas.js`).

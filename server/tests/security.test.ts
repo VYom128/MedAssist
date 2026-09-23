@@ -22,6 +22,17 @@ describe('security middleware', () => {
     expect(other.headers['access-control-allow-origin']).not.toBe('https://evil.example.com');
   });
 
+  it('allows the Authorization and X-Requested-With headers in CORS preflight', async () => {
+    const res = await api()
+      .options('/api/v1/auth/refresh')
+      .set('Origin', 'http://localhost:5173')
+      .set('Access-Control-Request-Method', 'POST')
+      .set('Access-Control-Request-Headers', 'authorization,x-requested-with,content-type');
+    expect(res.status).toBe(204);
+    expect(res.headers['access-control-allow-headers']).toMatch(/x-requested-with/i);
+    expect(res.headers['access-control-allow-headers']).toMatch(/authorization/i);
+  });
+
   it('returns 429 RATE_LIMITED in the standard format after the limit is exceeded', async () => {
     const app = express();
     app.use(requestId);

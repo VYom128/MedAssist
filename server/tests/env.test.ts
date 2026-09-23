@@ -26,9 +26,14 @@ async function loadEnv(vars: Record<string, string>) {
   }
 }
 
+const SECRETS = {
+  JWT_ACCESS_SECRET: 'a'.repeat(32),
+  AUDIT_HASH_SECRET: 'b'.repeat(32),
+};
+
 describe('config/env', () => {
   it('applies defaults and exposes a frozen config', async () => {
-    const res = await loadEnv({ MONGO_URI: 'mongodb://127.0.0.1:27017/x' });
+    const res = await loadEnv({ MONGO_URI: 'mongodb://127.0.0.1:27017/x', ...SECRETS });
     expect(res.code).toBe(0);
     expect(JSON.parse(res.stdout)).toMatchObject({
       nodeEnv: 'development',
@@ -37,7 +42,50 @@ describe('config/env', () => {
       port: 5000,
       clientUrl: 'http://localhost:5173',
       logLevel: 'info',
+      auth: { accessExpiresIn: 900, refreshTtlDays: 7, bcryptRounds: 12 },
+      cookie: { secure: false, sameSite: 'lax' },
+      email: { transport: 'console' },
     });
+  });
+
+  it('parses JWT_ACCESS_EXPIRES_IN durations into seconds', async () => {
+    const res = await loadEnv({
+      MONGO_URI: 'mongodb://127.0.0.1:27017/x',
+      ...SECRETS,
+      JWT_ACCESS_EXPIRES_IN: '2h',
+    });
+    expect(JSON.parse(res.stdout)).toMatchObject({ auth: { accessExpiresIn: 7200 } });
+  });
+
+  it('requires secrets outside test', async () => {
+    const res = await loadEnv({ MONGO_URI: 'mongodb://127.0.0.1:27017/x' });
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain('JWT_ACCESS_SECRET');
+    expect(res.stderr).toContain('AUDIT_HASH_SECRET');
+  });
+
+  it('rejects SameSite=none without Secure and smtp without its settings', async () => {
+    const res = await loadEnv({
+      MONGO_URI: 'mongodb://127.0.0.1:27017/x',
+      ...SECRETS,
+      COOKIE_SAMESITE: 'none',
+      COOKIE_SECURE: 'false',
+      EMAIL_TRANSPORT: 'smtp',
+    });
+    expect(res.code).toBe(1);
+    for (const name of ['COOKIE_SAMESITE', 'SMTP_HOST', 'SMTP_PORT', 'MAIL_FROM']) {
+      expect(res.stderr).toContain(name);
+    }
+  });
+
+  it('refuses the console email transport in production', async () => {
+    const res = await loadEnv({
+      NODE_ENV: 'production',
+      MONGO_URI: 'mongodb://127.0.0.1:27017/x',
+      ...SECRETS,
+    });
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain('EMAIL_TRANSPORT');
   });
 
   it('does not require MONGO_URI in test', async () => {

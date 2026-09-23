@@ -3,6 +3,7 @@ import { connectDB, disconnectDB } from './config/db.js';
 import { API_PREFIX } from './config/constants.js';
 import { config } from './config/env.js';
 import { createApp } from './app.js';
+import { flushAudit } from './services/audit.service.js';
 import { logger, serializeError } from './utils/logger.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -31,6 +32,7 @@ async function start() {
 
     server.close(async () => {
       try {
+        await flushAudit(); // finish queued audit writes before the connection closes
         await disconnectDB();
         logger.info('Shutdown complete');
         process.exit(0);

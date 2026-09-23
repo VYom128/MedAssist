@@ -1,17 +1,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import NotFoundPage from '../components/NotFoundPage';
-import HomePage from '../features/health/pages/HomePage';
-import AppLayout from '../layouts/AppLayout';
+import { routes } from './routes';
 
-const router = createBrowserRouter([
-  {
-    element: <AppLayout />,
-    children: [
-      { index: true, element: <HomePage /> },
-      { path: '*', element: <NotFoundPage /> },
-    ],
-  },
-]);
+const router = createBrowserRouter(routes);
 
 export default function AppRoutes() {
   return <RouterProvider router={router} />;

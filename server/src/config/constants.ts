@@ -1,4 +1,110 @@
-// Roles, statuses and state machine transitions are added here in later phases.
+// Enums shared by schemas, Zod validators and (mirrored) the client. Statuses and state machine
+// transitions for later modules are added here as they arrive.
+
+/** User roles (spec §2.1). A user has exactly one. */
+export const ROLES = Object.freeze({
+  ADMIN: 'admin',
+  DOCTOR: 'doctor',
+  RECEPTIONIST: 'receptionist',
+  LABTECH: 'labtech',
+  PATIENT: 'patient',
+} as const);
+export type Role = (typeof ROLES)[keyof typeof ROLES];
+export const ROLE_VALUES = Object.freeze(Object.values(ROLES)) as readonly Role[];
+export const STAFF_ROLES = Object.freeze([
+  ROLES.ADMIN,
+  ROLES.DOCTOR,
+  ROLES.RECEPTIONIST,
+  ROLES.LABTECH,
+] as const);
+/**
+ * Roles an admin can create through POST /users. Doctors are created with their profile via
+ * POST /doctors (Phase 2); patients sign up or are invited (Phase 3).
+ */
+export const ADMIN_CREATABLE_ROLES = Object.freeze([
+  ROLES.ADMIN,
+  ROLES.RECEPTIONIST,
+  ROLES.LABTECH,
+] as const);
+
+/** Patient portal link state (spec §4.4). Set from Phase 3. */
+export const PATIENT_LINK_STATUSES = Object.freeze(['linked', 'pending_verification'] as const);
+
+/** Why a session was revoked (spec §6.4, plus 'rotated' for a normal refresh). */
+export const SESSION_REVOKED_REASONS = Object.freeze([
+  'rotated',
+  'logout',
+  'logout_all',
+  'reuse_detected',
+  'password_changed',
+  'admin',
+] as const);
+export type SessionRevokedReason = (typeof SESSION_REVOKED_REASONS)[number];
+
+/** Login lockout (spec §5.8): 5 failures within 15 min lock the account for 15 min. */
+export const LOCKOUT = Object.freeze({
+  maxAttempts: 5,
+  windowMs: 15 * 60_000,
+  lockMs: 15 * 60_000,
+});
+
+/** Refresh token cookie (spec §7.1). */
+export const REFRESH_COOKIE = Object.freeze({ name: 'ma_rt', path: '/api/v1/auth' });
+/** Refresh token size in bytes (spec §10.1). */
+export const REFRESH_TOKEN_BYTES = 64;
+/**
+ * A rotated refresh token reused within this many seconds (e.g. two tabs refreshing at once)
+ * gets an access token for its replacement session instead of being treated as theft.
+ */
+export const REFRESH_REUSE_GRACE_SECONDS = 10;
+
+/** CSRF protection for cookie-authenticated endpoints (spec §10.1). */
+export const CSRF_HEADER = Object.freeze({ name: 'X-Requested-With', value: 'medassist' });
+
+/** Password reset links: 32 random bytes, valid for 30 min, single use. */
+export const PASSWORD_RESET = Object.freeze({ tokenBytes: 32, ttlMs: 30 * 60_000 });
+/** "Set your password" links emailed to new staff accounts are valid for 72 hours. */
+export const ACCOUNT_SETUP_TTL_MS = 72 * 60 * 60_000;
+
+/** Audit log (spec §6.25, §10.4). */
+export const AUDIT_OUTCOMES = Object.freeze(['success', 'denied', 'failure'] as const);
+export type AuditOutcome = (typeof AUDIT_OUTCOMES)[number];
+/** Audit actions used so far; later phases add theirs from the §10.4 catalogue. */
+export const AUDIT_ACTIONS = Object.freeze({
+  AUTH_REGISTER: 'auth.register',
+  AUTH_LOGIN: 'auth.login',
+  AUTH_LOGIN_FAILED: 'auth.login_failed',
+  AUTH_LOGOUT: 'auth.logout',
+  AUTH_LOGOUT_ALL: 'auth.logout_all',
+  AUTH_REFRESH_REUSE: 'auth.refresh_reuse',
+  AUTH_SESSION_REVOKE: 'auth.session_revoke',
+  AUTH_PASSWORD_CHANGED: 'auth.password_changed',
+  AUTH_PASSWORD_RESET_REQUESTED: 'auth.password_reset_requested',
+  AUTH_PASSWORD_RESET: 'auth.password_reset',
+  AUTH_PROFILE_UPDATE: 'auth.profile_update',
+  USER_CREATE: 'user.create',
+  USER_UPDATE: 'user.update',
+  USER_DEACTIVATE: 'user.deactivate',
+  USER_ACTIVATE: 'user.activate',
+  USER_UNLOCK: 'user.unlock',
+  USER_RESET_PASSWORD: 'user.reset_password',
+  AUDIT_VERIFY: 'audit.verify',
+  ACCESS_DENIED: 'access.denied',
+} as const);
+export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
+/** The same user reading the same record within this window produces one audit entry (§10.4). */
+export const AUDIT_READ_DEBOUNCE_MS = 5 * 60_000;
+/** prevHash of the first audit entry. */
+export const AUDIT_GENESIS_HASH = 'GENESIS';
+
+/** Scopes for canAccessPatient (spec §2.3). */
+export const PATIENT_ACCESS_SCOPES = Object.freeze([
+  'demographics',
+  'clinical',
+  'billing',
+  'lab',
+] as const);
+export type PatientAccessScope = (typeof PATIENT_ACCESS_SCOPES)[number];
 
 /** Error codes from spec §16. Use these instead of string literals. */
 export const ERROR_CODES = Object.freeze({

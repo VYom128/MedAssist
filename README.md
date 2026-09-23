@@ -7,7 +7,7 @@ AI-assisted summaries.
 - Requirements (source of truth): [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md)
 - Build plan and progress: [`docs/ROADMAP.md`](docs/ROADMAP.md)
 
-**Status:** Phase 0 (project setup) complete · Phase 1 (auth, RBAC, audit) in progress.
+**Status:** Phases 0–1 complete (setup; auth, RBAC and audit logging) · Phase 2 (admin setup data) in progress.
 
 ## Prerequisites
 
@@ -36,13 +36,38 @@ and use `MONGO_URI=mongodb://127.0.0.1:27017/med_assist?replicaSet=rs0`.
 git clone <repo-url> med_assist
 cd med_assist
 npm install
-cp server/.env.example server/.env    # then set MONGO_URI
+cp server/.env.example server/.env    # then set MONGO_URI, JWT_ACCESS_SECRET, AUDIT_HASH_SECRET
 cp client/.env.example client/.env
+npm run seed                          # demo accounts (see below)
 npm run dev
 ```
 
-- Client: http://localhost:5173 (shows **API: ok, DB: connected**)
+Generate each secret with `openssl rand -hex 32` (at least 32 characters).
+
+- Client: http://localhost:5173 (sign-in page; system status at `/status`)
 - API: http://localhost:5001/api/v1/health
+
+With `EMAIL_TRANSPORT=console` (the default outside production), emails are not sent: the server
+log shows the recipient, subject and links. Use this to open password-reset and account-setup links
+in development.
+
+## Demo accounts
+
+`npm run seed` creates one login per role (password **`Password@123`**). It skips accounts that
+already exist; `npm run seed -- --reset` wipes users, sessions and audit logs first (refused when
+`NODE_ENV=production`).
+
+| Role         | Email                      | Lands on               |
+| ------------ | -------------------------- | ---------------------- |
+| Admin        | `admin@medassist.dev`      | `/admin/dashboard`     |
+| Receptionist | `reception1@medassist.dev` | `/reception/dashboard` |
+| Lab tech     | `lab1@medassist.dev`       | `/lab/dashboard`       |
+| Doctor       | `dr.mehta@medassist.dev`   | `/doctor/dashboard`    |
+| Doctor       | `dr.iyer@medassist.dev`    | `/doctor/dashboard`    |
+| Patient      | `patient1@medassist.dev`   | `/patient/dashboard`   |
+| Patient      | `patient2@medassist.dev`   | `/patient/dashboard`   |
+
+Patients can also sign up at `/register`. Their Patient record and linking arrive in Phase 3.
 
 The example env uses port **5001** because macOS reserves 5000 for AirPlay Receiver. If you change
 `PORT`, update `VITE_API_URL` in `client/.env` too. If a required variable such as `MONGO_URI` is
@@ -52,17 +77,19 @@ missing or invalid, the server names it and exits with code 1.
 
 Run from the repo root.
 
-| Command                                     | What it does                                                   |
-| ------------------------------------------- | -------------------------------------------------------------- |
-| `npm run dev`                               | Server (nodemon + tsx) and client (Vite) together              |
-| `npm run dev:server` / `npm run dev:client` | One side only                                                  |
-| `npm test`                                  | Server tests (Vitest + Supertest + in-memory replica set)      |
-| `npm run test:coverage -w server`           | Server tests with v8 coverage (`server/coverage/`)             |
-| `npm run lint` / `npm run lint:fix`         | ESLint (flat config) over the whole repo                       |
-| `npm run format` / `npm run format:check`   | Prettier                                                       |
-| `npm run typecheck`                         | `tsc --noEmit` for server and client                           |
-| `npm run build`                             | Compile server to `server/dist`, build client to `client/dist` |
-| `npm start`                                 | Run the compiled server                                        |
+| Command                                     | What it does                                                                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                               | Server (nodemon + tsx) and client (Vite) together                                                             |
+| `npm run dev:server` / `npm run dev:client` | One side only                                                                                                 |
+| `npm test`                                  | Server tests (Vitest + Supertest + in-memory replica set), then client tests (Vitest + React Testing Library) |
+| `npm run test:client`                       | Client tests only                                                                                             |
+| `npm run seed` / `npm run seed -- --reset`  | Demo accounts (see above)                                                                                     |
+| `npm run test:coverage -w server`           | Server tests with v8 coverage (`server/coverage/`)                                                            |
+| `npm run lint` / `npm run lint:fix`         | ESLint (flat config) over the whole repo                                                                      |
+| `npm run format` / `npm run format:check`   | Prettier                                                                                                      |
+| `npm run typecheck`                         | `tsc --noEmit` for server and client                                                                          |
+| `npm run build`                             | Compile server to `server/dist`, build client to `client/dist`                                                |
+| `npm start`                                 | Run the compiled server                                                                                       |
 
 The first test run downloads a MongoDB binary (about 100 MB) for mongodb-memory-server.
 
@@ -74,15 +101,23 @@ server/
     app.ts              createApp(): middleware, /api/v1 routes, 404, error handler
     server.ts           connect DB, listen, graceful shutdown
     config/             env.ts (Zod-validated `config`), db.ts, constants.ts (error codes, enums)
-    middlewares/        requestId, validate, rateLimiters, notFound, errorHandler
+    middlewares/        requestId, authenticate, authorize, requireCsrfHeader, validate,
+                        rateLimiters, notFound, errorHandler
     modules/<feature>/  routes, controller, service, validation, model, serializer
-    policies/           access rules (Phase 1+)
+                        (auth, users, sessions, audit, health)
+    policies/           patientAccess.ts – canAccessPatient(user, patientId, scope)
+    services/           audit.service.ts (hash-chained audit log), email.service.ts
+    seed/               npm run seed
     routes/index.ts     mounts every module under /api/v1
-    utils/              logger, ApiError, ApiResponse (sendSuccess), asyncHandler, pagination
+    utils/              logger, ApiError, ApiResponse (sendSuccess), asyncHandler, pagination,
+                        tokens, password, passwordPolicy, zod helpers, requestContext
   tests/                setup.ts, helpers/, *.test.ts
 client/
   src/
-    routes/  layouts/  features/<feature>/  components/  utils/ (axios instance, env)
+    app/     store, apiSlice (RTK Query), axiosBaseQuery (Bearer token + refresh on 401)
+    routes/  routes.tsx, ProtectedRoute, RoleRoute, PublicOnlyRoute, routeConfig (sidebar)
+    layouts/ AuthLayout, AppLayout   features/<feature>/  components/ (ui/)  constants/  utils/
+  tests/     Vitest + React Testing Library
 docs/                   PROJECT_SPEC.md, ROADMAP.md
 ```
 
@@ -125,8 +160,9 @@ development, error responses also include `stack`.
 
 Each feature lives in `server/src/modules/<feature>/`. Controllers stay thin and business logic goes
 in the service. Every route follows the chain
-`authenticate → authorize(...roles) → validate() → asyncHandler(controller)`. The `authenticate` and
-`authorize` middleware arrive in Phase 1.
+`authenticate → authorize(...roles) → validate() → asyncHandler(controller)`. Patient data also goes
+through `canAccessPatient()` in the service, and every sensitive read or write calls
+`audit.record()` (see `modules/users/service.ts` for the pattern).
 
 `modules/departments/validation.ts`
 
@@ -168,6 +204,9 @@ export async function getById(req: Request, res: Response) {
 
 ```ts
 import { Router } from 'express';
+import { ROLES } from '../../config/constants.js';
+import { authenticate } from '../../middlewares/authenticate.js';
+import { authorize } from '../../middlewares/authorize.js';
 import { validate } from '../../middlewares/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import * as controller from './controller.js';
@@ -175,8 +214,14 @@ import { createDepartmentSchema, departmentIdSchema } from './validation.js';
 
 const router = Router();
 
-router.post('/', validate(createDepartmentSchema), asyncHandler(controller.create));
-router.get('/:id', validate(departmentIdSchema), asyncHandler(controller.getById));
+router.post(
+  '/',
+  authenticate,
+  authorize(ROLES.ADMIN),
+  validate(createDepartmentSchema),
+  asyncHandler(controller.create),
+);
+router.get('/:id', authenticate, validate(departmentIdSchema), asyncHandler(controller.getById));
 
 export default router;
 ```
