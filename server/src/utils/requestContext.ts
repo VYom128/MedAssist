@@ -1,4 +1,5 @@
 import type { Request } from 'express';
+import type { AuthUser } from '../types/express.js';
 
 export interface RequestMeta {
   id: string;
@@ -35,5 +36,10 @@ export function buildRequestMeta(req: Request): RequestMeta {
 export function actorFromRequest(req: Request): AuditActor {
   const u = req.user;
   if (!u) return { user: null, role: null, name: null };
+  return { user: u.id, role: u.role, name: `${u.firstName} ${u.lastName}` };
+}
+
+/** A logged-in user (as passed to services) as an audit actor. */
+export function actorOf(u: AuthUser): AuditActor {
   return { user: u.id, role: u.role, name: `${u.firstName} ${u.lastName}` };
 }

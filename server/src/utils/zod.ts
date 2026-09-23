@@ -1,5 +1,6 @@
 import { isValidObjectId } from 'mongoose';
 import { z } from 'zod';
+import { isValidDateOnly, isValidTimeHHmm, isValidTimezone } from './dates.js';
 import { parseSort, type SortSpec } from './pagination.js';
 
 /** A 24-character hex MongoDB ObjectId (spec §7.1: invalid ids → 400). */
@@ -46,3 +47,41 @@ export function sortQuery(allowed: readonly string[], fallback: SortSpec) {
       return sort;
     });
 }
+
+/** Money in integer paise (spec §3.7): 0 or more, no fractions. */
+export const paise = z
+  .number()
+  .int('Must be a whole number of paise')
+  .min(0, 'Must be 0 or more')
+  .max(Number.MAX_SAFE_INTEGER);
+
+/** 24-hour clock time 'HH:mm' in the clinic timezone. */
+export const timeHHmm = z.string().trim().refine(isValidTimeHHmm, 'Use HH:mm (24-hour)');
+
+/** Calendar date 'YYYY-MM-DD'. */
+export const dateOnly = z.string().trim().refine(isValidDateOnly, 'Use a real date as YYYY-MM-DD');
+
+/** IANA timezone name ('Asia/Kolkata'). */
+export const timezone = z.string().trim().refine(isValidTimezone, 'Unknown timezone');
+
+/** `?flag=true|false` query param → boolean. */
+export const booleanQuery = z
+  .enum(['true', 'false'])
+  .transform((v) => v === 'true')
+  .optional();
+
+/** `?page` / `?limit` (spec §7.1). */
+export const paginationQuery = {
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+};
+
+/** Optional free text: trimmed, max `max` chars; an empty string clears the field (null). */
+export const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `At most ${max} characters`)
+    .transform((v) => (v === '' ? null : v))
+    .nullable()
+    .optional();

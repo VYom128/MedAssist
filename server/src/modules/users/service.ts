@@ -7,7 +7,8 @@ import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { buildMeta, type Pagination } from '../../utils/pagination.js';
 import { hashPassword } from '../../utils/password.js';
-import type { AuditActor, RequestMeta } from '../../utils/requestContext.js';
+import { containsRegex } from '../../utils/regex.js';
+import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { createPasswordResetToken } from '../auth/service.js';
 import * as sessions from '../sessions/service.js';
 import { User, type UserDoc } from './model.js';
@@ -15,14 +16,6 @@ import { toAdminView } from './serializer.js';
 import type { CreateUserInput, ListUsersQuery, UpdateUserInput } from './validation.js';
 
 type UserWithId = UserDoc & { _id: Types.ObjectId; createdAt?: Date; updatedAt?: Date };
-
-const actorOf = (u: AuthUser): AuditActor => ({
-  user: u.id,
-  role: u.role,
-  name: `${u.firstName} ${u.lastName}`,
-});
-
-const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 async function findUser(id: string): Promise<UserWithId> {
   const user = (await User.findById(id).lean()) as UserWithId | null;
@@ -39,7 +32,7 @@ export async function listUsers(query: ListUsersQuery, { page, limit, skip }: Pa
   if (query.role) filter.role = query.role;
   if (query.isActive !== undefined) filter.isActive = query.isActive;
   if (query.q) {
-    const re = new RegExp(escapeRegex(query.q), 'i');
+    const re = containsRegex(query.q);
     filter.$or = [{ firstName: re }, { lastName: re }, { email: re }];
   }
   const [items, total] = await Promise.all([

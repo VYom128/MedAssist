@@ -87,12 +87,44 @@ export const AUDIT_ACTIONS = Object.freeze({
   USER_RESET_PASSWORD: 'user.reset_password',
   AUDIT_VERIFY: 'audit.verify',
   ACCESS_DENIED: 'access.denied',
+  SETTINGS_UPDATE: 'settings.update',
+  DEPARTMENT_CREATE: 'department.create',
+  DEPARTMENT_UPDATE: 'department.update',
+  DEPARTMENT_DEACTIVATE: 'department.deactivate',
+  DEPARTMENT_ACTIVATE: 'department.activate',
+  SERVICE_CREATE: 'service.create',
+  SERVICE_UPDATE: 'service.update',
+  SERVICE_DEACTIVATE: 'service.deactivate',
+  SERVICE_ACTIVATE: 'service.activate',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /** The same user reading the same record within this window produces one audit entry (§10.4). */
 export const AUDIT_READ_DEBOUNCE_MS = 5 * 60_000;
 /** prevHash of the first audit entry. */
 export const AUDIT_GENESIS_HASH = 'GENESIS';
+
+/**
+ * Clinic settings are cached in memory (settings.service). An update refreshes the cache at once
+ * on the instance that made it; this TTL bounds how stale other API instances can be.
+ */
+export const SETTINGS_CACHE_TTL_MS = 60_000;
+
+/** Payment methods (spec §6.5 billing.paymentMethods; used by payments in Phase 7). */
+export const PAYMENT_METHODS = Object.freeze([
+  'cash',
+  'card',
+  'upi',
+  'insurance',
+  'other',
+] as const);
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+/** Languages AI patient explanations support (spec §9.3). */
+export const EXPLANATION_LANGUAGES = Object.freeze(['en', 'hi'] as const);
+
+/** Billable service types (spec §6.7). */
+export const SERVICE_TYPES = Object.freeze(['consultation', 'procedure', 'other'] as const);
+export type ServiceType = (typeof SERVICE_TYPES)[number];
 
 /** Scopes for canAccessPatient (spec §2.3). */
 export const PATIENT_ACCESS_SCOPES = Object.freeze([

@@ -117,3 +117,24 @@ export const authenticate: RequestHandler = createAuthenticate({
 export const authenticateAllowingPasswordChange: RequestHandler = createAuthenticate({
   allowPendingPasswordChange: true,
 });
+
+/**
+ * For public endpoints that show more to some roles (e.g. `?includeInactive=true` for admins).
+ * No Authorization header → anonymous (`req.user` unset). A header with a bad or expired token →
+ * the usual 401, so the client refreshes instead of silently getting the public view. A user who
+ * must change their password is treated as anonymous.
+ */
+export const optionalAuthenticate: RequestHandler = (req, res, next) => {
+  if (!req.get('authorization')) {
+    next();
+    return;
+  }
+  authenticateAllowingPasswordChange(req, res, (err?: unknown) => {
+    if (err) {
+      next(err);
+      return;
+    }
+    if (req.user?.mustChangePassword) req.user = undefined;
+    next();
+  });
+};

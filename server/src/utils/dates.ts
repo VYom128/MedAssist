@@ -1,0 +1,102 @@
+import { addDays, format, parseISO } from 'date-fns';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+
+/**
+ * Clinic time helpers (spec §3.7): dates are stored in UTC; business days and schedule clock
+ * times ('HH:mm') are in the clinic timezone.
+ */
+
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** True for a 24-hour 'HH:mm' clock time ('09:00', '23:59'). */
+export function isValidTimeHHmm(value: string): boolean {
+  return HHMM.test(value);
+}
+
+/** 'HH:mm' → minutes since midnight ('09:30' → 570). */
+export function timeToMinutes(value: string): number {
+  const match = HHMM.exec(value);
+  if (!match) throw new RangeError(`Not a valid HH:mm time: ${value}`);
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+/** Minutes since midnight → 'HH:mm' (570 → '09:30'). */
+export function minutesToTime(minutes: number): string {
+  if (!Number.isInteger(minutes) || minutes < 0 || minutes >= 24 * 60) {
+    throw new RangeError(`Minutes out of range: ${minutes}`);
+  }
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(Math.floor(minutes / 60))}:${pad(minutes % 60)}`;
+}
+
+let zones: Set<string> | undefined;
+
+/**
+ * True for an IANA timezone the runtime knows ('Asia/Kolkata'), plus 'UTC'. ICU lists canonical
+ * names only (it may list 'Asia/Calcutta' rather than 'Asia/Kolkata'), so aliases are resolved
+ * first. Abbreviations ('IST') and raw offsets ('+05:30') are rejected.
+ */
+export function isValidTimezone(value: string): boolean {
+  zones ??= new Set([...Intl.supportedValuesOf('timeZone'), 'UTC']);
+  if (zones.has(value)) return true;
+  // ICU also resolves abbreviations ('IST' → Asia/Calcutta); only accept Area/Location names.
+  if (!/^[A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+$/.test(value)) return false;
+  try {
+    const resolved = new Intl.DateTimeFormat('en-US', { timeZone: value }).resolvedOptions()
+      .timeZone;
+    return zones.has(resolved);
+  } catch {
+    return false;
+  }
+}
+
+/** True for a real calendar date in 'YYYY-MM-DD' form (rejects 2026-02-30). */
+export function isValidDateOnly(value: string): boolean {
+  if (!DATE_ONLY.test(value)) return false;
+  const d = parseISO(value);
+  return !Number.isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === value;
+}
+
+/**
+ * The UTC instant of a wall-clock time in a timezone:
+ * ('2026-10-05', '09:00', 'Asia/Kolkata') → 2026-10-05T03:30:00.000Z.
+ * In a DST gap (a time that does not exist) the result is shifted forward by the gap.
+ */
+export function zonedDateTimeToUtc(date: string, time: string, timezone: string): Date {
+  if (!isValidDateOnly(date)) throw new RangeError(`Not a valid date: ${date}`);
+  if (!isValidTimeHHmm(time)) throw new RangeError(`Not a valid HH:mm time: ${time}`);
+  return fromZonedTime(`${date}T${time}:00`, timezone);
+}
+
+/** The clinic calendar date ('YYYY-MM-DD') of an instant. */
+export function toClinicDate(instant: Date, timezone: string): string {
+  return formatInTimeZone(instant, timezone, 'yyyy-MM-dd');
+}
+
+/** Today's date in the clinic timezone. */
+export function clinicToday(timezone: string, now = new Date()): string {
+  return toClinicDate(now, timezone);
+}
+
+/** 'YYYY-MM-DD' shifted by `days` calendar days. */
+export function addDaysToDate(date: string, days: number): string {
+  return format(addDays(parseISO(date), days), 'yyyy-MM-dd');
+}
+
+const dateStringOf = (date: Date | string, timezone: string) =>
+  typeof date === 'string' ? date : toClinicDate(date, timezone);
+
+/**
+ * Start of the clinic day containing `date` (a Date, or a 'YYYY-MM-DD' clinic date), as UTC.
+ * Handles DST days (23 or 25 hours long).
+ */
+export function startOfClinicDay(date: Date | string, timezone: string): Date {
+  return zonedDateTimeToUtc(dateStringOf(date, timezone), '00:00', timezone);
+}
+
+/** Last millisecond of the clinic day containing `date`, as UTC. */
+export function endOfClinicDay(date: Date | string, timezone: string): Date {
+  const next = addDaysToDate(dateStringOf(date, timezone), 1);
+  return new Date(startOfClinicDay(next, timezone).getTime() - 1);
+}

@@ -20,7 +20,7 @@ import { api } from './helpers/testApp.js';
  * step that triggers it here.
  */
 describe('audit coverage', () => {
-  it('writes every Phase 1 action, with no secrets in any entry', async () => {
+  it('writes every action, with no secrets in any entry', async () => {
     await resetDb();
     const emails = captureEmails();
     const secrets: string[] = [TEST_PASSWORD];
@@ -113,6 +113,32 @@ describe('audit coverage', () => {
     await api()
       .post('/api/v1/auth/logout')
       .set({ Authorization: `Bearer ${again.body.data.accessToken}` });
+
+    // settings.update
+    await api().patch('/api/v1/settings').set(admin.auth).send({ tagline: 'Audit tagline' });
+
+    // department.create, department.update, department.deactivate, department.activate
+    const dept = await api()
+      .post('/api/v1/departments')
+      .set(admin.auth)
+      .send({ name: 'Audit Dept', code: 'AUD' });
+    const deptId = dept.body.data.id as string;
+    await api().patch(`/api/v1/departments/${deptId}`).set(admin.auth).send({ description: 'x' });
+    await api().post(`/api/v1/departments/${deptId}/deactivate`).set(admin.auth);
+    await api().post(`/api/v1/departments/${deptId}/activate`).set(admin.auth);
+
+    // service.create, service.update, service.deactivate, service.activate
+    const svc = await api().post('/api/v1/services').set(admin.auth).send({
+      code: 'AUD-1',
+      name: 'Audit service',
+      department: deptId,
+      type: 'consultation',
+      pricePaise: 50_000,
+    });
+    const svcId = svc.body.data.id as string;
+    await api().patch(`/api/v1/services/${svcId}`).set(admin.auth).send({ pricePaise: 55_000 });
+    await api().post(`/api/v1/services/${svcId}/deactivate`).set(admin.auth);
+    await api().post(`/api/v1/services/${svcId}/activate`).set(admin.auth);
     emails.restore();
 
     await flushAudit();

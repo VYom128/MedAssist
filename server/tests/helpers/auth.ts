@@ -1,7 +1,8 @@
+import mongoose from 'mongoose';
 import type { Response } from 'supertest';
 import { CSRF_HEADER, REFRESH_COOKIE, type Role } from '../../src/config/constants.js';
 import { AuditLog } from '../../src/modules/audit/model.js';
-import { Session } from '../../src/modules/sessions/model.js';
+import { clearSettingsCache } from '../../src/modules/settings/service.js';
 import { User } from '../../src/modules/users/model.js';
 import { flushAudit, resetAuditChainCache } from '../../src/services/audit.service.js';
 import { hashPassword } from '../../src/utils/password.js';
@@ -72,15 +73,15 @@ export function refreshWith(refreshToken: string) {
     .set(CSRF_HEADER.name, CSRF_HEADER.value);
 }
 
-/** Empties users, sessions and audit logs (audit via the raw driver: Mongoose blocks deletes). */
+/**
+ * Empties every collection through the raw driver (Mongoose blocks audit deletes by design) and
+ * forgets the cached audit chain head and clinic settings.
+ */
 export async function resetDb() {
   await flushAudit();
-  await Promise.all([
-    User.deleteMany({}),
-    Session.deleteMany({}),
-    AuditLog.collection.deleteMany({}),
-  ]);
+  await Promise.all(Object.values(mongoose.connection.collections).map((c) => c.deleteMany({})));
   resetAuditChainCache();
+  clearSettingsCache();
 }
 
 /** Audit entries for an action, oldest first (after queued writes finish). */

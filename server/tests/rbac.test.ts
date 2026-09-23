@@ -1,8 +1,18 @@
 import type { Role } from '../src/config/constants.js';
+import { Department } from '../src/modules/departments/model.js';
+import { Service } from '../src/modules/services/model.js';
 import { verifyAccessToken } from '../src/utils/tokens.js';
 import { createUser, loginAs, resetDb, TEST_PASSWORD } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
-import { ALL, ENDPOINTS, routeKey, type Ctx, type Row } from './helpers/rbacMatrix.js';
+import {
+  ALL,
+  ENDPOINTS,
+  letters,
+  PUBLIC_ENDPOINTS,
+  routeKey,
+  type Ctx,
+  type Row,
+} from './helpers/rbacMatrix.js';
 import { api } from './helpers/testApp.js';
 
 /**
@@ -20,22 +30,39 @@ async function buildContext(role: Role): Promise<Ctx> {
     .send({ email: me.user.email, password: TEST_PASSWORD });
   const target = await createUser('labtech');
   const inactive = await createUser('labtech', { isActive: false });
+  const [department, inactiveDepartment] = await Department.create([
+    { name: `Dept ${n}`, code: `D${letters(n)}` },
+    { name: `Old dept ${n}`, code: `O${letters(n)}`, isActive: false },
+  ]);
+  const [service, inactiveService] = await Service.create([
+    { code: `S-${n}`, name: 'Service', type: 'other', pricePaise: 100 },
+    { code: `OS-${n}`, name: 'Old service', type: 'other', pricePaise: 100, isActive: false },
+  ]);
   return {
     me,
     targetId: target._id.toString(),
     inactiveId: inactive._id.toString(),
     otherSessionId: verifyAccessToken(second.body.data.accessToken).sid,
+    departmentId: department!._id.toString(),
+    inactiveDepartmentId: inactiveDepartment!._id.toString(),
+    serviceId: service!._id.toString(),
+    inactiveServiceId: inactiveService!._id.toString(),
     n,
   };
 }
 
 const send = (row: Row, c: Ctx | null) => {
+  const zero = '0'.repeat(24);
   const ctx =
     c ??
     ({
-      targetId: '0'.repeat(24),
-      inactiveId: '0'.repeat(24),
-      otherSessionId: '0'.repeat(24),
+      targetId: zero,
+      inactiveId: zero,
+      otherSessionId: zero,
+      departmentId: zero,
+      inactiveDepartmentId: zero,
+      serviceId: zero,
+      inactiveServiceId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -44,7 +71,7 @@ const send = (row: Row, c: Ctx | null) => {
   return req;
 };
 
-describe('RBAC matrix (Phase 1 endpoints)', () => {
+describe('RBAC matrix', () => {
   let emails: ReturnType<typeof captureEmails>;
   beforeAll(async () => {
     await resetDb();
@@ -60,6 +87,18 @@ describe('RBAC matrix (Phase 1 endpoints)', () => {
       it(`${label} as ${role} → ${expected}`, async () => {
         const res = await send(row, await buildContext(role));
         expect(res.status, JSON.stringify(res.body)).toBe(expected);
+      });
+    }
+  }
+
+  for (const row of PUBLIC_ENDPOINTS) {
+    for (const role of [...ALL, 'anonymous'] as const) {
+      it(`public ${routeKey(row)} as ${role} → ${row.status}`, async () => {
+        const c = await buildContext(role === 'anonymous' ? 'patient' : role);
+        let req = api()[row.method](`/api/v1${row.path(c)}`);
+        if (role !== 'anonymous') req = req.set(c.me.auth);
+        const res = await req;
+        expect(res.status, JSON.stringify(res.body)).toBe(row.status);
       });
     }
   }

@@ -22,6 +22,12 @@ export interface Ctx {
   inactiveId: string;
   /** Another session of the caller (for DELETE /auth/sessions/:id). */
   otherSessionId: string;
+  /** An active and an inactive department. */
+  departmentId: string;
+  inactiveDepartmentId: string;
+  /** An active and an inactive service. */
+  serviceId: string;
+  inactiveServiceId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -36,6 +42,10 @@ export interface Row {
 
 export const ALL = ROLE_VALUES;
 export const ADMIN: readonly Role[] = ['admin'];
+
+/** 1 → 'A', 27 → 'AA': unique letter-only suffixes (department codes are letters only). */
+export const letters = (n: number): string =>
+  (n > 26 ? letters(Math.floor((n - 1) / 26)) : '') + String.fromCharCode(65 + ((n - 1) % 26));
 
 export const ENDPOINTS: Row[] = [
   // Auth (any logged-in user)
@@ -87,6 +97,76 @@ export const ENDPOINTS: Row[] = [
   // Audit logs (admin)
   { method: 'get', path: () => '/audit-logs', roles: ADMIN, status: 200 },
   { method: 'get', path: () => '/audit-logs/verify', roles: ADMIN, status: 200 },
+  // Settings (admin; GET /settings/public is in PUBLIC_ENDPOINTS)
+  { method: 'get', path: () => '/settings', roles: ADMIN, status: 200 },
+  {
+    method: 'patch',
+    path: () => '/settings',
+    body: (c) => ({ tagline: `Matrix ${c.n}` }),
+    roles: ADMIN,
+    status: 200,
+  },
+  // Departments (writes admin; reads public)
+  {
+    method: 'post',
+    path: () => '/departments',
+    body: (c) => ({ name: `Matrix ${c.n}`, code: `MX${letters(c.n)}` }),
+    roles: ADMIN,
+    status: 201,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/departments/${c.departmentId}`,
+    body: () => ({ description: 'Changed' }),
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/departments/${c.departmentId}/deactivate`,
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/departments/${c.inactiveDepartmentId}/activate`,
+    roles: ADMIN,
+    status: 200,
+  },
+  // Services (writes admin; reads public)
+  {
+    method: 'post',
+    path: () => '/services',
+    body: (c) => ({ code: `SVC-${c.n}`, name: 'Matrix service', type: 'other', pricePaise: 100 }),
+    roles: ADMIN,
+    status: 201,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/services/${c.serviceId}`,
+    body: () => ({ pricePaise: 12_345 }),
+    roles: ADMIN,
+    status: 200,
+  },
+  { method: 'post', path: (c) => `/services/${c.serviceId}/deactivate`, roles: ADMIN, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/services/${c.inactiveServiceId}/activate`,
+    roles: ADMIN,
+    status: 200,
+  },
+];
+
+/**
+ * Public reads (no token needed). rbac.test.ts checks every role and an anonymous caller get
+ * `status`; routeInventory.test.ts checks each is in its PUBLIC list.
+ */
+export const PUBLIC_ENDPOINTS: Row[] = [
+  { method: 'get', path: () => '/settings/public', roles: ALL, status: 200 },
+  { method: 'get', path: () => '/departments', roles: ALL, status: 200 },
+  { method: 'get', path: (c) => `/departments/${c.departmentId}`, roles: ALL, status: 200 },
+  { method: 'get', path: () => '/services', roles: ALL, status: 200 },
+  { method: 'get', path: (c) => `/services/${c.serviceId}`, roles: ALL, status: 200 },
 ];
 
 /** Placeholder context: turns a row's `path` into the Express pattern (`/users/:id`). */
@@ -94,6 +174,10 @@ export const PATTERN_CTX = {
   targetId: ':id',
   inactiveId: ':id',
   otherSessionId: ':id',
+  departmentId: ':id',
+  inactiveDepartmentId: ':id',
+  serviceId: ':id',
+  inactiveServiceId: ':id',
   n: 0,
 } as unknown as Ctx;
 
