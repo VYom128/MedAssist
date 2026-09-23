@@ -29,6 +29,45 @@ export const USER_CREATABLE_ROLES = Object.freeze([
 
 /** Patient portal link state (spec §4.4). Set from Phase 3. */
 export const PATIENT_LINK_STATUSES = Object.freeze(['linked', 'pending_verification'] as const);
+export type PatientLinkStatus = (typeof PATIENT_LINK_STATUSES)[number];
+
+/** Patient record enums (spec §6.11). */
+export const GENDERS = Object.freeze(['male', 'female', 'other', 'unknown'] as const);
+export type Gender = (typeof GENDERS)[number];
+export const BLOOD_GROUPS = Object.freeze([
+  'A+',
+  'A-',
+  'B+',
+  'B-',
+  'AB+',
+  'AB-',
+  'O+',
+  'O-',
+  'unknown',
+] as const);
+export const ALLERGY_SEVERITIES = Object.freeze(['mild', 'moderate', 'severe'] as const);
+/** Patient preferred language (spec §6.11); the same languages AI explanations support. */
+export const PATIENT_LANGUAGES = Object.freeze(['en', 'hi'] as const);
+/** Why a possible duplicate matched (spec §4.3): same phone + DOB, or same name + DOB. */
+export const DUPLICATE_MATCH_REASONS = Object.freeze(['phone_dob', 'name_dob'] as const);
+export type DuplicateMatchReason = (typeof DUPLICATE_MATCH_REASONS)[number];
+
+/**
+ * Patient rules: date of birth at most 120 years ago; a duplicate override or a (de)activation
+ * needs a reason of at least this many characters.
+ */
+export const PATIENT_RULES = Object.freeze({
+  maxAgeYears: 120,
+  overrideReasonMinLength: 10,
+  statusReasonMinLength: 5,
+  /** Default country for phone numbers without a +country code (spec §20). */
+  defaultPhoneCountry: 'IN',
+});
+
+/** Human-readable number sequences (spec §8.10): counter key and prefix. */
+export const SEQUENCES = Object.freeze({
+  MRN: { key: 'mrn', prefix: 'MRN' },
+} as const);
 
 /**
  * Why a session was revoked (spec §6.4, plus 'rotated' for a normal refresh and 'deactivated'
@@ -109,6 +148,14 @@ export const AUDIT_ACTIONS = Object.freeze({
   LAB_TEST_UPDATE: 'lab_test.update',
   LAB_TEST_DEACTIVATE: 'lab_test.deactivate',
   LAB_TEST_ACTIVATE: 'lab_test.activate',
+  PATIENT_CREATE: 'patient.create',
+  PATIENT_CREATE_DUPLICATE_OVERRIDE: 'patient.create_duplicate_override',
+  PATIENT_VIEW: 'patient.view',
+  PATIENT_UPDATE: 'patient.update',
+  PATIENT_UPDATE_DUPLICATE_OVERRIDE: 'patient.update_duplicate_override',
+  PATIENT_CLINICAL_PROFILE_UPDATE: 'patient.clinical_profile_update',
+  PATIENT_DEACTIVATE: 'patient.deactivate',
+  PATIENT_ACTIVATE: 'patient.activate',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /** The same user reading the same record within this window produces one audit entry (§10.4). */
@@ -172,12 +219,16 @@ export const LAB_SAMPLE_TYPES = Object.freeze([
 export const LAB_VALUE_TYPES = Object.freeze(['number', 'text', 'option'] as const);
 export const RANGE_GENDERS = Object.freeze(['male', 'female', 'any'] as const);
 
-/** Scopes for canAccessPatient (spec §2.3). */
+/**
+ * Scopes for canAccessPatient (spec §2.3). `allergies` is separate from `clinical` because
+ * receptionists may view and record allergies (safety information) but nothing else clinical.
+ */
 export const PATIENT_ACCESS_SCOPES = Object.freeze([
   'demographics',
   'clinical',
   'billing',
   'lab',
+  'allergies',
 ] as const);
 export type PatientAccessScope = (typeof PATIENT_ACCESS_SCOPES)[number];
 

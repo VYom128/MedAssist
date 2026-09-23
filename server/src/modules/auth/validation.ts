@@ -4,19 +4,7 @@ import {
   checkPasswordStrength,
   passwordSchema,
 } from '../../utils/password.js';
-import { email, idParams, namePart, phone } from '../../utils/zod.js';
-
-const MAX_AGE_YEARS = 120;
-
-/** YYYY-MM-DD date of birth: a real date, not in the future, at most 120 years ago. */
-const dateOfBirth = z.iso
-  .date('Use the format YYYY-MM-DD')
-  .transform((v) => new Date(`${v}T00:00:00.000Z`))
-  .refine((d) => d.getTime() <= Date.now(), 'Date of birth cannot be in the future')
-  .refine(
-    (d) => d.getUTCFullYear() >= new Date().getUTCFullYear() - MAX_AGE_YEARS,
-    'Enter a valid date of birth',
-  );
+import { dateOfBirth, email, idParams, namePart, phone } from '../../utils/zod.js';
 
 /**
  * POST /auth/register – patient self-signup. DOB is stored on the user until the Patient record

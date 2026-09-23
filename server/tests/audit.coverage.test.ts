@@ -20,6 +20,12 @@ import { api } from './helpers/testApp.js';
  * entry ever contains a password, token, hash or cookie. When a phase adds an action, add the
  * step that triggers it here.
  */
+/**
+ * Actions no endpoint can trigger yet. clinical_profile_update needs a doctor with a care
+ * relationship (Phase 5); patients.clinicalProfile.test.ts covers it with a stand-in policy.
+ */
+const NOT_REACHABLE_YET = new Set<string>([AUDIT_ACTIONS.PATIENT_CLINICAL_PROFILE_UPDATE]);
+
 describe('audit coverage', () => {
   it('writes every action, with no secrets in any entry', async () => {
     await resetDb();
@@ -187,12 +193,58 @@ describe('audit coverage', () => {
     await api().patch(`/api/v1/lab-tests/${testId}`).set(admin.auth).send({ pricePaise: 200 });
     await api().post(`/api/v1/lab-tests/${testId}/deactivate`).set(admin.auth);
     await api().post(`/api/v1/lab-tests/${testId}/activate`).set(admin.auth);
+    // patient.create, patient.create_duplicate_override, patient.view, patient.update,
+    // patient.update_duplicate_override, patient.deactivate, patient.activate
+    const reception = await loginAs('receptionist');
+    keep(reception.token, reception.refreshToken);
+    const patientBody = {
+      firstName: 'Anita',
+      lastName: 'Desai',
+      dateOfBirth: '1980-01-02',
+      gender: 'female',
+      phone: '9812300001',
+      consent: { dataProcessing: true },
+    };
+    const patient = await api().post('/api/v1/patients').set(reception.auth).send(patientBody);
+    const patientId = patient.body.data.id as string;
+    const twin = await api()
+      .post('/api/v1/patients')
+      .set(reception.auth)
+      .send({
+        ...patientBody,
+        firstName: 'Sunita',
+        force: true,
+        reason: 'Twin sister, same phone',
+      });
+    await api().get(`/api/v1/patients/${patientId}`).set(reception.auth);
+    await api()
+      .patch(`/api/v1/patients/${patientId}`)
+      .set(reception.auth)
+      .send({ allergies: [{ substance: 'Latex', severity: 'mild' }] });
+    await api()
+      .patch(`/api/v1/patients/${twin.body.data.id}`)
+      .set(reception.auth)
+      .send({ dateOfBirth: '1980-01-03' });
+    await api()
+      .patch(`/api/v1/patients/${twin.body.data.id}`)
+      .set(reception.auth)
+      .send({ dateOfBirth: '1980-01-02', force: true, reason: 'Corrected: twins share a DOB' });
+    await api()
+      .post(`/api/v1/patients/${patientId}/deactivate`)
+      .set(admin.auth)
+      .send({ reason: 'Moved away' });
+    await api()
+      .post(`/api/v1/patients/${patientId}/activate`)
+      .set(admin.auth)
+      .send({ reason: 'Came back' });
     emails.restore();
 
     await flushAudit();
     const entries = await AuditLog.find().lean();
     const written = new Set(entries.map((e) => e.action));
-    const missing = Object.values(AUDIT_ACTIONS).filter((a) => !written.has(a));
+    const missing = Object.values(AUDIT_ACTIONS).filter(
+      (a) => !written.has(a) && !NOT_REACHABLE_YET.has(a),
+    );
     expect(missing).toEqual([]);
 
     const stored = JSON.stringify(entries);

@@ -8,7 +8,9 @@ import { flushAudit } from '../src/services/audit.service.js';
 import { verifyAccessToken } from '../src/utils/tokens.js';
 import { createUser, loginAs, resetDb, TEST_PASSWORD } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
-import { addDoctorProfile, createDoctor } from './helpers/fixtures.js';
+import { Patient } from '../src/modules/patients/model.js';
+import { User } from '../src/modules/users/model.js';
+import { addDoctorProfile, createDoctor, createPatient } from './helpers/fixtures.js';
 import {
   ALL,
   ENDPOINTS,
@@ -63,6 +65,16 @@ async function buildContext(role: Role): Promise<Ctx> {
     { ...labTest, code: `LT-A${n}`, name: 'Lab test' },
     { ...labTest, code: `LT-B${n}`, name: 'Old lab test', isActive: false },
   ]);
+  const patient = await createPatient();
+  const otherPatient = await createPatient();
+  const inactivePatient = await createPatient({ isActive: false });
+  if (role === 'patient') {
+    await User.updateOne(
+      { _id: me.user._id },
+      { $set: { patient: patient.id, patientLinkStatus: 'linked' } },
+    );
+    await Patient.updateOne({ _id: patient.id }, { $set: { user: me.user._id } });
+  }
   return {
     me,
     targetId: target._id.toString(),
@@ -77,6 +89,9 @@ async function buildContext(role: Role): Promise<Ctx> {
     leaveId: leave._id.toString(),
     labTestId: lab!._id.toString(),
     inactiveLabTestId: inactiveLab!._id.toString(),
+    patientId: patient.id,
+    otherPatientId: otherPatient.id,
+    inactivePatientId: inactivePatient.id,
     n,
   };
 }
@@ -98,6 +113,9 @@ const send = (row: Row, c: Ctx | null) => {
       leaveId: zero,
       labTestId: zero,
       inactiveLabTestId: zero,
+      patientId: zero,
+      otherPatientId: zero,
+      inactivePatientId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -131,7 +149,7 @@ describe('RBAC matrix', () => {
   for (const row of ENDPOINTS) {
     for (const role of ALL) {
       const allowed = row.roles.includes(role);
-      const expected = allowed ? row.status : 403;
+      const expected = allowed ? (row.statusFor?.[role] ?? row.status) : 403;
       const label = routeKey(row);
       it(`${label} as ${role} → ${expected}`, async () => {
         const c = await buildContext(role);
@@ -139,7 +157,7 @@ describe('RBAC matrix', () => {
         const res = await send(row, c);
         expect(res.status, JSON.stringify(res.body)).toBe(expected);
         // Every write an allowed role makes is audited (spec §10.4).
-        if (allowed && row.method !== 'get') {
+        if (allowed && expected < 400 && row.method !== 'get') {
           expect(await auditCount(), `${label} wrote no audit entry`).toBeGreaterThan(before);
         }
       });
