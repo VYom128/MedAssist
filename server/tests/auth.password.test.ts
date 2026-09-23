@@ -1,5 +1,4 @@
 import express from 'express';
-import request from 'supertest';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { createPasswordResetLimiter } from '../src/middlewares/rateLimiters.js';
 import { requestId } from '../src/middlewares/requestId.js';
@@ -18,7 +17,7 @@ import {
   TEST_PASSWORD,
 } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
-import { api, expectErrorShape } from './helpers/testApp.js';
+import { api, expectErrorShape, serve } from './helpers/testApp.js';
 
 const NEW_PASSWORD = 'Brand-new-2026';
 
@@ -225,12 +224,14 @@ describe('password reset rate limiter', () => {
     app.post('/forgot', (_req, res) => res.json({ ok: true }));
     app.use(errorHandler);
     for (let i = 0; i < 5; i++) {
-      const res = await request(app)
+      const res = await (
+        await serve(app)
+      )()
         .post('/forgot')
         .send({ email: `u${i}@x.dev` });
       expect(res.status).toBe(200);
     }
-    const blocked = await request(app).post('/forgot').send({ email: 'another@x.dev' });
+    const blocked = await (await serve(app))().post('/forgot').send({ email: 'another@x.dev' });
     expect(blocked.status).toBe(429);
     expectErrorShape(blocked.body, 'RATE_LIMITED');
   });

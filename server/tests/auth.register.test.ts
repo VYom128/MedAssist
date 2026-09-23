@@ -1,5 +1,4 @@
 import express from 'express';
-import request from 'supertest';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { createRegisterLimiter } from '../src/middlewares/rateLimiters.js';
 import { requestId } from '../src/middlewares/requestId.js';
@@ -7,7 +6,7 @@ import { Patient } from '../src/modules/patients/model.js';
 import { User } from '../src/modules/users/model.js';
 import { verifyPassword } from '../src/utils/password.js';
 import { auditEntries, createUser, refreshCookieFrom, resetDb } from './helpers/auth.js';
-import { api, expectErrorShape } from './helpers/testApp.js';
+import { api, expectErrorShape, serve } from './helpers/testApp.js';
 
 const valid = {
   firstName: 'Priya',
@@ -152,7 +151,8 @@ describe('register rate limiter', () => {
     app.use(requestId, createRegisterLimiter());
     app.post('/register', (_req, res) => res.json({ ok: true }));
     app.use(errorHandler);
-    for (let i = 0; i < 5; i++) expect((await request(app).post('/register')).status).toBe(200);
-    expect((await request(app).post('/register')).status).toBe(429);
+    for (let i = 0; i < 5; i++)
+      expect((await (await serve(app))().post('/register')).status).toBe(200);
+    expect((await (await serve(app))().post('/register')).status).toBe(429);
   });
 });
