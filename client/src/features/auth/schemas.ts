@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { normalisePhone } from '../../utils/phone';
 
 // Mirrors server/src/modules/auth/validation.ts. The server also rejects the 1,000 most common
 // passwords; that error comes back as a field error on submit.
@@ -54,12 +55,15 @@ export const registerSchema = z
     firstName: namePart,
     lastName: namePart,
     email,
-    phone,
+    phone: z.string().refine((v) => normalisePhone(v) !== null, 'Enter a valid mobile number'),
     /** YYYY-MM-DD (from <input type="date">). */
     dateOfBirth,
     password: passwordRules,
     confirmPassword: z.string(),
     acceptTerms: z.boolean().refine((v) => v, 'You must accept the terms to create an account'),
+    consentDataProcessing: z
+      .boolean()
+      .refine((v) => v, 'Consent to data processing is required to create an account'),
   })
   .refine((v) => v.password === v.confirmPassword, {
     message: 'Passwords do not match',

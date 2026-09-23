@@ -13,7 +13,10 @@ export interface CurrentUser {
   emailVerifiedAt: string | null;
   lastLoginAt: string | null;
   avatarUrl: string | null;
+  /** Linked patient record: only once the link is confirmed (spec §4.4). */
   patientId: string | null;
+  /** Patients: 'pending_verification' until reception has checked their identity. */
+  patientLinkStatus: 'linked' | 'pending_verification' | null;
   doctorProfileId: string | null;
 }
 

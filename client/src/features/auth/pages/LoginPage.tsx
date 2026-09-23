@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
-import { ROLE_HOME } from '../../../constants/roles';
+import { homeFor } from '../../../routes/home';
 import { applyServerFieldErrors, safeNextPath } from '../../../utils/forms';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { useLoginMutation } from '../api';
@@ -26,7 +26,7 @@ export default function LoginPage() {
   const onSubmit = handleSubmit(async (values) => {
     try {
       const { user } = await login(values).unwrap();
-      const home = ROLE_HOME[user.role];
+      const home = homeFor(user);
       navigate(
         user.mustChangePassword ? '/change-password' : (safeNextPath(params.get('next')) ?? home),
         {

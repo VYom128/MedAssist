@@ -18,6 +18,7 @@ export function makeUser(role: Role, overrides: Partial<CurrentUser> = {}): Curr
     lastLoginAt: null,
     avatarUrl: null,
     patientId: null,
+    patientLinkStatus: null,
     doctorProfileId: null,
     ...overrides,
   };

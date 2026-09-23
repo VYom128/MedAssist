@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { routes } from '../src/routes/routes';
 import { http } from 'msw';
 import { authState, makeUser, renderRoutes } from './helpers';
-import { fail, ok, server, url } from './msw/server';
+import { fail, ok, PUBLIC_SETTINGS, server, url } from './msw/server';
+import { selfView } from './patients.fixtures';
 
 describe('RegisterPage', () => {
   const fillValid = async () => {
@@ -11,14 +12,29 @@ describe('RegisterPage', () => {
     await user.type(screen.getByLabelText('First name'), 'Priya');
     await user.type(screen.getByLabelText('Last name'), 'Sharma');
     await user.type(screen.getByLabelText('Email'), 'priya@example.com');
-    await user.type(screen.getByLabelText('Mobile number'), '+91 98765 43210');
+    await user.type(screen.getByLabelText('Mobile number'), '98765 43210'); // after "+91 "
     await user.type(screen.getByLabelText('Date of birth'), '1990-05-17');
     await user.type(screen.getByLabelText('Password'), 'Clinic2026!pass');
     await user.type(screen.getByLabelText('Confirm password'), 'Clinic2026!pass');
     return user;
   };
 
-  it('requires accepting the terms before calling the API', async () => {
+  const acceptAll = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole('checkbox', { name: /terms of use/ }));
+    await user.click(screen.getByRole('checkbox', { name: /processing my health information/ }));
+  };
+  const registered = (user: ReturnType<typeof makeUser>, status: string) =>
+    ok(
+      {
+        accessToken: 'a',
+        expiresIn: 900,
+        user,
+        link: { status, message: 'Message' },
+      },
+      { status: 201 },
+    );
+
+  it('requires accepting the terms and data-processing consent before calling the API', async () => {
     let called = false;
     server.use(
       http.post(url('/auth/register'), () => {
@@ -33,35 +49,87 @@ describe('RegisterPage', () => {
     expect(
       await screen.findByText('You must accept the terms to create an account'),
     ).toBeInTheDocument();
+    expect(
+      screen.getByText('Consent to data processing is required to create an account'),
+    ).toBeInTheDocument();
     expect(called).toBe(false);
   });
 
-  it('sends date of birth and acceptTerms, then lands on the patient dashboard', async () => {
-    const patient = makeUser('patient', { firstName: 'Priya' });
+  it('linked: sends DOB, E.164 phone and consent, then lands on the patient dashboard', async () => {
+    const patient = makeUser('patient', {
+      firstName: 'Priya',
+      patientId: 'p1',
+      patientLinkStatus: 'linked',
+    });
     let body: unknown;
     server.use(
       http.post(url('/auth/register'), async ({ request }) => {
         body = await request.json();
-        return ok({ accessToken: 'a', expiresIn: 900, user: patient }, { status: 201 });
+        return registered(patient, 'linked');
       }),
+      http.get(url('/patients/me'), () => ok(selfView())),
     );
     const { router } = renderRoutes(routes, '/register', authState(null));
     await screen.findByRole('heading', { name: 'Create your patient account' });
     const user = await fillValid();
-    await user.click(screen.getByRole('checkbox'));
+    await acceptAll(user);
     await user.click(screen.getByRole('button', { name: 'Create account' }));
 
     expect(await screen.findByRole('heading', { name: 'Welcome, Priya' })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/patient/dashboard');
+    expect(await screen.findByText('MRN-000001')).toBeInTheDocument();
     expect(body).toEqual({
       firstName: 'Priya',
       lastName: 'Sharma',
       email: 'priya@example.com',
-      phone: '+91 98765 43210',
+      phone: '+919876543210',
       dateOfBirth: '1990-05-17',
       password: 'Clinic2026!pass',
       acceptTerms: true,
+      consent: { dataProcessing: true },
     });
+  });
+
+  it('pending_verification: shows the photo-ID screen, still logged in', async () => {
+    const patient = makeUser('patient', {
+      firstName: 'Priya',
+      patientLinkStatus: 'pending_verification',
+    });
+    server.use(http.post(url('/auth/register'), () => registered(patient, 'pending_verification')));
+    const { router, store } = renderRoutes(routes, '/register', authState(null));
+    await screen.findByRole('heading', { name: 'Create your patient account' });
+    const user = await fillValid();
+    await acceptAll(user);
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Almost there – show your photo ID' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/photo ID/, { selector: 'p' })).toHaveTextContent(
+      'at the clinic reception to connect your records',
+    );
+    expect(router.state.location.pathname).toBe('/patient/verify-identity');
+    expect(store.getState().auth.status).toBe('authenticated');
+  });
+
+  it('generic rejection: shows the message and the clinic phone number', async () => {
+    server.use(
+      http.get(url('/settings/public'), () => ok({ ...PUBLIC_SETTINGS, phone: '+918041234567' })),
+      http.post(url('/auth/register'), () =>
+        fail(
+          422,
+          'BUSINESS_RULE_VIOLATION',
+          "We couldn't create your account. Please contact the clinic.",
+        ),
+      ),
+    );
+    renderRoutes(routes, '/register', authState(null));
+    await screen.findByRole('heading', { name: 'Create your patient account' });
+    const user = await fillValid();
+    await acceptAll(user);
+    await user.click(screen.getByRole('button', { name: 'Create account' }));
+    const alert = await screen.findByText(/We couldn't create your account/);
+    expect(alert).toHaveTextContent('call MedAssist Clinic on +91 80 4123 4567');
   });
 
   it('shows server field errors on the matching input', async () => {
@@ -75,7 +143,7 @@ describe('RegisterPage', () => {
     renderRoutes(routes, '/register', authState(null));
     await screen.findByRole('heading', { name: 'Create your patient account' });
     const user = await fillValid();
-    await user.click(screen.getByRole('checkbox'));
+    await acceptAll(user);
     await user.click(screen.getByRole('button', { name: 'Create account' }));
     expect(await screen.findByText('Must not contain your name or email')).toBeInTheDocument();
   });

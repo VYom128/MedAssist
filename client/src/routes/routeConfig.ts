@@ -89,6 +89,17 @@ export const APP_ROUTES: AppRoute[] = [
     nav: { label: 'Pending verifications', icon: ShieldCheck, badge: 'pendingLinks' },
   },
   {
+    path: '/patient/profile',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/patients/pages/MyPatientProfilePage'),
+    nav: { label: 'My details', icon: UserRound },
+  },
+  {
+    path: '/patient/verify-identity',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/patients/pages/PendingVerificationPage'),
+  },
+  {
     path: '/admin/users',
     roles: [ROLES.ADMIN],
     load: () => import('../features/users/pages/UsersPage'),
