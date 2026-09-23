@@ -11,7 +11,6 @@ const { diffChanges, verifyChain } = audit;
 async function wipe() {
   await audit.flushAudit();
   await AuditLog.collection.deleteMany({}); // raw driver call: bypasses the append-only hooks
-  audit.resetAuditChainCache();
 }
 
 /** The raw collection bypasses Mongoose hooks – how an attacker with DB access would tamper. */
@@ -96,7 +95,8 @@ describe('audit.record', () => {
         before: { passwordHash: 'old', profile: { apiToken: 't1', name: 'A' } },
         after: { PASSWORD: 'new', profile: { nested: [{ clientSecret: 's' }], name: 'B' } },
       },
-      metadata: { resetToken: 'abc', reason: 'x' },
+      // Secrets must not be hex-like: hashes and ObjectIds in the stored JSON are hex.
+      metadata: { resetToken: 'zz-reset-token', reason: 'x' },
     });
     expect(entry?.changes).toEqual({
       fields: ['passwordHash', 'profile'],
@@ -108,7 +108,9 @@ describe('audit.record', () => {
     });
     expect(entry?.metadata).toEqual({ resetToken: '[REDACTED]', reason: 'x' });
     const stored = JSON.stringify(await AuditLog.find().lean());
-    for (const secret of ['old', 'new', 't1', '"s"', 'abc']) expect(stored).not.toContain(secret);
+    for (const secret of ['old', 'new', 't1', '"s"', 'zz-reset-token']) {
+      expect(stored).not.toContain(secret);
+    }
   });
 
   it('never throws when a write fails: logs at error level, returns null, and recovers', async () => {
@@ -251,5 +253,33 @@ describe('diffChanges', () => {
 
   it('returns no fields when nothing changed', () => {
     expect(diffChanges({ a: 1 }, { a: 1 }, ['a']).fields).toEqual([]);
+  });
+});
+
+describe('audit chain with other writers (seed, another API instance)', () => {
+  beforeEach(wipe);
+
+  it('links onto entries written by another process instead of losing its own', async () => {
+    vi.resetModules();
+    const other = await import('../src/services/audit.service.js');
+    expect(other).not.toBe(audit); // a separate writer with its own queue
+
+    await audit.record({ action: AUDIT_ACTIONS.AUTH_LOGIN, actor });
+    await other.record({ action: AUDIT_ACTIONS.AUTH_LOGOUT, actor });
+    const third = await audit.record({ action: AUDIT_ACTIONS.AUTH_LOGIN, actor });
+
+    expect(third?.seq).toBe(3);
+    expect(await AuditLog.countDocuments()).toBe(3);
+    expect(await verifyChain()).toEqual({ ok: true, checked: 3 });
+  });
+
+  it('starts again from GENESIS after another process wiped the log (seed --reset)', async () => {
+    await audit.record({ action: AUDIT_ACTIONS.AUTH_LOGIN, actor });
+    await audit.record({ action: AUDIT_ACTIONS.AUTH_LOGIN, actor });
+    await AuditLog.collection.deleteMany({}); // what `npm run seed -- --reset` does
+
+    const next = await audit.record({ action: AUDIT_ACTIONS.AUTH_LOGIN, actor });
+    expect(next).toMatchObject({ seq: 1, prevHash: AUDIT_GENESIS_HASH });
+    expect(await verifyChain()).toEqual({ ok: true, checked: 1 });
   });
 });

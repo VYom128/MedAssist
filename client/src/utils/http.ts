@@ -80,3 +80,23 @@ export function getErrorMessage(err: unknown): string {
   }
   return 'Something went wrong';
 }
+
+/** Page meta of list responses (spec §7.1). */
+export interface PageMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+/** A page of a list endpoint. */
+export interface Paged<T> {
+  items: T[];
+  meta: PageMeta;
+}
+
+/** RTK Query `transformResponse` for list endpoints. */
+export const toPaged = <T>(res: ApiSuccess<T[]>): Paged<T> => ({
+  items: res.data,
+  meta: res.meta as unknown as PageMeta,
+});

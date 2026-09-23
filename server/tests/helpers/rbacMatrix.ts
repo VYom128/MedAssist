@@ -1,4 +1,5 @@
 import { ROLE_VALUES, type Role } from '../../src/config/constants.js';
+import { addDaysToDate, clinicToday } from '../../src/utils/dates.js';
 import type { LoggedIn } from './auth.js';
 import { TEST_PASSWORD } from './auth.js';
 
@@ -12,7 +13,7 @@ import { TEST_PASSWORD } from './auth.js';
  * another fixture).
  */
 
-export type Method = 'get' | 'post' | 'patch' | 'delete';
+export type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 export interface Ctx {
   me: LoggedIn;
@@ -22,6 +23,21 @@ export interface Ctx {
   inactiveId: string;
   /** Another session of the caller (for DELETE /auth/sessions/:id). */
   otherSessionId: string;
+  /** An active and an inactive department. */
+  departmentId: string;
+  inactiveDepartmentId: string;
+  /** An active and an inactive service. */
+  serviceId: string;
+  inactiveServiceId: string;
+  /** A doctor with a profile: the caller when the caller is a doctor ("own" rows). */
+  doctorId: string;
+  /** Another doctor with a profile ("not own" rows). */
+  otherDoctorId: string;
+  /** Future leave of `doctorId`. */
+  leaveId: string;
+  /** An active and an inactive lab test. */
+  labTestId: string;
+  inactiveLabTestId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -36,6 +52,17 @@ export interface Row {
 
 export const ALL = ROLE_VALUES;
 export const ADMIN: readonly Role[] = ['admin'];
+const ADMIN_DOCTOR: readonly Role[] = ['admin', 'doctor'];
+const ADMIN_DOCTOR_RECEPTION: readonly Role[] = ['admin', 'doctor', 'receptionist'];
+const ADMIN_RECEPTION: readonly Role[] = ['admin', 'receptionist'];
+
+/** A clinic date `days` from today (clinic timezone = the settings default). */
+const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
+const WEEK = [{ weekday: 1, sessions: [{ start: '09:00', end: '13:00' }] }];
+
+/** 1 → 'A', 27 → 'AA': unique letter-only suffixes (department codes are letters only). */
+export const letters = (n: number): string =>
+  (n > 26 ? letters(Math.floor((n - 1) / 26)) : '') + String.fromCharCode(65 + ((n - 1) % 26));
 
 export const ENDPOINTS: Row[] = [
   // Auth (any logged-in user)
@@ -87,6 +114,202 @@ export const ENDPOINTS: Row[] = [
   // Audit logs (admin)
   { method: 'get', path: () => '/audit-logs', roles: ADMIN, status: 200 },
   { method: 'get', path: () => '/audit-logs/verify', roles: ADMIN, status: 200 },
+  // Settings (admin; GET /settings/public is in PUBLIC_ENDPOINTS)
+  { method: 'get', path: () => '/settings', roles: ADMIN, status: 200 },
+  {
+    method: 'patch',
+    path: () => '/settings',
+    body: (c) => ({ tagline: `Matrix ${c.n}` }),
+    roles: ADMIN,
+    status: 200,
+  },
+  // Departments (writes admin; reads public)
+  {
+    method: 'post',
+    path: () => '/departments',
+    body: (c) => ({ name: `Matrix ${c.n}`, code: `MX${letters(c.n)}` }),
+    roles: ADMIN,
+    status: 201,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/departments/${c.departmentId}`,
+    body: () => ({ description: 'Changed' }),
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/departments/${c.departmentId}/deactivate`,
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/departments/${c.inactiveDepartmentId}/activate`,
+    roles: ADMIN,
+    status: 200,
+  },
+  // Services (writes admin; reads public)
+  {
+    method: 'post',
+    path: () => '/services',
+    body: (c) => ({ code: `SVC-${c.n}`, name: 'Matrix service', type: 'other', pricePaise: 100 }),
+    roles: ADMIN,
+    status: 201,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/services/${c.serviceId}`,
+    body: () => ({ pricePaise: 12_345 }),
+    roles: ADMIN,
+    status: 200,
+  },
+  { method: 'post', path: (c) => `/services/${c.serviceId}/deactivate`, roles: ADMIN, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/services/${c.inactiveServiceId}/activate`,
+    roles: ADMIN,
+    status: 200,
+  },
+  // Doctors (spec §7.6). "Own" rows use the caller as the doctor when the caller is a doctor;
+  // "other" rows show a doctor cannot act on another doctor.
+  {
+    method: 'post',
+    path: () => '/doctors',
+    body: (c) => ({
+      firstName: 'Matrix',
+      lastName: 'Doctor',
+      email: `matrix.dr${c.n}@clinic.dev`,
+      department: c.departmentId,
+      specialization: 'General Physician',
+      registrationNumber: `MX-${c.n}`,
+    }),
+    roles: ADMIN,
+    status: 201,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/doctors/${c.doctorId}`,
+    body: () => ({ bio: 'Matrix bio' }),
+    roles: ADMIN_DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/doctors/${c.otherDoctorId}`,
+    body: () => ({ bio: 'Matrix bio' }),
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/doctors/${c.doctorId}/schedule`,
+    roles: ADMIN_DOCTOR_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/doctors/${c.otherDoctorId}/schedule`,
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'put',
+    path: (c) => `/doctors/${c.doctorId}/schedule`,
+    body: () => ({ effectiveFrom: clinicDay(1), days: WEEK }),
+    roles: ADMIN_DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'put',
+    path: (c) => `/doctors/${c.otherDoctorId}/schedule`,
+    body: () => ({ effectiveFrom: clinicDay(1), days: WEEK }),
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/doctors/${c.doctorId}/leaves`,
+    roles: ADMIN_DOCTOR_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/doctors/${c.otherDoctorId}/leaves`,
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/doctors/${c.doctorId}/leaves`,
+    body: () => ({ date: clinicDay(14), fullDay: true }),
+    roles: ADMIN_DOCTOR,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/doctors/${c.otherDoctorId}/leaves`,
+    body: () => ({ date: clinicDay(14), fullDay: true }),
+    roles: ADMIN,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/doctors/${c.doctorId}/leaves/${c.leaveId}/cancel`,
+    roles: ADMIN_DOCTOR,
+    status: 200,
+  },
+  // Lab test catalogue (spec §7.14): reads for any logged-in user, writes admin
+  { method: 'get', path: () => '/lab-tests', roles: ALL, status: 200 },
+  { method: 'get', path: (c) => `/lab-tests/${c.labTestId}`, roles: ALL, status: 200 },
+  {
+    method: 'post',
+    path: () => '/lab-tests',
+    body: (c) => ({
+      code: `LT-${c.n}`,
+      name: 'Matrix test',
+      category: 'other',
+      sampleType: 'blood',
+      pricePaise: 100,
+      parameters: [{ key: 'value', name: 'Value', valueType: 'text' }],
+    }),
+    roles: ADMIN,
+    status: 201,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/lab-tests/${c.labTestId}`,
+    body: () => ({ pricePaise: 4_321 }),
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-tests/${c.labTestId}/deactivate`,
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-tests/${c.inactiveLabTestId}/activate`,
+    roles: ADMIN,
+    status: 200,
+  },
+];
+
+/**
+ * Public reads (no token needed). rbac.test.ts checks every role and an anonymous caller get
+ * `status`; routeInventory.test.ts checks each is in its PUBLIC list.
+ */
+export const PUBLIC_ENDPOINTS: Row[] = [
+  { method: 'get', path: () => '/settings/public', roles: ALL, status: 200 },
+  { method: 'get', path: () => '/departments', roles: ALL, status: 200 },
+  { method: 'get', path: (c) => `/departments/${c.departmentId}`, roles: ALL, status: 200 },
+  { method: 'get', path: () => '/services', roles: ALL, status: 200 },
+  { method: 'get', path: (c) => `/services/${c.serviceId}`, roles: ALL, status: 200 },
+  { method: 'get', path: () => '/doctors', roles: ALL, status: 200 },
+  { method: 'get', path: (c) => `/doctors/${c.doctorId}`, roles: ALL, status: 200 },
 ];
 
 /** Placeholder context: turns a row's `path` into the Express pattern (`/users/:id`). */
@@ -94,6 +317,15 @@ export const PATTERN_CTX = {
   targetId: ':id',
   inactiveId: ':id',
   otherSessionId: ':id',
+  departmentId: ':id',
+  inactiveDepartmentId: ':id',
+  serviceId: ':id',
+  inactiveServiceId: ':id',
+  doctorId: ':id',
+  otherDoctorId: ':id',
+  leaveId: ':leaveId',
+  labTestId: ':id',
+  inactiveLabTestId: ':id',
   n: 0,
 } as unknown as Ctx;
 

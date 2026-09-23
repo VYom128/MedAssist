@@ -5,9 +5,22 @@ import { createPortal } from 'react-dom';
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+const PANEL = {
+  dialog: {
+    wrapper: 'items-end justify-center sm:items-center sm:p-4',
+    panel: 'max-h-[90vh] w-full rounded-t-2xl sm:rounded-2xl',
+  },
+  drawer: {
+    wrapper: 'items-end justify-center sm:items-stretch sm:justify-end',
+    panel: 'max-h-[90vh] w-full rounded-t-2xl sm:h-full sm:max-h-none sm:rounded-none',
+  },
+};
+const SIZES = { md: 'sm:max-w-lg', lg: 'sm:max-w-2xl' };
+
 /**
  * Accessible modal dialog: focus moves inside on open and returns on close, Tab stays inside,
- * Escape and the backdrop close it. Full-width sheet on phones, centred card from `sm`.
+ * Escape and the backdrop close it. Full-width sheet on phones; from `sm` a centred card
+ * (`variant="dialog"`) or a panel on the right (`variant="drawer"`).
  */
 export default function Modal({
   open,
@@ -15,12 +28,16 @@ export default function Modal({
   onClose,
   children,
   footer,
+  variant = 'dialog',
+  size = 'md',
 }: {
   open: boolean;
   title: string;
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  variant?: 'dialog' | 'drawer';
+  size?: 'md' | 'lg';
 }) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
@@ -61,7 +78,7 @@ export default function Modal({
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+    <div className={`fixed inset-0 z-50 flex ${PANEL[variant].wrapper}`}>
       <div className="absolute inset-0 bg-slate-900/40" aria-hidden="true" onClick={onClose} />
       <div
         ref={panel}
@@ -69,7 +86,7 @@ export default function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="relative max-h-[90vh] w-full overflow-y-auto rounded-t-2xl bg-white shadow-xl sm:max-w-lg sm:rounded-2xl"
+        className={`relative flex flex-col overflow-y-auto bg-white shadow-xl ${PANEL[variant].panel} ${SIZES[size]}`}
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h2 id={titleId} className="text-lg font-semibold">
@@ -84,7 +101,7 @@ export default function Modal({
             <X className="h-5 w-5" aria-hidden="true" />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+        <div className="flex-1 px-5 py-4">{children}</div>
         {footer && (
           <div className="flex flex-col-reverse gap-2 border-t border-slate-100 px-5 py-4 sm:flex-row sm:justify-end">
             {footer}

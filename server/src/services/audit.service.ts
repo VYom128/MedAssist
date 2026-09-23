@@ -144,19 +144,23 @@ export async function verifyChain(): Promise<ChainVerification> {
 }
 
 // ---- Serialised writer ---------------------------------------------------------------------
-// All writes go through one promise chain so two writes never read the same prevHash (spec
-// §10.5). This keeps the chain linear within one API process; the unique `seq` index makes a
-// second process's conflicting write fail instead of forking the chain.
+// All writes go through one promise chain so two writes in this process never read the same
+// prevHash (spec §10.5). The head is read from the database for every write (one indexed query),
+// so entries written by another process (the seed, a second API instance, a --reset wipe) are
+// picked up instead of chaining onto a stale or deleted entry. If another process takes the same
+// `seq` at the same moment, the unique index rejects this write and it is retried on the new head.
 
 let tail: Promise<unknown> = Promise.resolve();
-let head: { seq: number; hash: string } | null = null;
+const MAX_WRITE_ATTEMPTS = 3;
 
-async function loadHead() {
-  if (head) return head;
+async function readHead(): Promise<{ seq: number; hash: string }> {
   const last = await AuditLog.findOne({}, { seq: 1, hash: 1 }).sort({ seq: -1 }).lean();
-  head = last ? { seq: last.seq, hash: last.hash } : { seq: 0, hash: AUDIT_GENESIS_HASH };
-  return head;
+  return last ? { seq: last.seq, hash: last.hash } : { seq: 0, hash: AUDIT_GENESIS_HASH };
 }
+
+const isSeqConflict = (err: unknown) =>
+  (err as { code?: number; keyPattern?: Record<string, unknown> })?.code === 11000 &&
+  'seq' in ((err as { keyPattern?: Record<string, unknown> }).keyPattern ?? { seq: 1 });
 
 function toDocument(input: AuditEntryInput, seq: number, prevHash: string) {
   const actor =
@@ -185,18 +189,18 @@ function toDocument(input: AuditEntryInput, seq: number, prevHash: string) {
 }
 
 async function write(input: AuditEntryInput): Promise<AuditEntry> {
-  const { seq, hash: prevHash } = await loadHead();
-  const doc = toDocument(input, seq + 1, prevHash);
-  // Hash exactly what will be stored (after Mongoose casting and defaults).
-  doc.hash = computeHash(doc.toObject() as Record<string, unknown>);
-  try {
-    await doc.save();
-  } catch (err) {
-    head = null; // re-read the real head next time (e.g. another process wrote meanwhile)
-    throw err;
+  for (let attempt = 1; ; attempt += 1) {
+    const { seq, hash: prevHash } = await readHead();
+    const doc = toDocument(input, seq + 1, prevHash);
+    // Hash exactly what will be stored (after Mongoose casting and defaults).
+    doc.hash = computeHash(doc.toObject() as Record<string, unknown>);
+    try {
+      await doc.save();
+      return doc.toObject() as AuditEntry;
+    } catch (err) {
+      if (!isSeqConflict(err) || attempt >= MAX_WRITE_ATTEMPTS) throw err;
+    }
   }
-  head = { seq: doc.seq, hash: doc.hash };
-  return doc.toObject() as AuditEntry;
 }
 
 function enqueue(task: () => Promise<AuditEntry | null>, action: string) {
@@ -244,9 +248,4 @@ export function recordRead(input: AuditEntryInput): Promise<AuditEntry | null> {
 /** Resolves when every queued audit write has finished (graceful shutdown, tests). */
 export async function flushAudit(): Promise<void> {
   await tail;
-}
-
-/** Forgets the cached chain head so the next write re-reads it (tests that wipe the collection). */
-export function resetAuditChainCache(): void {
-  head = null;
 }

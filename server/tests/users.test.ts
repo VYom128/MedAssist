@@ -109,7 +109,7 @@ describe('/users (admin)', () => {
       emails.restore();
     });
 
-    it.each(['admin', 'doctor', 'labtech'])('creates a %s account', async (role) => {
+    it.each(['admin', 'labtech'])('creates a %s account', async (role) => {
       const emails = captureEmails();
       const res = await api()
         .post('/api/v1/users')
@@ -118,6 +118,18 @@ describe('/users (admin)', () => {
       expect(res.status).toBe(201);
       expect(res.body.data.role).toBe(role);
       emails.restore();
+    });
+
+    it('rejects role doctor, pointing to POST /doctors', async () => {
+      const res = await api()
+        .post('/api/v1/users')
+        .set(admin.auth)
+        .send({ firstName: 'A', lastName: 'B', email: 'dr@b.dev', role: 'doctor' });
+      expect(res.status).toBe(400);
+      expect(expectErrorShape(res.body, 'VALIDATION_ERROR').error.details).toEqual([
+        { field: 'body.role', message: expect.stringContaining('POST /doctors') },
+      ]);
+      expect(await User.exists({ email: 'dr@b.dev' })).toBeNull();
     });
 
     it.each(['patient', 'superuser'])('rejects role %s', async (role) => {

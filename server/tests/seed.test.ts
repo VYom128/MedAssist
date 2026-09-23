@@ -1,53 +1,190 @@
 import { AuditLog } from '../src/modules/audit/model.js';
+import { Department } from '../src/modules/departments/model.js';
+import { DoctorProfile } from '../src/modules/doctors/model.js';
+import { LabTest } from '../src/modules/labTests/model.js';
+import { DoctorLeave } from '../src/modules/leaves/model.js';
+import { DoctorSchedule } from '../src/modules/schedules/model.js';
+import { Service } from '../src/modules/services/model.js';
+import { ClinicSettings } from '../src/modules/settings/model.js';
 import { User } from '../src/modules/users/model.js';
-import { demoLoginTable, runSeed } from '../src/seed/index.js';
+import { doctorSeeds } from '../src/seed/data/clinic.js';
+import { demoLogins, demoLoginTable, runSeed, summaryTable } from '../src/seed/index.js';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../src/seed/users.js';
 import { resetDb } from './helpers/auth.js';
+import { captureEmails } from './helpers/email.js';
 import { api } from './helpers/testApp.js';
 
 describe('seed', () => {
+  beforeAll(() => Promise.all([DoctorProfile.init(), DoctorSchedule.init()]));
   beforeEach(resetDb);
 
-  it('creates one login per role that can sign in with the demo password', async () => {
+  it('builds a configured clinic', async () => {
+    const emails = captureEmails();
     const summary = await runSeed();
-    expect(summary).toEqual({ users: { created: DEMO_ACCOUNTS.length, updated: 0 } });
+    expect(summary).toEqual({
+      users: { created: DEMO_ACCOUNTS.length, updated: 0 },
+      settings: { created: 0, updated: 1, unchanged: 0 },
+      departments: { created: 5, updated: 0, unchanged: 0 },
+      services: { created: 12, updated: 0, unchanged: 0 },
+      doctors: { created: 8, updated: 0, unchanged: 0, schedules: 8, leaves: 2 },
+      labTests: { created: 15, updated: 0, unchanged: 0 },
+    });
 
-    const roles = new Set((await User.find().lean()).map((u) => u.role));
-    expect([...roles].sort()).toEqual(['admin', 'doctor', 'labtech', 'patient', 'receptionist']);
+    const settings = await ClinicSettings.findOne().lean();
+    expect(settings).toMatchObject({
+      name: 'MedAssist Clinic',
+      timezone: 'Asia/Kolkata',
+      currency: 'INR',
+      workingDays: [1, 2, 3, 4, 5, 6],
+      address: { city: 'Bengaluru' },
+      billing: { defaultTaxRateBps: 0 },
+    });
+    expect((await Department.find().lean()).map((d) => d.code).sort()).toEqual([
+      'DER',
+      'ENT',
+      'GEN',
+      'ORT',
+      'PED',
+    ]);
+    expect(await Service.countDocuments({ type: 'procedure' })).toBe(4);
+    expect(await User.countDocuments({ role: 'receptionist' })).toBe(2);
+    expect(await User.countDocuments({ role: 'labtech' })).toBe(2);
 
-    for (const email of [
-      'admin@medassist.dev',
-      'dr.mehta@medassist.dev',
-      'patient1@medassist.dev',
-    ]) {
+    // Doctors: profiles in the right departments, 7-day schedules with Sunday off.
+    const gen = await Department.findOne({ code: 'GEN' }).lean();
+    const mehta = await User.findOne({ email: 'dr.mehta@medassist.dev' }).lean();
+    expect(await DoctorProfile.findOne({ user: mehta!._id }).lean()).toMatchObject({
+      department: gen!._id,
+      specialization: 'General Physician',
+    });
+    const iyer = await User.findOne({ email: 'dr.iyer@medassist.dev' }).lean();
+    const ped = await Department.findOne({ code: 'PED' }).lean();
+    expect((await DoctorProfile.findOne({ user: iyer!._id }).lean())?.department).toEqual(ped!._id);
+    expect(await DoctorProfile.countDocuments()).toBe(8);
+    expect(await DoctorSchedule.countDocuments()).toBe(56);
+    expect(
+      await DoctorSchedule.countDocuments({ weekday: 0, 'sessions.0': { $exists: true } }),
+    ).toBe(0);
+    expect(
+      await DoctorSchedule.countDocuments({ weekday: 6, 'sessions.0': { $exists: true } }),
+    ).toBeGreaterThan(0);
+
+    const leaves = await DoctorLeave.find().lean();
+    expect(leaves.map((l) => l.type).sort()).toEqual(['conference', 'leave']);
+    const conference = leaves.find((l) => l.type === 'conference')!;
+    expect((conference.endAt.getTime() - conference.startAt.getTime()) / 86_400_000).toBe(3);
+
+    expect(await LabTest.countDocuments()).toBe(15);
+    expect((await LabTest.findOne({ code: 'DENGUE-NS1' }).lean())?.parameters[0]).toMatchObject({
+      valueType: 'option',
+      options: ['Negative', 'Positive'],
+    });
+
+    // No welcome emails: the seed sets demo passwords instead.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(emails.sent).toHaveLength(0);
+    emails.restore();
+  });
+
+  it('every demo login works with the demo password, without a forced change', async () => {
+    await runSeed();
+    const logins = demoLogins();
+    expect(logins).toHaveLength(DEMO_ACCOUNTS.length + 8);
+    for (const { email } of logins) {
       const res = await api().post('/api/v1/auth/login').send({ email, password: DEMO_PASSWORD });
       expect(res.status, email).toBe(200);
-      expect(res.body.data.user.mustChangePassword).toBe(false);
+      expect(res.body.data.user.mustChangePassword, email).toBe(false);
     }
   });
 
-  it('is idempotent and repairs demo accounts (upsert)', async () => {
+  it('is idempotent: a second run creates and changes nothing', async () => {
     await runSeed();
+    const countsBefore = await Promise.all(
+      [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest].map((m) =>
+        (m as typeof User).countDocuments(),
+      ),
+    );
+    const auditBefore = await AuditLog.countDocuments({ 'request.method': 'SEED' });
+
+    const summary = await runSeed();
+    expect(summary).toEqual({
+      users: { created: 0, updated: DEMO_ACCOUNTS.length },
+      settings: { created: 0, updated: 0, unchanged: 1 },
+      departments: { created: 0, updated: 0, unchanged: 5 },
+      services: { created: 0, updated: 0, unchanged: 12 },
+      doctors: { created: 0, updated: 0, unchanged: 8, schedules: 0, leaves: 0 },
+      labTests: { created: 0, updated: 0, unchanged: 15 },
+    });
+    const countsAfter = await Promise.all(
+      [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest].map((m) =>
+        (m as typeof User).countDocuments(),
+      ),
+    );
+    expect(countsAfter).toEqual(countsBefore);
+    // Services only audit real changes, so nothing new was audited.
+    expect(await AuditLog.countDocuments({ 'request.method': 'SEED' })).toBe(auditBefore);
+  });
+
+  it('repairs demo data: accounts, deactivated records, and a Phase 1 doctor without a profile', async () => {
+    // A Phase 1 database: dr.mehta exists as a User with no profile.
+    await User.create({
+      firstName: 'Anil',
+      lastName: 'Mehta',
+      email: 'dr.mehta@medassist.dev',
+      passwordHash: 'x',
+      role: 'doctor',
+      mustChangePassword: true,
+    });
+    await runSeed();
+    const mehta = await User.findOne({ email: 'dr.mehta@medassist.dev' }).lean();
+    expect(await DoctorProfile.exists({ user: mehta!._id })).not.toBeNull();
+    expect(mehta).toMatchObject({ mustChangePassword: false, isActive: true });
+
     await User.updateOne(
       { email: 'lab1@medassist.dev' },
       {
         $set: { isActive: false, mustChangePassword: true, lockUntil: new Date(Date.now() + 1e6) },
       },
     );
-
+    await LabTest.updateOne({ code: 'CBC' }, { $set: { isActive: false, pricePaise: 1 } });
     const summary = await runSeed();
-    expect(summary).toEqual({ users: { created: 0, updated: DEMO_ACCOUNTS.length } });
-    expect(await User.countDocuments()).toBe(DEMO_ACCOUNTS.length);
+    expect(summary.labTests).toEqual({ created: 0, updated: 1, unchanged: 14 });
+    expect(await LabTest.findOne({ code: 'CBC' }).lean()).toMatchObject({
+      isActive: true,
+      pricePaise: 35_000,
+    });
     const lab = await User.findOne({ email: 'lab1@medassist.dev' }).lean();
     expect(lab).toMatchObject({ isActive: true, mustChangePassword: false });
     expect(lab?.lockUntil).toBeUndefined();
   });
 
-  it('audits what it did as the system', async () => {
+  it('audits through the services, marked as the seed', async () => {
     await runSeed();
-    const entries = await AuditLog.find({ 'metadata.source': 'seed' }).lean();
-    expect(entries).toHaveLength(DEMO_ACCOUNTS.length);
-    expect(entries.every((e) => e.actor?.user === null && e.action === 'user.create')).toBe(true);
+    const users = await AuditLog.find({ 'metadata.source': 'seed' }).lean();
+    expect(users).toHaveLength(DEMO_ACCOUNTS.length);
+    expect(users.every((e) => e.actor?.user === null && e.action === 'user.create')).toBe(true);
+
+    const viaServices = await AuditLog.find({ 'request.method': 'SEED' }).lean();
+    const actions = new Set(viaServices.map((e) => e.action));
+    for (const action of [
+      'settings.update',
+      'department.create',
+      'service.create',
+      'doctor.create',
+      'doctor.schedule_update',
+      'doctor.leave_create',
+      'lab_test.create',
+    ]) {
+      expect(actions.has(action as never), action).toBe(true);
+    }
+    expect(viaServices.every((e) => e.request?.path === 'npm run seed')).toBe(true);
+  });
+
+  it('doctor data is the same on every run (fixed faker seed)', () => {
+    expect(doctorSeeds()).toEqual(doctorSeeds());
+    const emails = doctorSeeds().map((d) => d.email);
+    expect(new Set(emails).size).toBe(8);
+    expect(emails.slice(0, 2)).toEqual(['dr.mehta@medassist.dev', 'dr.iyer@medassist.dev']);
   });
 
   it('only allows --reset in development', async () => {
@@ -56,9 +193,12 @@ describe('seed', () => {
     );
   });
 
-  it('prints a table of the demo logins', () => {
+  it('prints a table of the demo logins and a summary', () => {
     const table = demoLoginTable();
     expect(table.split('\n')[0]).toMatch(/^Role\s+Email\s+Password$/);
-    for (const a of DEMO_ACCOUNTS) expect(table).toContain(a.email);
+    for (const a of demoLogins()) expect(table).toContain(a.email);
+    expect(summaryTable({ departments: { created: 5, updated: 0 } })).toMatch(
+      /departments\s+5 created, 0 updated/,
+    );
   });
 });

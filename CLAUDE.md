@@ -8,7 +8,7 @@ MERN capstone: a clinic management system for admins, doctors, receptionists, la
 Read the relevant spec sections for the current phase before planning. Do not read the whole spec every time.
 
 ## Current phase
-**Phase 2 – Admin setup data.** Spec: §4.2, §6.5–6.10, §6.19, §7.4–7.6, §15.3. Only build what the current phase prompt asks for. Do not build features from later phases early. If something from a later phase seems needed, ask first.
+**Phase 3 – Patients.** Spec: §4.3–4.4, §6.11, §7.7, §12.1 (and §2.3/§2.5 for access and field visibility). Only build what the current phase prompt asks for. Do not build features from later phases early. If something from a later phase seems needed, ask first.
 
 ## Stack
 - Monorepo with npm workspaces: `server/` and `client/`
@@ -22,8 +22,8 @@ Read the relevant spec sections for the current phase before planning. Do not re
 - `npm run dev` – run server + client (`dev:server` / `dev:client` for one side). Dev API port is 5001 (macOS AirPlay holds 5000).
 - `npm test` – server then client tests (`npm run test:client` for client only); `npm run test:coverage -w server` for coverage
 - `npm run lint` / `npm run lint:fix` / `npm run format` / `npm run format:check` / `npm run typecheck`
-- `npm run seed` – seed demo data (Phase 1: one account per role, password `Password@123`); `npm run seed -- --reset` wipes first
-- `npm run smoke` – API smoke test against the seeded DB. Reuses a server already running on `PORT` (and leaves it running); otherwise starts a temporary one on a free port and stops only that.
+- `npm run seed` – seed demo data (clinic set-up, staff, 8 doctors, lab tests; password `Password@123`); `npm run seed -- --reset` wipes first. Needs MongoDB as a replica set.
+- `npm run smoke` – API smoke test against the seeded DB (auth, RBAC, audit chain, Phase 2 data, public field exposure, all demo logins). Reuses a server already running on `PORT` (and leaves it running); otherwise starts a temporary one on a free port and stops only that.
 
 ## Backend conventions (always follow)
 - Features live in `server/src/modules/<feature>/` with `model.js`, `service.js`, `controller.js`, `routes.js`, `validation.js`, `serializer.js`.
@@ -66,6 +66,18 @@ Read the relevant spec sections for the current phase before planning. Do not re
 - **RBAC matrix**: every new protected endpoint needs a row in `server/tests/helpers/rbacMatrix.ts`: `{ method, path: (c) => url, body?: (c) => validBody, roles, status }`. `rbac.test.ts` runs it for every role; `routeInventory.test.ts` fails if a mounted route has no row or answers without a token.
 - Append-only collections use `applyAppendOnly(schema, 'Label')` from `utils/appendOnly.ts`.
 - Tests: `loginAs(role)`, `createUser()`, `resetDb()`, `refreshWith()` in `tests/helpers/auth.ts`; `captureEmails()` in `tests/helpers/email.ts`.
+
+## Phase 2 building blocks (reuse, don't reinvent)
+- **Clinic settings**: server `getSettings()` from `modules/settings/service.ts` (cached; never query `ClinicSettings` directly). Client: `useGetPublicSettingsQuery()` (loaded at app start) and `getClinicTimezone()`.
+- **Money** (integer paise, never floats): server `utils/money.ts` (`assertPaise`, `rupeesToPaise`, `paiseToRupees`) and the Zod `paise` helper in `utils/zod.ts`; client `utils/money.ts` (`formatINR`, `rupeesToPaise`, `paiseToRupees`, `percentToBps`) and `components/ui/MoneyInput` (type ₹, value paise). Tax rates are basis points.
+- **Dates**: server `utils/dates.ts` (`zonedDateTimeToUtc`, `startOfClinicDay`/`endOfClinicDay`, `clinicToday`, `toClinicDate`, `calendarDate` for date-only fields, `timeToMinutes`); client `utils/dates.ts` (`formatDate`/`formatDateTime`/`formatTime`, `toUtcFromClinic`, `clinicDate`, `formatInClinic`). Store instants in UTC; clock times are `HH:mm` clinic time; never use `toLocale*` or `new Date(y, m, d)` for business days.
+- **Numbers** (MRN, APT, INV…): `services/counter.service.ts` `nextSequence(key, { session })` + `formatNumber(prefix, seq, { year })` (§8.10). Pass the transaction `session`.
+- **Transactions**: `withTransaction(async (session) => …)` from `utils/transaction.ts`; send emails and write audit entries after it resolves.
+- **Doctors**: a doctor is identified by their **User id**. `findDoctor(id)` (doctors service) loads the profile; "own" rules live in `policies/doctorAccess.ts`. Availability: `getScheduleForDate(doctorId, 'YYYY-MM-DD')` (schedules service) and non-cancelled `DoctorLeave` in `[startAt, endAt)`. Serialise per-doctor writes by bumping `DoctorProfile.lockVersion` inside the transaction.
+- **Public endpoints**: `optionalAuthenticate`, then add the route to `PUBLIC` in `routeInventory.test.ts` and a row to `PUBLIC_ENDPOINTS` in `rbacMatrix.ts` (anonymous responses are scanned for private keys).
+- **Tests**: `createDepartment()`, `createDoctor()`, `loginAsDoctor()` in `tests/helpers/fixtures.ts`. The RBAC matrix fails if an allowed write writes no audit entry. Extend `npm run smoke` for new seeded data.
+- **Seed**: one seeder per data type in `server/src/seed/`, upserting through the services and their Zod schemas (idempotent); fixed faker seed.
+- **Client UI kit**: `MoneyInput`, `TimeInput`, `Switch`, `Tabs`, `TagInput`, `SearchableSelect`, `Textarea`, `FilterBar`, `StatusBadge`, `ListSkeleton`, `ErrorState`, `Modal` (`variant="drawer"`, `size="lg"`), `StatusToggleButton`; hooks `useListParams` (filters in the URL) and `useUnsavedChanges`; `applyServerFieldErrors` / `applyServerFieldErrorsByPath` for server field errors (incl. field arrays). Enums mirrored in `constants/catalog.ts`.
 
 ## Frontend conventions
 - Feature folders in `client/src/features/<feature>/` (`api.js`, `components/`, `pages/`, `schemas.js`).

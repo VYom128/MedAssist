@@ -1,37 +1,68 @@
 import { fileURLToPath } from 'node:url';
 import { connectDB, disconnectDB } from '../config/db.js';
 import { config } from '../config/env.js';
+import { ROLES } from '../config/constants.js';
 import { AuditLog } from '../modules/audit/model.js';
+import { Counter } from '../modules/counters/model.js';
+import { Department } from '../modules/departments/model.js';
+import { DoctorProfile } from '../modules/doctors/model.js';
+import { LabTest } from '../modules/labTests/model.js';
+import { DoctorLeave } from '../modules/leaves/model.js';
+import { DoctorSchedule } from '../modules/schedules/model.js';
+import { Service } from '../modules/services/model.js';
 import { Session } from '../modules/sessions/model.js';
+import { ClinicSettings } from '../modules/settings/model.js';
+import { clearSettingsCache } from '../modules/settings/service.js';
 import { User } from '../modules/users/model.js';
 import * as audit from '../services/audit.service.js';
 import { logger, serializeError } from '../utils/logger.js';
+import { seedDepartments } from './departments.js';
+import { doctorLogins, seedDoctors } from './doctors.js';
+import { seedLabTests } from './labTests.js';
+import { seedServices } from './services.js';
+import { seedSettings } from './settings.js';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD, seedUsers } from './users.js';
 
 /**
- * `npm run seed` – demo data (spec §15.3). One function per data type; later phases add theirs
- * to SEEDERS in dependency order (settings, departments, doctors, … in Phase 2).
+ * `npm run seed` – demo data (spec §15.3). One function per data type, in dependency order;
+ * later phases add theirs (patients in Phase 3, appointments in Phase 4, …). Every seeder is an
+ * upsert, so running the seed again changes nothing.
  */
 const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = [
   { name: 'users', run: seedUsers },
+  { name: 'settings', run: seedSettings },
+  { name: 'departments', run: seedDepartments },
+  { name: 'services', run: seedServices },
+  { name: 'doctors', run: seedDoctors },
+  { name: 'labTests', run: seedLabTests },
 ];
 
-/** Collections `--reset` empties. Phase 2+ add theirs. */
+/** Collections `--reset` empties (raw driver for audit logs: Mongoose blocks those deletes). */
 async function resetData() {
   await Promise.all([
     User.deleteMany({}),
     Session.deleteMany({}),
-    AuditLog.collection.deleteMany({}), // raw driver: Mongoose blocks audit deletes by design
+    AuditLog.collection.deleteMany({}),
+    ClinicSettings.deleteMany({}),
+    Department.deleteMany({}),
+    Service.deleteMany({}),
+    DoctorProfile.deleteMany({}),
+    DoctorSchedule.deleteMany({}),
+    DoctorLeave.deleteMany({}),
+    LabTest.deleteMany({}),
+    Counter.deleteMany({}),
   ]);
-  audit.resetAuditChainCache();
+  clearSettingsCache();
 }
 
-/** Plain-text table of the demo logins. */
-export function demoLoginTable(): string {
-  const rows = [
-    ['Role', 'Email', 'Password'],
-    ...DEMO_ACCOUNTS.map((a) => [a.role, a.email, DEMO_PASSWORD]),
-  ];
+/** Every seeded login: staff first, then doctors, then patients. */
+export function demoLogins() {
+  const staff = DEMO_ACCOUNTS.filter((a) => a.role !== ROLES.PATIENT);
+  const patients = DEMO_ACCOUNTS.filter((a) => a.role === ROLES.PATIENT);
+  return [...staff, ...doctorLogins(), ...patients];
+}
+
+function table(rows: string[][]): string {
   const widths = rows[0]!.map((_, i) => Math.max(...rows.map((r) => r[i]!.length)));
   const line = (r: string[]) =>
     r
@@ -42,9 +73,30 @@ export function demoLoginTable(): string {
   return [line(rows[0]!), rule, ...rows.slice(1).map(line)].join('\n');
 }
 
+/** Plain-text table of the demo logins. */
+export function demoLoginTable(): string {
+  return table([
+    ['Role', 'Email', 'Password'],
+    ...demoLogins().map((a) => [a.role, a.email, DEMO_PASSWORD]),
+  ]);
+}
+
+/** Plain-text table of what each seeder did. */
+export function summaryTable(summary: Record<string, Record<string, number>>): string {
+  return table([
+    ['Data', 'Result'],
+    ...Object.entries(summary).map(([name, c]) => [
+      name,
+      Object.entries(c)
+        .map(([k, v]) => `${v} ${k}`)
+        .join(', '),
+    ]),
+  ]);
+}
+
 /**
  * Runs every seeder. Refuses in production; `reset` (wipe first) is development only.
- * Assumes an open database connection.
+ * Assumes an open database connection (a replica set: doctors are created in transactions).
  */
 export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
   if (config.isProd) throw new Error('Refusing to seed with NODE_ENV=production');
@@ -52,7 +104,7 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
 
   if (reset) {
     await resetData();
-    logger.info('Wiped users, sessions and audit logs');
+    logger.info('Wiped users, sessions, audit logs, clinic setup data and counters');
   }
   const summary: Record<string, Record<string, number>> = {};
   for (const seeder of SEEDERS) summary[seeder.name] = await seeder.run();
@@ -64,7 +116,7 @@ async function main() {
   await connectDB();
   try {
     const summary = await runSeed({ reset: process.argv.includes('--reset') });
-    logger.info({ summary }, 'Seed complete');
+    logger.info(`Seed complete:\n${summaryTable(summary)}`);
     // Demo-only shared password, shown on purpose (spec §15.3).
     logger.info(`Demo logins:\n${demoLoginTable()}`);
   } finally {

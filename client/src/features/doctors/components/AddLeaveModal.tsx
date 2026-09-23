@@ -1,0 +1,151 @@
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useEffect } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
+import toast from 'react-hot-toast';
+import Alert from '../../../components/ui/Alert';
+import Button from '../../../components/ui/Button';
+import Input from '../../../components/ui/Input';
+import Modal from '../../../components/ui/Modal';
+import Select from '../../../components/ui/Select';
+import Textarea from '../../../components/ui/Textarea';
+import TimeInput from '../../../components/ui/TimeInput';
+import { LEAVE_TYPE_LABELS, LEAVE_TYPES, optionsOf } from '../../../constants/catalog';
+import { clinicDate } from '../../../utils/dates';
+import { getClinicTimezone } from '../../../utils/clinicTimezone';
+import { applyServerFieldErrors } from '../../../utils/forms';
+import { getQueryErrorMessage } from '../../../utils/http';
+import { useCreateLeaveMutation } from '../api';
+import { leaveFormSchema, toLeaveInput, type LeaveFormValues } from '../schemas';
+
+const defaults = (): LeaveFormValues => ({
+  mode: 'fullDay',
+  date: clinicDate(),
+  endDate: '',
+  startTime: '09:00',
+  endTime: '13:00',
+  type: 'leave',
+  reason: '',
+});
+
+/**
+ * POST /doctors/:id/leaves (spec §4.13): whole day(s), or a time range on one day, entered in
+ * clinic time (times are converted to UTC before sending).
+ */
+export default function AddLeaveModal({
+  doctorId,
+  open,
+  onClose,
+}: {
+  doctorId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [createLeave, { isLoading }] = useCreateLeaveMutation();
+  const {
+    register,
+    control,
+    handleSubmit,
+    reset,
+    setError,
+    formState: { errors },
+  } = useForm<LeaveFormValues>({
+    resolver: zodResolver(leaveFormSchema),
+    defaultValues: defaults(),
+  });
+  const mode = useWatch({ control, name: 'mode' });
+
+  useEffect(() => {
+    if (open) reset(defaults());
+  }, [open, reset]);
+
+  const onSubmit = handleSubmit(async (values) => {
+    try {
+      await createLeave({ id: doctorId, body: toLeaveInput(values) }).unwrap();
+      toast.success('Leave recorded');
+      onClose();
+    } catch (err) {
+      const fields = ['date', 'endDate', 'startTime', 'endTime', 'type', 'reason'] as const;
+      const rename: Record<string, (typeof fields)[number]> = {
+        startAt: mode === 'fullDay' ? 'date' : 'startTime',
+        endAt: mode === 'fullDay' ? 'endDate' : 'endTime',
+      };
+      const applied = applyServerFieldErrors(err, setError, fields, rename);
+      if (!applied) setError('root', { message: getQueryErrorMessage(err) });
+    }
+  });
+
+  return (
+    <Modal
+      open={open}
+      title="Add leave"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="leave-form" loading={isLoading}>
+            Add leave
+          </Button>
+        </>
+      }
+    >
+      <form id="leave-form" onSubmit={onSubmit} noValidate className="space-y-4">
+        {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
+        <fieldset>
+          <legend className="text-sm font-medium text-slate-700">Length</legend>
+          <div className="mt-1 flex gap-4 text-sm">
+            <label className="flex items-center gap-2">
+              <input type="radio" value="fullDay" {...register('mode')} /> Full day(s)
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="radio" value="range" {...register('mode')} /> Part of a day
+            </label>
+          </div>
+        </fieldset>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label={mode === 'fullDay' ? 'First day' : 'Date'}
+            type="date"
+            min={clinicDate()}
+            error={errors.date?.message}
+            {...register('date')}
+          />
+          {mode === 'fullDay' ? (
+            <Input
+              label="Last day (optional)"
+              type="date"
+              min={clinicDate()}
+              error={errors.endDate?.message}
+              {...register('endDate')}
+            />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <TimeInput
+                label="From"
+                error={errors.startTime?.message}
+                {...register('startTime')}
+              />
+              <TimeInput label="To" error={errors.endTime?.message} {...register('endTime')} />
+            </div>
+          )}
+        </div>
+        <Select
+          label="Type"
+          options={optionsOf(LEAVE_TYPES, LEAVE_TYPE_LABELS)}
+          error={errors.type?.message}
+          {...register('type')}
+        />
+        <Textarea
+          label="Reason (optional)"
+          rows={2}
+          error={errors.reason?.message}
+          {...register('reason')}
+        />
+        <p className="text-xs text-slate-500">
+          Times are in the clinic timezone ({getClinicTimezone()}).
+        </p>
+      </form>
+    </Modal>
+  );
+}

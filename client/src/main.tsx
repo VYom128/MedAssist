@@ -4,8 +4,12 @@ import { Toaster } from 'react-hot-toast';
 import { Provider } from 'react-redux';
 import SessionRestorer from './app/SessionRestorer';
 import { store } from './app/store';
+import { settingsApi } from './features/settings/api';
 import AppRoutes from './routes/AppRoutes';
 import './index.css';
+
+// Public clinic settings (name, timezone for dates) are loaded once and kept for the session.
+void store.dispatch(settingsApi.endpoints.getPublicSettings.initiate());
 
 const rootElement = document.getElementById('root');
 if (!rootElement) throw new Error('Root element #root not found');

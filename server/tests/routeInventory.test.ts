@@ -2,7 +2,7 @@ import type { Router } from 'express';
 import { Types } from 'mongoose';
 import apiRoutes from '../src/routes/index.js';
 import { loginAs, resetDb } from './helpers/auth.js';
-import { ENDPOINTS, routeKey } from './helpers/rbacMatrix.js';
+import { ENDPOINTS, PUBLIC_ENDPOINTS, routeKey } from './helpers/rbacMatrix.js';
 import { api } from './helpers/testApp.js';
 
 /**
@@ -18,6 +18,14 @@ const PUBLIC = new Set([
   'POST /auth/refresh', // cookie + X-Requested-With instead of a Bearer token
   'POST /auth/forgot-password',
   'POST /auth/reset-password',
+  // Clinic information for the public site and booking (spec §7.4–7.5)
+  'GET /settings/public',
+  'GET /departments',
+  'GET /departments/:id',
+  'GET /services',
+  'GET /services/:id',
+  'GET /doctors',
+  'GET /doctors/:id',
 ]);
 
 /** Mount prefixes whose every route is admin-only. */
@@ -65,10 +73,19 @@ describe('route inventory', () => {
     expect([...matrix].filter((r) => !ROUTES.includes(r))).toEqual([]);
   });
 
+  it('every public read is exercised by the RBAC matrix (every role and anonymous)', () => {
+    const tested = new Set(PUBLIC_ENDPOINTS.map(routeKey));
+    for (const key of tested) expect(PUBLIC.has(key), key).toBe(true);
+    const publicReads = [...PUBLIC].filter(
+      (r) => !r.startsWith('POST /auth') && r !== 'GET /health',
+    );
+    expect(publicReads.filter((r) => !tested.has(r))).toEqual([]);
+  });
+
   it.each(PROTECTED)('%s → 401 without a token (authenticate)', async (route) => {
     const [method, path] = route.split(' ') as [string, string];
     const res = await api()[method.toLowerCase() as 'get'](`/api/v1${withIds(path)}`);
-    expect(res.status).toBe(401);
+    expect(res.status, JSON.stringify(res.body)).toBe(401);
   });
 
   describe('admin-only routes', () => {
@@ -91,7 +108,7 @@ describe('route inventory', () => {
       const res = await api()
         [method.toLowerCase() as 'get'](`/api/v1${withIds(path)}`)
         .set(patientAuth);
-      expect(res.status).toBe(403);
+      expect(res.status, JSON.stringify(res.body)).toBe(403);
     });
   });
 });

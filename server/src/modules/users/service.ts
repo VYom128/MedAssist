@@ -1,28 +1,27 @@
 import { randomBytes } from 'node:crypto';
-import type { FilterQuery, Types } from 'mongoose';
-import { ACCOUNT_SETUP_TTL_MS, AUDIT_ACTIONS, ERROR_CODES, ROLES } from '../../config/constants.js';
+import type { ClientSession, FilterQuery, Types } from 'mongoose';
+import {
+  ACCOUNT_SETUP_TTL_MS,
+  AUDIT_ACTIONS,
+  ERROR_CODES,
+  ROLES,
+  type Role,
+} from '../../config/constants.js';
 import * as audit from '../../services/audit.service.js';
 import { emailService, sendInBackground } from '../../services/email.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { buildMeta, type Pagination } from '../../utils/pagination.js';
 import { hashPassword } from '../../utils/password.js';
-import type { AuditActor, RequestMeta } from '../../utils/requestContext.js';
+import { containsRegex } from '../../utils/regex.js';
+import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { createPasswordResetToken } from '../auth/service.js';
 import * as sessions from '../sessions/service.js';
 import { User, type UserDoc } from './model.js';
 import { toAdminView } from './serializer.js';
 import type { CreateUserInput, ListUsersQuery, UpdateUserInput } from './validation.js';
 
-type UserWithId = UserDoc & { _id: Types.ObjectId; createdAt?: Date; updatedAt?: Date };
-
-const actorOf = (u: AuthUser): AuditActor => ({
-  user: u.id,
-  role: u.role,
-  name: `${u.firstName} ${u.lastName}`,
-});
-
-const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export type UserWithId = UserDoc & { _id: Types.ObjectId; createdAt?: Date; updatedAt?: Date };
 
 async function findUser(id: string): Promise<UserWithId> {
   const user = (await User.findById(id).lean()) as UserWithId | null;
@@ -39,7 +38,7 @@ export async function listUsers(query: ListUsersQuery, { page, limit, skip }: Pa
   if (query.role) filter.role = query.role;
   if (query.isActive !== undefined) filter.isActive = query.isActive;
   if (query.q) {
-    const re = new RegExp(escapeRegex(query.q), 'i');
+    const re = containsRegex(query.q);
     filter.$or = [{ firstName: re }, { lastName: re }, { email: re }];
   }
   const [items, total] = await Promise.all([
@@ -53,35 +52,68 @@ export async function getUser(id: string) {
   return toAdminView(await findUser(id));
 }
 
+export interface StaffAccountInput {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  role: Role;
+}
+
 /**
  * Creates a staff account with a random temporary password that nobody sees, and
- * `mustChangePassword: true`. The welcome email carries a "set your password" link (reset-token
- * flow, valid 72 h), so no password is ever emailed or logged.
+ * `mustChangePassword: true`, plus a 72 h "set your password" token. Pass `session` to run inside
+ * a transaction (POST /doctors). Send the welcome email with `sendWelcomeEmail` only after the
+ * write has committed.
+ * @throws 409 CONFLICT for an email that is already taken.
  */
-export async function createUser(admin: AuthUser, input: CreateUserInput, meta: RequestMeta) {
-  if (await User.exists({ email: input.email })) {
+export async function createStaffAccount(
+  admin: AuthUser,
+  input: StaffAccountInput,
+  { session }: { session?: ClientSession } = {},
+): Promise<{ user: UserWithId; token: string }> {
+  if (await User.exists({ email: input.email }).session(session ?? null)) {
     throw ApiError.conflict('An account with this email already exists', { fields: ['email'] });
   }
-  const created = await User.create({
-    ...input,
-    passwordHash: await hashPassword(randomBytes(32).toString('base64url')),
-    mustChangePassword: true,
-    createdBy: admin.id,
-    updatedBy: admin.id,
-  });
-  const token = await createPasswordResetToken(created._id, ACCOUNT_SETUP_TTL_MS);
+  const [created] = await User.create(
+    [
+      {
+        ...input,
+        passwordHash: await hashPassword(randomBytes(32).toString('base64url')),
+        mustChangePassword: true,
+        createdBy: admin.id,
+        updatedBy: admin.id,
+      },
+    ],
+    { session },
+  );
+  const token = await createPasswordResetToken(created!._id, ACCOUNT_SETUP_TTL_MS, { session });
+  return { user: created!.toObject() as UserWithId, token };
+}
+
+/** Emails the "set your password" link in the background (never blocks or fails the request). */
+export function sendWelcomeEmail(user: { email: string; firstName: string }, token: string) {
   sendInBackground(
-    () => emailService.sendAccountSetup(created.email, created.firstName, token),
+    () => emailService.sendAccountSetup(user.email, user.firstName, token),
     'account_setup',
   );
+}
+
+/**
+ * POST /users – admin, receptionist or lab tech account. The welcome email carries a "set your
+ * password" link (reset-token flow, valid 72 h), so no password is ever emailed or logged.
+ */
+export async function createUser(admin: AuthUser, input: CreateUserInput, meta: RequestMeta) {
+  const { user, token } = await createStaffAccount(admin, input);
+  sendWelcomeEmail(user, token);
   await audit.record({
     action: AUDIT_ACTIONS.USER_CREATE,
     actor: actorOf(admin),
-    resource: { type: 'user', id: created._id },
+    resource: { type: 'user', id: user._id },
     request: meta,
-    metadata: { role: created.role },
+    metadata: { role: user.role },
   });
-  return toAdminView(created.toObject() as UserWithId);
+  return toAdminView(user);
 }
 
 /** PATCH /users/:id – name, phone, email. Changing the email clears `emailVerifiedAt`. */
