@@ -52,7 +52,10 @@ export const authApi = apiSlice.injectEndpoints({
       transformResponse: (res: ApiSuccess<AuthPayload>) => res.data,
       onQueryStarted: storeCredentials,
     }),
-    register: build.mutation<AuthPayload, Omit<RegisterValues, 'confirmPassword'>>({
+    register: build.mutation<
+      AuthPayload,
+      Omit<RegisterValues, 'confirmPassword' | 'acceptTerms'> & { acceptTerms: true }
+    >({
       query: (body) => ({ url: '/auth/register', method: 'POST', data: body }),
       transformResponse: (res: ApiSuccess<AuthPayload>) => res.data,
       onQueryStarted: storeCredentials,
@@ -102,7 +105,7 @@ export const authApi = apiSlice.injectEndpoints({
       query: (body) => ({ url: '/auth/forgot-password', method: 'POST', data: body }),
       transformResponse: (res: ApiSuccess<null>) => res.message,
     }),
-    resetPassword: build.mutation<string, { token: string; password: string }>({
+    resetPassword: build.mutation<string, { token: string; newPassword: string }>({
       query: (body) => ({ url: '/auth/reset-password', method: 'POST', data: body }),
       transformResponse: (res: ApiSuccess<null>) => res.message,
     }),

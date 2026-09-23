@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { ERROR_CODES } from '../../config/constants.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { buildRequestMeta } from '../../utils/requestContext.js';
@@ -33,9 +34,11 @@ export async function login(req: Request, res: Response) {
 }
 
 export async function refresh(req: Request, res: Response) {
-  const token = readRefreshCookie(req);
-  if (!token) throw ApiError.unauthorized('No active session');
   try {
+    const token = readRefreshCookie(req);
+    if (!token) {
+      throw new ApiError(401, 'No active session', ERROR_CODES.SESSION_REVOKED);
+    }
     const result = await authService.refresh(token, buildRequestMeta(req));
     return sendAuthResult(res, result, 'Session refreshed');
   } catch (err) {
@@ -70,13 +73,13 @@ export async function changePassword(req: Request, res: Response) {
     currentPassword: string;
     newPassword: string;
   };
-  const data = await authService.changePassword(
+  const result = await authService.changePassword(
     currentUser(req),
     currentPassword,
     newPassword,
     buildRequestMeta(req),
   );
-  return sendSuccess(res, { message: 'Password changed', data });
+  return sendAuthResult(res, result, 'Password changed');
 }
 
 export async function forgotPassword(req: Request, res: Response) {
@@ -87,8 +90,8 @@ export async function forgotPassword(req: Request, res: Response) {
 }
 
 export async function resetPassword(req: Request, res: Response) {
-  const { token, password } = req.body as { token: string; password: string };
-  await authService.resetPassword(token, password, buildRequestMeta(req));
+  const { token, newPassword } = req.body as { token: string; newPassword: string };
+  await authService.resetPassword(token, newPassword, buildRequestMeta(req));
   clearRefreshCookie(res);
   return sendSuccess(res, { message: 'Password has been reset. Please log in.' });
 }

@@ -33,10 +33,12 @@ describe('authenticate', () => {
     expect(res.body.user).toEqual({
       id: user._id.toString(),
       role: 'doctor',
-      sid: verifyAccessToken(token).sid,
+      sessionId: verifyAccessToken(token).sid,
       sessionFamily: expect.any(String),
       firstName: user.firstName,
       lastName: user.lastName,
+      email: user.email,
+      mustChangePassword: false,
       patientId: null,
     });
   });

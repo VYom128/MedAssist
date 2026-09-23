@@ -40,12 +40,14 @@ export const createLoginLimiter = (options: Partial<Options> = {}) =>
 export const createRegisterLimiter = (options: Partial<Options> = {}) =>
   createRateLimiter({ windowMs: 60 * MINUTE, limit: 5, ...options });
 
-/** Forgot password: 5 / hour per IP + email (not in §10.3; limits reset-email spam). */
-export const createForgotPasswordLimiter = (options: Partial<Options> = {}) =>
-  createRateLimiter({ windowMs: 60 * MINUTE, limit: 5, keyGenerator: ipAndEmailKey, ...options });
+/** Forgot / reset password: 5 / hour per IP (not in §10.3; limits reset-email spam). */
+export const createPasswordResetLimiter = (options: Partial<Options> = {}) =>
+  createRateLimiter({ windowMs: 60 * MINUTE, limit: 5, ...options });
 
 // App instances are off in tests; tests build their own with the factories above.
 const skipInTest = () => config.isTest;
 export const loginLimiter = createLoginLimiter({ skip: skipInTest });
 export const registerLimiter = createRegisterLimiter({ skip: skipInTest });
-export const forgotPasswordLimiter = createForgotPasswordLimiter({ skip: skipInTest });
+/** Separate budgets so asking for a link does not use up the attempts to set the password. */
+export const forgotPasswordLimiter = createPasswordResetLimiter({ skip: skipInTest });
+export const resetPasswordLimiter = createPasswordResetLimiter({ skip: skipInTest });

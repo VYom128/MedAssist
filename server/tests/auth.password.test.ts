@@ -1,3 +1,8 @@
+import express from 'express';
+import request from 'supertest';
+import { errorHandler } from '../src/middlewares/errorHandler.js';
+import { createPasswordResetLimiter } from '../src/middlewares/rateLimiters.js';
+import { requestId } from '../src/middlewares/requestId.js';
 import { AUTH_LIMITS } from '../src/config/constants.js';
 import { Session } from '../src/modules/sessions/model.js';
 import { User } from '../src/modules/users/model.js';
@@ -7,6 +12,7 @@ import {
   auditEntries,
   createUser,
   loginAs,
+  refreshCookieFrom,
   refreshWith,
   resetDb,
   TEST_PASSWORD,
@@ -35,22 +41,30 @@ describe('POST /auth/change-password', () => {
       accessToken: expect.any(String),
       user: { role: 'doctor' },
     });
+    const newCookie = refreshCookieFrom(res);
+    expect(newCookie).toBeDefined();
 
     const user = await User.findById(me.user._id).select('+passwordHash').lean();
     expect(await verifyPassword(NEW_PASSWORD, user?.passwordHash ?? '')).toBe(true);
-    expect(user?.passwordChangedAt).toBeInstanceOf(Date);
+    // Stored 1 s early so the fresh token (second-precision iat) is not "older" than the change.
+    expect(user?.passwordChangedAt?.getTime()).toBeLessThanOrEqual(Date.now() - 1000);
+
+    // The caller's old access token and refresh token stop working immediately too.
+    expectErrorShape((await api().get('/api/v1/auth/me').set(me.auth)).body, 'SESSION_REVOKED');
+    expect((await refreshWith(me.refreshToken)).status).toBe(401);
 
     const other = await api()
       .get('/api/v1/auth/me')
       .set('Authorization', `Bearer ${otherDevice.body.data.accessToken}`);
     expectErrorShape(other.body, 'SESSION_REVOKED');
     const sessions = await Session.find({ user: me.user._id }).lean();
-    expect(sessions.filter((s) => !s.revokedAt)).toHaveLength(1);
+    expect(sessions.filter((s) => !s.revokedAt)).toHaveLength(1); // only the new one
 
     const fresh = { Authorization: `Bearer ${res.body.data.accessToken}` };
     expect((await api().get('/api/v1/auth/me').set(fresh)).status).toBe(200);
-    expect((await refreshWith(me.refreshToken)).status).toBe(200); // current session kept
-    expect(await auditEntries('auth.password_changed')).toHaveLength(1);
+    expect((await refreshWith(newCookie ?? '')).status).toBe(200);
+    const [entry] = await auditEntries('auth.password_changed');
+    expect(entry?.metadata).toEqual({ otherSessionsRevoked: 1 });
   });
 
   it("rejects a new password containing the user's first name", async () => {
@@ -142,7 +156,7 @@ describe('forgot and reset password', () => {
 
     const res = await api()
       .post('/api/v1/auth/reset-password')
-      .send({ token, password: NEW_PASSWORD });
+      .send({ token, newPassword: NEW_PASSWORD });
     expect(res.status).toBe(200);
 
     const user = await User.findById(me.user._id).select('+passwordHash +passwordReset').lean();
@@ -154,7 +168,7 @@ describe('forgot and reset password', () => {
 
     const again = await api()
       .post('/api/v1/auth/reset-password')
-      .send({ token, password: 'Another-2026x' });
+      .send({ token, newPassword: 'Another-2026x' });
     expect(again.status).toBe(400);
     expectErrorShape(again.body, 'BAD_REQUEST');
 
@@ -174,13 +188,13 @@ describe('forgot and reset password', () => {
 
     const bad = await api()
       .post('/api/v1/auth/reset-password')
-      .send({ token, password: 'Meera-2026x' });
+      .send({ token, newPassword: 'Meera-2026x' });
     expect(expectErrorShape(bad.body, 'VALIDATION_ERROR').error.details).toEqual([
-      { field: 'body.password', message: 'Must not contain your name or email' },
+      { field: 'body.newPassword', message: 'Must not contain your name or email' },
     ]);
     const good = await api()
       .post('/api/v1/auth/reset-password')
-      .send({ token, password: NEW_PASSWORD });
+      .send({ token, newPassword: NEW_PASSWORD });
     expect(good.status).toBe(200);
     emails.restore();
   });
@@ -197,9 +211,27 @@ describe('forgot and reset password', () => {
     for (const t of [token, 'x'.repeat(43)]) {
       const res = await api()
         .post('/api/v1/auth/reset-password')
-        .send({ token: t, password: NEW_PASSWORD });
+        .send({ token: t, newPassword: NEW_PASSWORD });
       expectErrorShape(res.body, 'BAD_REQUEST');
     }
     emails.restore();
+  });
+});
+
+describe('password reset rate limiter', () => {
+  it('allows 5 requests per IP per hour, whatever the email', async () => {
+    const app = express();
+    app.use(requestId, express.json(), createPasswordResetLimiter());
+    app.post('/forgot', (_req, res) => res.json({ ok: true }));
+    app.use(errorHandler);
+    for (let i = 0; i < 5; i++) {
+      const res = await request(app)
+        .post('/forgot')
+        .send({ email: `u${i}@x.dev` });
+      expect(res.status).toBe(200);
+    }
+    const blocked = await request(app).post('/forgot').send({ email: 'another@x.dev' });
+    expect(blocked.status).toBe(429);
+    expectErrorShape(blocked.body, 'RATE_LIMITED');
   });
 });

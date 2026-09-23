@@ -63,7 +63,7 @@ export default function ChangePasswordPage() {
           <PasswordField
             label="New password"
             autoComplete="new-password"
-            hint="At least 8 characters, with a letter and a number."
+            hint="At least 8 characters, with a letter and a number. Avoid your name or email."
             error={errors.newPassword?.message}
             {...register('newPassword')}
           />

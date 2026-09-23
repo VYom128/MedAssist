@@ -24,13 +24,13 @@ export default function ResetPasswordPage() {
 
   const onSubmit = handleSubmit(async ({ password }) => {
     try {
-      await resetPassword({ token, password }).unwrap();
+      await resetPassword({ token, newPassword: password }).unwrap();
       navigate('/login', {
         replace: true,
         state: { notice: 'Your password has been set. Please sign in.' },
       });
     } catch (err) {
-      if (!applyServerFieldErrors(err, setError, ['password'])) {
+      if (!applyServerFieldErrors(err, setError, ['password'], { newPassword: 'password' })) {
         setError('root', { message: getQueryErrorMessage(err) });
       }
     }
@@ -50,7 +50,7 @@ export default function ResetPasswordPage() {
         <PasswordField
           label="New password"
           autoComplete="new-password"
-          hint="At least 8 characters, with a letter and a number."
+          hint="At least 8 characters, with a letter and a number. Avoid your name or email."
           error={errors.password?.message}
           {...register('password')}
         />

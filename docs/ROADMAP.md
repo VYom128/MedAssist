@@ -106,7 +106,8 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - Client tests: Vitest + jsdom + React Testing Library (`npm test` now runs server and client).
 - Follow-up (step 1 prompt): `AUTH_LIMITS`, `'deactivated'` revoke reason, `COOKIE_SECURE` required in production, `checkPasswordStrength()` with the name/email rule, `User.fullName` / `comparePassword()` / `toJSON` hiding secrets, email templates, `utils/cookies.ts` with the session's `expiresAt`, unit tests in `server/tests/unit/` (D24–D27).
 - Follow-up (step 2 prompt): `audit.record({ req, … })`, nested secret redaction, `diffChanges()`, `verifyChain()` → `{ ok, checked, firstBrokenId, reason }` in `(at, _id)` order, audit indexes `{ at: -1, _id: -1 }` and `{ action: 1, at: -1 }`, `canonicalJson` unit tests (D28).
-- Tests: 299 server (was 53) + 17 client.
+- Follow-up (step 3 prompt): register takes `dateOfBirth` + `acceptTerms`; session checked before user in `authenticate`; `req.user` adds `sessionId`, `email`, `mustChangePassword`; change password starts a fresh session; `newPassword` on reset; per-IP password-reset limiters; pure `canAccessPatient` with `SCOPES` (D29–D33).
+- Tests: 308 server (was 53) + 20 client.
 
 ---
 

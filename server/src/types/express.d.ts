@@ -5,11 +5,13 @@ export interface AuthUser {
   id: string;
   role: Role;
   /** Session id from the access token's `sid` claim (may be an already-rotated session). */
-  sid: string;
+  sessionId: string;
   /** Rotation family of that session: one login on one device. */
   sessionFamily: string;
   firstName: string;
   lastName: string;
+  email: string;
+  mustChangePassword: boolean;
   /** Linked Patient record (role=patient only; set from Phase 3). */
   patientId: string | null;
 }

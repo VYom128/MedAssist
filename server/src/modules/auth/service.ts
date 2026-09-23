@@ -30,12 +30,14 @@ type UserWithId = UserDoc & { _id: Types.ObjectId };
 
 const invalidCredentials = () =>
   new ApiError(401, 'Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
-const accountLocked = () =>
-  new ApiError(
+const accountLocked = (lockUntil: Date) => {
+  const minutes = Math.max(1, Math.ceil((lockUntil.getTime() - Date.now()) / 60_000));
+  return new ApiError(
     423,
-    'Too many failed attempts. Try again in 15 minutes or reset your password.',
+    `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'} or reset your password.`,
     ERROR_CODES.ACCOUNT_LOCKED,
   );
+};
 const accountInactive = () =>
   new ApiError(403, 'This account has been deactivated', ERROR_CODES.ACCOUNT_INACTIVE);
 const sessionRevoked = () =>
@@ -45,6 +47,12 @@ const actorOf = (u: { _id: Types.ObjectId; role: string; firstName: string; last
   ({ user: u._id.toString(), role: u.role, name: `${u.firstName} ${u.lastName}` }) as AuditActor;
 
 const clientOf = (meta: RequestMeta) => ({ userAgent: meta.userAgent, ip: meta.ip });
+
+/**
+ * `passwordChangedAt` is stored 1 s in the past: tokens are checked with second precision (`iat`),
+ * so the fresh token issued right after the change must not look older than the change.
+ */
+const passwordChangedNow = () => new Date(Date.now() - 1000);
 
 /**
  * What login, register and refresh return. `refresh` goes into the cookie, never the body; it is
@@ -93,6 +101,8 @@ export async function register(input: RegisterInput, meta: RequestMeta): Promise
     lastName: input.lastName,
     email: input.email,
     phone: input.phone,
+    dateOfBirth: input.dateOfBirth,
+    termsAcceptedAt: new Date(),
     passwordHash: await hashPassword(input.password),
     role: ROLES.PATIENT,
     lastLoginAt: new Date(),
@@ -110,9 +120,9 @@ export async function register(input: RegisterInput, meta: RequestMeta): Promise
 /**
  * Records a failed password for an existing user and locks the account after 5 failures within
  * 15 minutes (spec §5.8). One atomic pipeline update, so parallel attempts all count.
- * @returns true if this failure locked the account.
+ * @returns the lock expiry if this failure locked the account, otherwise null.
  */
-async function registerFailedLogin(userId: Types.ObjectId): Promise<boolean> {
+async function registerFailedLogin(userId: Types.ObjectId): Promise<Date | null> {
   const now = new Date();
   const windowStart = new Date(now.getTime() - AUTH_LIMITS.failedWindowMinutes * 60_000);
   const updated = await User.findOneAndUpdate(
@@ -144,7 +154,7 @@ async function registerFailedLogin(userId: Types.ObjectId): Promise<boolean> {
     ],
     { new: true, projection: { lockUntil: 1 } },
   ).lean();
-  return Boolean(updated?.lockUntil && updated.lockUntil > now);
+  return updated?.lockUntil && updated.lockUntil > now ? updated.lockUntil : null;
 }
 
 /**
@@ -166,7 +176,7 @@ export async function login(
       action: AUDIT_ACTIONS.AUTH_LOGIN_FAILED,
       outcome: 'failure',
       request: meta,
-      metadata: { reason: 'unknown_email' },
+      metadata: { email: emailAddress, reason: 'unknown_email' },
     });
     throw invalidCredentials();
   }
@@ -178,19 +188,19 @@ export async function login(
       actor: actorOf(user),
       resource: { type: 'user', id: user._id },
       request: meta,
-      metadata: { reason },
+      metadata: { email: emailAddress, reason },
     });
 
   if (user.lockUntil && user.lockUntil > new Date()) {
     await fakePasswordCheck(password);
     await failed('locked');
-    throw accountLocked();
+    throw accountLocked(user.lockUntil);
   }
 
   if (!(await verifyPassword(password, user.passwordHash))) {
-    const nowLocked = await registerFailedLogin(user._id);
-    await failed(nowLocked ? 'bad_password_locked' : 'bad_password');
-    throw nowLocked ? accountLocked() : invalidCredentials();
+    const lockedUntil = await registerFailedLogin(user._id);
+    await failed(lockedUntil ? 'bad_password_locked' : 'bad_password');
+    throw lockedUntil ? accountLocked(lockedUntil) : invalidCredentials();
   }
 
   if (!user.isActive) {
@@ -260,7 +270,7 @@ export async function logout(authUser: AuthUser, meta: RequestMeta) {
   await audit.record({
     action: AUDIT_ACTIONS.AUTH_LOGOUT,
     actor: authActor(authUser),
-    resource: { type: 'session', id: authUser.sid },
+    resource: { type: 'session', id: authUser.sessionId },
     request: meta,
   });
 }
@@ -327,8 +337,10 @@ function assertNoPersonalInfo(
 }
 
 /**
- * Changes the caller's password, clears `mustChangePassword`, revokes every other session and
- * returns a fresh access token for the current one (older tokens fail the passwordChangedAt check).
+ * Changes the caller's password and clears `mustChangePassword`. Every session is revoked
+ * (reason password_changed) and the caller gets a fresh session: new access token and refresh
+ * cookie. So all other devices, and every older access token including the caller's, stop
+ * working immediately.
  */
 export async function changePassword(
   authUser: AuthUser,
@@ -346,33 +358,30 @@ export async function changePassword(
   }
   assertNoPersonalInfo(newPassword, user, 'body.newPassword');
 
-  const now = new Date();
   await User.updateOne(
     { _id: user._id },
     {
       $set: {
         passwordHash: await hashPassword(newPassword),
-        passwordChangedAt: now,
+        passwordChangedAt: passwordChangedNow(),
         mustChangePassword: false,
         updatedBy: user._id,
       },
       $unset: { passwordReset: 1 },
     },
   );
-  const revoked = await sessions.revokeAllForUser(
-    user._id,
-    'password_changed',
-    authUser.sessionFamily,
-  );
+  // Other devices = sessions outside the caller's login; counted before everything is revoked.
+  const otherSessions = await sessions.countActiveForUser(user._id, authUser.sessionFamily);
+  await sessions.revokeAllForUser(user._id, 'password_changed');
+  const result = await startSession({ ...user, mustChangePassword: false }, meta);
   await audit.record({
     action: AUDIT_ACTIONS.AUTH_PASSWORD_CHANGED,
     actor: authActor(authUser),
     resource: { type: 'user', id: user._id },
     request: meta,
-    metadata: { otherSessionsRevoked: revoked },
+    metadata: { otherSessionsRevoked: otherSessions },
   });
-  const fresh = { ...user, mustChangePassword: false };
-  return { ...issueAccessToken(fresh, authUser.sid), user: toSelfView(fresh) };
+  return result;
 }
 
 /**
@@ -421,7 +430,7 @@ export async function forgotPassword(emailAddress: string, meta: RequestMeta): P
  * Sets a new password from a reset (or account setup) link. Single use: the token is consumed
  * atomically with the password change. Also clears any lockout and revokes all sessions.
  */
-export async function resetPassword(token: string, password: string, meta: RequestMeta) {
+export async function resetPassword(token: string, newPassword: string, meta: RequestMeta) {
   const now = new Date();
   const validLink = {
     'passwordReset.tokenHash': hashToken(token),
@@ -430,16 +439,16 @@ export async function resetPassword(token: string, password: string, meta: Reque
   };
   const owner = await User.findOne(validLink, { email: 1, firstName: 1 }).lean();
   if (!owner) throw ApiError.badRequest('This reset link is invalid or has expired');
-  assertNoPersonalInfo(password, owner, 'body.password');
+  assertNoPersonalInfo(newPassword, owner, 'body.newPassword');
 
-  const passwordHash = await hashPassword(password);
+  const passwordHash = await hashPassword(newPassword);
   // Consuming the token and setting the password is one atomic update: single use.
   const user = (await User.findOneAndUpdate(
     validLink,
     {
       $set: {
         passwordHash,
-        passwordChangedAt: now,
+        passwordChangedAt: passwordChangedNow(),
         mustChangePassword: false,
         failedLoginAttempts: 0,
       },

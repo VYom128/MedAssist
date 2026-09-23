@@ -142,6 +142,16 @@ export async function revokeAllForUser(
   return res.modifiedCount;
 }
 
+/** Active sessions of a user, optionally not counting one login (family). */
+export function countActiveForUser(userId: Types.ObjectId | string, exceptFamily?: string) {
+  return Session.countDocuments({
+    user: userId,
+    revokedAt: null,
+    expiresAt: { $gt: new Date() },
+    ...(exceptFamily ? { family: { $ne: exceptFamily } } : {}),
+  });
+}
+
 /** The user's active (not revoked, not expired) sessions, most recently used first. */
 export function listActiveSessions(userId: Types.ObjectId | string) {
   return Session.find({ user: userId, revokedAt: null, expiresAt: { $gt: new Date() } })

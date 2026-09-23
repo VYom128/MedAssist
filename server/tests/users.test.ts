@@ -86,7 +86,7 @@ describe('/users (admin)', () => {
       expect(created?.createdBy?.toString()).toBe(admin.user._id.toString());
 
       // The link sets the password and the new user can log in.
-      await api().post('/api/v1/auth/reset-password').send({ token, password: 'Welcome-2026' });
+      await api().post('/api/v1/auth/reset-password').send({ token, newPassword: 'Welcome-2026' });
       const login = await api()
         .post('/api/v1/auth/login')
         .send({ email: 'ravi@clinic.dev', password: 'Welcome-2026' });
@@ -165,7 +165,11 @@ describe('/users (admin)', () => {
       expect(
         await Session.countDocuments({ user: target.user._id, revokedReason: 'deactivated' }),
       ).toBe(1);
-      expect((await api().get('/api/v1/auth/me').set(target.auth)).status).toBe(403);
+      // Deactivation revokes the sessions, so the old token fails the session check first.
+      expectErrorShape(
+        (await api().get('/api/v1/auth/me').set(target.auth)).body,
+        'SESSION_REVOKED',
+      );
 
       const again = await api().post(`/api/v1/users/${target.user._id}/deactivate`).set(admin.auth);
       expectErrorShape(again.body, 'INVALID_STATUS_TRANSITION');

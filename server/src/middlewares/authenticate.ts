@@ -44,9 +44,9 @@ async function isSessionLive(session: {
 
 /**
  * Verifies the Bearer access token and sets `req.user` (spec §10.1). Beyond the JWT it checks,
- * per request, that the user is still active, the token is newer than the last password change,
- * and the session (`sid`) has not been revoked. So logout, password change and deactivation
- * take effect immediately.
+ * on every request: the session (`sid`) is live → 401 SESSION_REVOKED; the user is active →
+ * 403 ACCOUNT_INACTIVE; the token is not older than the last password change → 401
+ * SESSION_REVOKED. So logout, password change and deactivation take effect immediately.
  */
 function createAuthenticate({
   allowPendingPasswordChange,
@@ -70,27 +70,27 @@ function createAuthenticate({
       }).lean(),
     ]);
 
+    if (!session || !session.user.equals(claims.sub) || !(await isSessionLive(session))) {
+      throw sessionRevoked();
+    }
     if (!user || user.role !== claims.role) throw ApiError.unauthorized('Invalid access token');
     if (!user.isActive) {
       throw new ApiError(403, 'This account has been deactivated', ERROR_CODES.ACCOUNT_INACTIVE);
     }
-    if (
-      user.passwordChangedAt &&
-      claims.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)
-    ) {
-      throw sessionRevoked();
-    }
-    if (!session || !session.user.equals(user._id) || !(await isSessionLive(session))) {
+    // passwordChangedAt is stored 1 s early, so tokens issued right after the change pass.
+    if (user.passwordChangedAt && claims.iat * 1000 < user.passwordChangedAt.getTime()) {
       throw sessionRevoked();
     }
 
     req.user = {
       id: user._id.toString(),
       role: user.role,
-      sid: claims.sid,
+      sessionId: claims.sid,
       sessionFamily: session.family,
       firstName: user.firstName,
       lastName: user.lastName,
+      email: user.email,
+      mustChangePassword: user.mustChangePassword,
       patientId: user.patient?.toString() ?? null,
     };
 

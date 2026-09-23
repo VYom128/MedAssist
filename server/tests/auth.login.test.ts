@@ -67,9 +67,10 @@ describe('POST /auth/login', () => {
     }
     const failures = await auditEntries('auth.login_failed');
     expect(failures.map((f) => f.metadata)).toEqual([
-      { reason: 'bad_password' },
-      { reason: 'unknown_email' },
+      { email: user.email, reason: 'bad_password' },
+      { email: 'nobody@test.medassist.dev', reason: 'unknown_email' },
     ]);
+    expect(JSON.stringify(failures)).not.toContain('Wrong-pass-123');
     expect(failures[1]?.actor?.user).toBeNull();
   });
 
@@ -82,11 +83,18 @@ describe('POST /auth/login', () => {
     expect(fifth.status).toBe(423);
     expectErrorShape(fifth.body, 'ACCOUNT_LOCKED');
 
+    expect(fifth.body.message).toMatch(/Try again in 15 minutes/);
+
     const correct = await login(user.email);
     expect(correct.status).toBe(423);
-
     const locked = await User.findById(user._id).lean();
     expect(locked?.lockUntil?.getTime()).toBeGreaterThan(Date.now() + 14 * 60_000);
+
+    // The message counts down.
+    await User.updateOne({ _id: user._id }, { $set: { lockUntil: new Date(Date.now() + 61_000) } });
+    expect((await login(user.email)).body.message).toMatch(/Try again in 2 minutes/);
+    await User.updateOne({ _id: user._id }, { $set: { lockUntil: new Date(Date.now() + 20_000) } });
+    expect((await login(user.email)).body.message).toMatch(/Try again in 1 minute or/);
   });
 
   it('starts a new count when the last failure was over 15 minutes ago', async () => {

@@ -21,14 +21,23 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Enter your password'),
 });
 
+const dateOfBirth = z
+  .string()
+  .min(1, 'Enter your date of birth')
+  .refine((v) => !Number.isNaN(Date.parse(v)), 'Enter a valid date')
+  .refine((v) => new Date(v).getTime() <= Date.now(), 'Date of birth cannot be in the future');
+
 export const registerSchema = z
   .object({
     firstName: namePart,
     lastName: namePart,
     email,
     phone,
+    /** YYYY-MM-DD (from <input type="date">). */
+    dateOfBirth,
     password: passwordRules,
     confirmPassword: z.string(),
+    acceptTerms: z.boolean().refine((v) => v, 'You must accept the terms to create an account'),
   })
   .refine((v) => v.password === v.confirmPassword, {
     message: 'Passwords do not match',

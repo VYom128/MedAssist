@@ -37,6 +37,9 @@ const userSchema = new Schema(
     passwordChangedAt: Date, // access tokens issued before this second are rejected
     passwordReset: { type: passwordResetSchema, select: false },
     patient: { type: ObjectId, ref: 'Patient' }, // role=patient only; linked from Phase 3
+    // Self-registered patients: DOB for the Phase 3 patient match (§4.4), consent time (§10.6).
+    dateOfBirth: Date,
+    termsAcceptedAt: Date,
     patientLinkStatus: { type: String, enum: PATIENT_LINK_STATUSES },
     avatarUrl: String,
     createdBy: { type: ObjectId, ref: 'User' },

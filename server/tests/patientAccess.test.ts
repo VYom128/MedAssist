@@ -1,10 +1,6 @@
 import { Types } from 'mongoose';
-import {
-  PATIENT_ACCESS_SCOPES,
-  type PatientAccessScope,
-  type Role,
-} from '../src/config/constants.js';
-import { assertCanAccessPatient, canAccessPatient } from '../src/policies/patientAccess.js';
+import type { PatientAccessScope, Role } from '../src/config/constants.js';
+import { assertCanAccessPatient, canAccessPatient, SCOPES } from '../src/policies/patientAccess.js';
 import type { AuthUser } from '../src/types/express.js';
 import { auditEntries, resetDb } from './helpers/auth.js';
 
@@ -13,10 +9,12 @@ const patientId = new Types.ObjectId().toString();
 const userOf = (role: Role, patient: string | null = null): AuthUser => ({
   id: new Types.ObjectId().toString(),
   role,
-  sid: new Types.ObjectId().toString(),
+  sessionId: new Types.ObjectId().toString(),
   sessionFamily: 'test-family',
   firstName: 'Test',
   lastName: role,
+  email: `${role}@test.dev`,
+  mustChangePassword: false,
   patientId: patient,
 });
 
@@ -25,31 +23,39 @@ const EXPECTED: Record<Exclude<Role, 'patient'>, PatientAccessScope[]> = {
   admin: ['demographics', 'billing'],
   receptionist: ['demographics', 'billing'],
   labtech: ['demographics', 'lab'],
-  doctor: [], // no care relationships exist until appointments (Phase 4)
+  doctor: [], // care relationship arrives in Phase 5
 };
 
 describe('canAccessPatient', () => {
+  it('exports the four scopes', () => {
+    expect(SCOPES).toEqual(['demographics', 'clinical', 'billing', 'lab']);
+  });
+
+  it('is synchronous and pure (no database needed)', () => {
+    expect(canAccessPatient(userOf('admin'), patientId, 'demographics')).toBe(true);
+  });
+
   for (const [role, allowed] of Object.entries(EXPECTED)) {
-    for (const scope of PATIENT_ACCESS_SCOPES) {
+    for (const scope of SCOPES) {
       const expected = allowed.includes(scope);
-      it(`${role} → ${scope}: ${expected ? 'allowed' : 'denied'}`, async () => {
-        expect(await canAccessPatient(userOf(role as Role), patientId, scope)).toBe(expected);
+      it(`${role} → ${scope}: ${expected ? 'allowed' : 'denied'}`, () => {
+        expect(canAccessPatient(userOf(role as Role), patientId, scope)).toBe(expected);
       });
     }
   }
 
-  it('admins and receptionists never get clinical access', async () => {
-    expect(await canAccessPatient(userOf('admin'), patientId, 'clinical')).toBe(false);
-    expect(await canAccessPatient(userOf('receptionist'), patientId, 'clinical')).toBe(false);
+  it('admins and receptionists never get clinical access', () => {
+    expect(canAccessPatient(userOf('admin'), patientId, 'clinical')).toBe(false);
+    expect(canAccessPatient(userOf('receptionist'), patientId, 'clinical')).toBe(false);
   });
 
-  it('a patient can access only their own record, in every scope', async () => {
-    for (const scope of PATIENT_ACCESS_SCOPES) {
-      expect(await canAccessPatient(userOf('patient', patientId), patientId, scope)).toBe(true);
-      expect(
-        await canAccessPatient(userOf('patient', patientId), new Types.ObjectId(), scope),
-      ).toBe(false);
-      expect(await canAccessPatient(userOf('patient', null), patientId, scope)).toBe(false);
+  it('a patient can access only their own record, in every scope', () => {
+    for (const scope of SCOPES) {
+      expect(canAccessPatient(userOf('patient', patientId), patientId, scope)).toBe(true);
+      expect(canAccessPatient(userOf('patient', patientId), new Types.ObjectId(), scope)).toBe(
+        false,
+      );
+      expect(canAccessPatient(userOf('patient', null), patientId, scope)).toBe(false);
     }
   });
 });

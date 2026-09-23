@@ -6,7 +6,22 @@ import {
 } from '../../utils/password.js';
 import { email, idParams, namePart, phone } from '../../utils/zod.js';
 
-/** POST /auth/register – patient self-signup. DOB and patient matching come in Phase 3. */
+const MAX_AGE_YEARS = 120;
+
+/** YYYY-MM-DD date of birth: a real date, not in the future, at most 120 years ago. */
+const dateOfBirth = z.iso
+  .date('Use the format YYYY-MM-DD')
+  .transform((v) => new Date(`${v}T00:00:00.000Z`))
+  .refine((d) => d.getTime() <= Date.now(), 'Date of birth cannot be in the future')
+  .refine(
+    (d) => d.getUTCFullYear() >= new Date().getUTCFullYear() - MAX_AGE_YEARS,
+    'Enter a valid date of birth',
+  );
+
+/**
+ * POST /auth/register – patient self-signup. DOB is stored on the user until the Patient record
+ * and phone+DOB matching arrive in Phase 3 (§4.4).
+ */
 export const registerSchema = {
   body: z
     .object({
@@ -14,7 +29,9 @@ export const registerSchema = {
       lastName: namePart,
       email,
       phone,
+      dateOfBirth,
       password: passwordSchema,
+      acceptTerms: z.literal(true, 'You must accept the terms to create an account'),
     })
     .superRefine((b, ctx) => {
       const problems = checkPasswordStrength(b.password, b);
@@ -63,7 +80,7 @@ export const resetPasswordSchema = {
       .string()
       .trim()
       .regex(/^[A-Za-z0-9_-]{20,200}$/, 'Invalid reset link'),
-    password: passwordSchema,
+    newPassword: passwordSchema,
   }),
 };
 

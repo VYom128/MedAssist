@@ -13,7 +13,9 @@ const valid = {
   lastName: 'Sharma',
   email: 'Priya.Sharma@Example.com',
   phone: '+91 98765 43210',
+  dateOfBirth: '1990-05-17',
   password: 'Clinic2026!pass',
+  acceptTerms: true,
 };
 
 const register = (body: Record<string, unknown>) => api().post('/api/v1/auth/register').send(body);
@@ -33,7 +35,13 @@ describe('POST /auth/register', () => {
     const user = await User.findOne({ email: 'priya.sharma@example.com' })
       .select('+passwordHash')
       .lean();
-    expect(user).toMatchObject({ role: 'patient', phone: '+919876543210', isActive: true });
+    expect(user).toMatchObject({
+      role: 'patient',
+      phone: '+919876543210',
+      isActive: true,
+      dateOfBirth: new Date('1990-05-17T00:00:00.000Z'),
+      termsAcceptedAt: expect.any(Date),
+    });
     expect(user?.patient).toBeUndefined();
     expect(user?.patientLinkStatus).toBeUndefined();
     expect(await verifyPassword(valid.password, user?.passwordHash ?? '')).toBe(true);
@@ -78,11 +86,39 @@ describe('POST /auth/register', () => {
     }
   });
 
-  it('requires names, a valid email and phone', async () => {
+  it('requires names, a valid email, phone, date of birth and accepted terms', async () => {
     const res = await register({ password: valid.password, email: 'bad', phone: '12' });
     const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
     const fields = (body.error.details as { field: string }[]).map((d) => d.field).sort();
-    expect(fields).toEqual(['body.email', 'body.firstName', 'body.lastName', 'body.phone']);
+    expect(fields).toEqual([
+      'body.acceptTerms',
+      'body.dateOfBirth',
+      'body.email',
+      'body.firstName',
+      'body.lastName',
+      'body.phone',
+    ]);
+  });
+
+  it.each([
+    ['not a date', '17/05/1990'],
+    ['impossible date', '1990-02-30'],
+    ['in the future', '2999-01-01'],
+    ['over 120 years ago', '1850-01-01'],
+  ])('rejects a date of birth that is %s', async (_label, dateOfBirth) => {
+    const res = await register({ ...valid, dateOfBirth });
+    const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
+    expect(body.error.details).toEqual([expect.objectContaining({ field: 'body.dateOfBirth' })]);
+  });
+
+  it('requires acceptTerms to be exactly true', async () => {
+    for (const acceptTerms of [false, 'yes']) {
+      const res = await register({ ...valid, acceptTerms });
+      const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
+      expect(body.error.details).toEqual([
+        { field: 'body.acceptTerms', message: 'You must accept the terms to create an account' },
+      ]);
+    }
   });
 });
 

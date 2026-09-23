@@ -556,6 +556,8 @@ erDiagram
   passwordReset: { tokenHash: String, expiresAt: Date }   // select: false
   patient: ObjectId ref Patient     // only for role=patient
   patientLinkStatus: enum ['linked','pending_verification']  // §4.4
+  dateOfBirth: Date                 // self-registered patients; used for the Phase 3 match (§20 D29)
+  termsAcceptedAt: Date             // consent at registration (§10.6)
   avatarUrl: String
   createdBy: ObjectId ref User
 }
@@ -1783,3 +1785,8 @@ Record decisions here as they are made (date, decision, reason).
 | D26 | 2026-09-23 | Passwords must not contain the email name or first name (parts of 3+ characters, case-insensitive), checked on register, change and reset. Maximum stays **72 bytes**, not 128: bcrypt ignores everything after byte 72. | Stronger policy without silent truncation. |
 | D27 | 2026-09-23 | The console email transport logs recipient, subject and links, never the body. Templates live in `services/email.templates.ts`; the common-password list stays a `.ts` module (`src/data/commonPasswords.ts`) so the `tsc` build includes it. The Session model stays in `modules/sessions/model.ts` (module layout from CLAUDE.md); the cookie helpers live in `utils/cookies.ts`. | Keeps tokens out of logs and the list in `dist`. |
 | D28 | 2026-09-23 | `audit.record()` takes `req` (actor defaults to `req.user`; request path is `originalUrl` without the query string), redacts `password`/`token`/`secret`/`hash` keys at any depth in `changes` and `metadata`, and returns the entry or `null` on failure. `diffChanges()` keeps only changed fields (email/phone values `[REDACTED]`, D16). `verifyChain()` returns `{ ok, checked, firstBrokenId?, reason? }` reading in `(at, _id)` order; `seq` stays as a unique guard and gap check. | Step 2 audit spec. |
+| D29 | 2026-09-23 | Registration also takes `dateOfBirth` (YYYY-MM-DD, not in the future, ≤ 120 years) and `acceptTerms: true`. Both are stored on the User (`dateOfBirth`, `termsAcceptedAt`) until Phase 3 creates and matches the Patient record. Supersedes the DOB part of D1. | Needed for the §4.4 phone + DOB match and §10.6 consent. |
+| D30 | 2026-09-23 | `authenticate` checks the session before the user, so a deactivated user's old token (sessions revoked) gets 401 `SESSION_REVOKED`; `ACCOUNT_INACTIVE` shows when the session is still live. `req.user` = `{ id, role, sessionId, sessionFamily, firstName, lastName, email, mustChangePassword, patientId }`. | Step 3 spec order. |
+| D31 | 2026-09-23 | `passwordChangedAt` is stored as now − 1 s. Change password revokes **every** session and starts a new one (new access token and refresh cookie), so the caller's old access token also fails immediately. | Deterministic revocation of the old token. |
+| D32 | 2026-09-23 | `POST /auth/reset-password` takes `{ token, newPassword }`. Forgot and reset each have a 5/hour-per-IP `passwordResetLimiter` (replaces the IP + email forgot limiter). Failed-login audit metadata includes the submitted email (never the password). A missing refresh cookie → 401 `SESSION_REVOKED` and the cookie is cleared. The 423 message states the minutes remaining. | Step 3 spec. |
+| D33 | 2026-09-23 | `canAccessPatient(user, patientId, scope)` is a pure synchronous function; `SCOPES` is exported. The doctor care relationship (Phase 5) will need DB lookups, so the signature will change then. | Step 3 spec. |

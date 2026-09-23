@@ -58,10 +58,12 @@ describe('audit.record', () => {
       req.user = {
         id: actor.user,
         role: 'doctor',
-        sid: 's',
+        sessionId: 's',
         sessionFamily: 'f',
         firstName: 'Anil',
         lastName: 'Mehta',
+        email: 'dr.mehta@medassist.dev',
+        mustChangePassword: false,
         patientId: null,
       };
       next();

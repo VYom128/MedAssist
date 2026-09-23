@@ -12,7 +12,15 @@ import AuthCard from '../components/AuthCard';
 import PasswordField from '../components/PasswordField';
 import { registerSchema, type RegisterValues } from '../schemas';
 
-const FIELDS = ['firstName', 'lastName', 'email', 'phone', 'password'] as const;
+const FIELDS = [
+  'firstName',
+  'lastName',
+  'email',
+  'phone',
+  'dateOfBirth',
+  'password',
+  'acceptTerms',
+] as const;
 
 /** Patient self-signup (spec §4.4). */
 export default function RegisterPage() {
@@ -27,7 +35,7 @@ export default function RegisterPage() {
 
   const onSubmit = handleSubmit(async ({ confirmPassword: _confirm, ...values }) => {
     try {
-      await registerPatient(values).unwrap();
+      await registerPatient({ ...values, acceptTerms: true }).unwrap();
       navigate(ROLE_HOME.patient, { replace: true });
     } catch (err) {
       if (!applyServerFieldErrors(err, setError, FIELDS)) {
@@ -80,10 +88,18 @@ export default function RegisterPage() {
           error={errors.phone?.message}
           {...register('phone')}
         />
+        <Input
+          label="Date of birth"
+          type="date"
+          autoComplete="bday"
+          max={new Date().toISOString().slice(0, 10)}
+          error={errors.dateOfBirth?.message}
+          {...register('dateOfBirth')}
+        />
         <PasswordField
           label="Password"
           autoComplete="new-password"
-          hint="At least 8 characters, with a letter and a number."
+          hint="At least 8 characters, with a letter and a number. Avoid your name or email."
           error={errors.password?.message}
           {...register('password')}
         />
@@ -93,6 +109,25 @@ export default function RegisterPage() {
           error={errors.confirmPassword?.message}
           {...register('confirmPassword')}
         />
+        <div>
+          <label className="flex items-start gap-2 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600"
+              aria-invalid={errors.acceptTerms ? true : undefined}
+              aria-describedby={errors.acceptTerms ? 'accept-terms-error' : undefined}
+              {...register('acceptTerms')}
+            />
+            <span>
+              I agree to the terms of use and to MedAssist storing my details to provide care.
+            </span>
+          </label>
+          {errors.acceptTerms && (
+            <p id="accept-terms-error" className="mt-1 text-sm text-rose-600">
+              {errors.acceptTerms.message}
+            </p>
+          )}
+        </div>
         <Button type="submit" fullWidth loading={isLoading}>
           Create account
         </Button>

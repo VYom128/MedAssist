@@ -43,9 +43,11 @@ describe('POST /auth/refresh', () => {
     expectErrorShape(res.body, 'FORBIDDEN');
   });
 
-  it('returns 401 without a cookie and SESSION_REVOKED for an unknown token', async () => {
+  it('returns 401 SESSION_REVOKED (and clears the cookie) without a cookie or for an unknown token', async () => {
     const none = await api().post('/api/v1/auth/refresh').set('X-Requested-With', 'medassist');
-    expectErrorShape(none.body, 'UNAUTHORIZED');
+    expect(none.status).toBe(401);
+    expectErrorShape(none.body, 'SESSION_REVOKED');
+    expect(none.headers['set-cookie']?.[0]).toMatch(/^ma_rt=;/);
 
     const unknown = await refreshWith('not-a-real-token');
     expect(unknown.status).toBe(401);

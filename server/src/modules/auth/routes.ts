@@ -9,6 +9,7 @@ import {
   forgotPasswordLimiter,
   loginLimiter,
   registerLimiter,
+  resetPasswordLimiter,
 } from '../../middlewares/rateLimiters.js';
 import { requireCsrfHeader } from '../../middlewares/requireCsrfHeader.js';
 import { validate } from '../../middlewares/validate.js';
@@ -45,6 +46,7 @@ router.post(
 );
 router.post(
   '/reset-password',
+  resetPasswordLimiter,
   validate(resetPasswordSchema),
   asyncHandler(authController.resetPassword),
 );
