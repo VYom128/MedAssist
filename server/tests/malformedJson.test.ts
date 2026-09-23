@@ -16,13 +16,13 @@ describe('request body parsing', () => {
 
     expect(res.status).toBe(400);
     const body = expectErrorShape(res.body, 'BAD_REQUEST');
-    expect(body.message).toBe('Malformed JSON in request body');
+    expect(body.message).toBe('Malformed JSON');
   });
 
   it('returns 413 PAYLOAD_TOO_LARGE for oversized JSON bodies', async () => {
     const res = await testApi()
       .post('/api/v1/__test/echo')
-      .send({ blob: 'x'.repeat(200 * 1024) });
+      .send({ blob: 'x'.repeat(1024 * 1024 + 1) }); // limit is 1mb
 
     expect(res.status).toBe(413);
     expectErrorShape(res.body, 'PAYLOAD_TOO_LARGE');

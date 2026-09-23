@@ -70,7 +70,7 @@ export default function HomePage() {
 
           {state.status === 'success' && (
             <dl className="divide-y divide-slate-100">
-              <StatusRow label="API" value={state.data.api} ok />
+              <StatusRow label="API" value={state.data.status} ok />
               <StatusRow label="DB" value={state.data.db} ok={state.data.db === 'connected'} />
             </dl>
           )}

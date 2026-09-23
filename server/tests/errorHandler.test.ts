@@ -80,27 +80,27 @@ describe('errorHandler', () => {
     const body = expectErrorShape(res.body, 'INTERNAL_ERROR');
     expect(body.message).toBe('Something went wrong');
     expect(JSON.stringify(res.body)).not.toContain('secret internal detail');
-    expect(JSON.stringify(res.body)).not.toContain('stack');
+    expect(res.body).not.toHaveProperty('stack'); // stack only in development
   });
 
   it('maps a ZodError to 400 VALIDATION_ERROR', async () => {
     const res = await testApi().get('/api/v1/__test/zod');
     expect(res.status).toBe(400);
     const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
-    expect(body.error.details).toEqual([{ path: 'a', message: expect.any(String) }]);
+    expect(body.error.details).toEqual([{ field: 'a', message: expect.any(String) }]);
   });
 
   it('maps a Mongoose CastError to 400 BAD_REQUEST', async () => {
     const res = await testApi().get('/api/v1/__test/cast/not-an-object-id');
     expect(res.status).toBe(400);
-    expectErrorShape(res.body, 'BAD_REQUEST');
+    expect(expectErrorShape(res.body, 'BAD_REQUEST').message).toBe('Invalid _id');
   });
 
   it('maps a Mongoose ValidationError to 400 VALIDATION_ERROR', async () => {
     const res = await testApi().get('/api/v1/__test/mongoose-validation');
     expect(res.status).toBe(400);
     const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
-    const paths = (body.error.details as { path: string }[]).map((d) => d.path).sort();
+    const paths = (body.error.details as { field: string }[]).map((d) => d.field).sort();
     expect(paths).toEqual(['age', 'email']);
   });
 
@@ -108,6 +108,7 @@ describe('errorHandler', () => {
     const res = await testApi().get('/api/v1/__test/duplicate');
     expect(res.status).toBe(409);
     const body = expectErrorShape(res.body, 'CONFLICT');
+    expect(body.message).toBe('Duplicate value for email');
     expect(body.error.details).toEqual({ fields: ['email'] });
     expect(JSON.stringify(res.body)).not.toContain('dup@example.com');
   });

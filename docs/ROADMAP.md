@@ -52,14 +52,15 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - 2026-09-23 – **TypeScript** instead of JavaScript (overrides spec §3.2 "JavaScript, no TypeScript"). Files named `.js`/`.jsx` in the spec are `.ts`/`.tsx`. Server: `tsc` build to `server/dist`, dev via nodemon + tsx. Added `npm run typecheck`.
 - Dev API port is **5001** (macOS AirPlay uses 5000).
 - Env: only Phase 0 variables are validated; later ones from §3.6 are listed (commented out) in `.env.example` and added per phase.
-- Health: `data: { api, db, uptime, timestamp }`; 200 when DB is connected, 503 otherwise (same body).
-- `VALIDATION_ERROR.details` shape: `[{ path: 'body.email', message }]`.
-- New error code `PAYLOAD_TOO_LARGE` (413) for oversized JSON bodies (100 kb limit); not in §16. `FILE_TOO_LARGE` stays for uploads.
+- Health: `data: { status: 'ok', uptime, timestamp, db }` where `db` is the Mongoose state (`connected` / `disconnected` / `connecting` / `disconnecting`); always 200 while the API is up.
+- `VALIDATION_ERROR.details` shape: `[{ field: 'body.email', message }]`. Error responses include `stack` in development only.
+- New error code `PAYLOAD_TOO_LARGE` (413) for oversized JSON / urlencoded bodies (1 mb limit); not in §16. `FILE_TOO_LARGE` stays for uploads.
 - New error code `BUSINESS_RULE_VIOLATION` (422) for `ApiError.unprocessable()` when no specific §16 code fits; not in §16.
 - Server config is exported as a frozen `config` object (`config.isProd`, `config.isTest`, …); `MONGO_URI` is optional when `NODE_ENV=test`. `PORT` defaults to 5000 but `.env.example` sets 5001 (macOS AirPlay).
 - Duplicate-key errors → `409 CONFLICT` with `details.fields` only (values never echoed).
 - Global rate limit 300 req / 15 min per IP (env `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX`); auth limiters come in Phase 1.
-- Incoming `X-Request-Id` is reused if it matches `[A-Za-z0-9_-]{8,64}`, otherwise a UUID is generated.
+- Incoming `X-Request-Id` is reused only if it matches `[A-Za-z0-9_-]{8,64}` (prevents log/header injection), otherwise a UUID is generated.
+- Global rate limiter is mounted on `/api` and skipped when `NODE_ENV=test` (tests use `createRateLimiter()` directly). `trust proxy` is 1 in every environment.
 - Zod v4. React 18 pinned per spec. `npm audit` reports 2 moderate React Router v6 advisories (fix only in v7); revisit before deploy.
 - Client uses axios for the health check; plan is RTK Query with an axios-based `baseQuery` in Phase 1.
 - Local MongoDB (Homebrew) is standalone; needs converting to a replica set before Phase 4 (see README).

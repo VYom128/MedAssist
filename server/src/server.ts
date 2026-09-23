@@ -1,5 +1,6 @@
 import type { Server } from 'node:http';
 import { connectDB, disconnectDB } from './config/db.js';
+import { API_PREFIX } from './config/constants.js';
 import { config } from './config/env.js';
 import { createApp } from './app.js';
 import { logger } from './utils/logger.js';
@@ -11,14 +12,16 @@ async function start() {
 
   const app = createApp();
   const server: Server = app.listen(config.port, () => {
-    logger.info({ port: config.port, env: config.nodeEnv }, 'API listening');
+    logger.info(
+      `API listening on http://localhost:${config.port}${API_PREFIX} (${config.nodeEnv})`,
+    );
   });
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    logger.info({ signal }, 'Shutting down');
+    logger.info({ signal }, 'Shutting down: no longer accepting connections');
 
     const force = setTimeout(() => {
       logger.error('Forced shutdown after timeout');

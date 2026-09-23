@@ -55,14 +55,14 @@ describe('validate() middleware', () => {
 
     expect(res.status).toBe(400);
     const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
-    const details = body.error.details as { path: string; message: string }[];
-    expect(details.map((d) => d.path).sort()).toEqual([
+    const details = body.error.details as { field: string; message: string }[];
+    expect(details.map((d) => d.field).sort()).toEqual([
       'body.name',
       'body.qty',
       'params.id',
       'query.page',
     ]);
-    expect(details.find((d) => d.path === 'params.id')?.message).toBe('Invalid id');
+    expect(details.find((d) => d.field === 'params.id')?.message).toBe('Invalid id');
   });
 
   it('rejects a missing body', async () => {

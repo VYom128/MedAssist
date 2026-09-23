@@ -1,4 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
+import express from 'express';
+import request from 'supertest';
+import { describe, expect, it } from 'vitest';
+import { errorHandler } from '../src/middlewares/errorHandler.js';
+import { apiLimiter, createRateLimiter } from '../src/middlewares/rateLimiters.js';
+import { requestId } from '../src/middlewares/requestId.js';
 import { api, expectErrorShape } from './setup/testApp.js';
 
 describe('security middleware', () => {
@@ -27,21 +32,26 @@ describe('security middleware', () => {
     expect(unsafe.body.requestId).toBe(unsafe.headers['x-request-id']);
   });
 
-  it('returns 429 RATE_LIMITED after the limit is exceeded', async () => {
-    vi.stubEnv('RATE_LIMIT_MAX', '3');
-    vi.resetModules();
-    const { createApp } = await import('../src/app.js');
-    const { default: request } = await import('supertest');
-    const app = createApp();
+  it('returns 429 RATE_LIMITED in the standard format after the limit is exceeded', async () => {
+    const app = express();
+    app.use(requestId);
+    app.use(createRateLimiter({ windowMs: 60_000, limit: 3 }));
+    app.get('/ping', (_req, res) => res.json({ ok: true }));
+    app.use(errorHandler);
 
     for (let i = 0; i < 3; i++) {
-      expect((await request(app).get('/api/v1/health')).status).toBe(200);
+      expect((await request(app).get('/ping')).status).toBe(200);
     }
-    const res = await request(app).get('/api/v1/health');
+    const res = await request(app).get('/ping');
     expect(res.status).toBe(429);
     expectErrorShape(res.body, 'RATE_LIMITED');
+  });
 
-    vi.unstubAllEnvs();
-    vi.resetModules();
+  it('skips the global API limiter when NODE_ENV=test', async () => {
+    const app = express();
+    app.use(apiLimiter);
+    app.get('/ping', (_req, res) => res.json({ ok: true }));
+    const res = await request(app).get('/ping');
+    expect(res.headers['ratelimit-policy']).toBeUndefined();
   });
 });

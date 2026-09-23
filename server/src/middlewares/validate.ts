@@ -1,6 +1,5 @@
 import type { RequestHandler } from 'express';
-import type { z } from 'zod';
-import { ApiError } from '../utils/ApiError.js';
+import { ZodError, type z } from 'zod';
 
 export interface RequestSchemas {
   body?: z.ZodType;
@@ -8,19 +7,16 @@ export interface RequestSchemas {
   params?: z.ZodType;
 }
 
-export interface ValidationIssue {
-  path: string;
-  message: string;
-}
-
 /**
- * Validates body / query / params with Zod and replaces them with the parsed (clean) values.
- * On failure throws VALIDATION_ERROR with `details: [{ path: 'body.email', message }]`.
+ * Validates `req.params`, `req.query` and `req.body` with Zod and replaces them with the parsed
+ * values, so unknown fields are stripped and coercions/defaults apply.
+ * On failure calls `next(zodError)`; errorHandler formats it as 400 VALIDATION_ERROR.
+ * Issue paths are prefixed with the request part (e.g. `body.email`).
  */
 export const validate =
   (schemas: RequestSchemas): RequestHandler =>
   (req, _res, next) => {
-    const issues: ValidationIssue[] = [];
+    const issues: z.core.$ZodIssue[] = [];
 
     for (const key of ['params', 'query', 'body'] as const) {
       const schema = schemas[key];
@@ -28,27 +24,16 @@ export const validate =
 
       const result = schema.safeParse(req[key]);
       if (!result.success) {
-        for (const issue of result.error.issues) {
-          issues.push({ path: [key, ...issue.path].join('.'), message: issue.message });
-        }
+        issues.push(...result.error.issues.map((i) => ({ ...i, path: [key, ...i.path] })));
         continue;
       }
-
-      if (key === 'query') {
-        // req.query is a getter in some Express setups; redefine it instead of assigning.
-        Object.defineProperty(req, 'query', {
-          value: result.data,
-          writable: true,
-          enumerable: true,
-          configurable: true,
-        });
-      } else {
-        req[key] = result.data;
-      }
+      // Express 4 allows reassigning req.query; revisit this if we upgrade to Express 5
+      // (where req.query is a getter).
+      req[key] = result.data as never;
     }
 
     if (issues.length > 0) {
-      next(ApiError.validation('Validation failed', issues));
+      next(new ZodError(issues));
       return;
     }
     next();

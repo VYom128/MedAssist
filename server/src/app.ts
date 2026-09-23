@@ -1,7 +1,7 @@
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import express, { type Express } from 'express';
+import express, { type Express, type Request } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { API_PREFIX, BODY_LIMIT } from './config/constants.js';
@@ -10,26 +10,31 @@ import { errorHandler } from './middlewares/errorHandler.js';
 import { notFound } from './middlewares/notFound.js';
 import { apiLimiter } from './middlewares/rateLimiters.js';
 import { requestId } from './middlewares/requestId.js';
-import apiRoutes from './routes.js';
+import apiRoutes from './routes/index.js';
 import { logger } from './utils/logger.js';
 
 export interface CreateAppOptions {
-  /** Extra routers mounted under /api/v1 before the 404 handler (used by tests). */
+  /** Extra routers mounted before the 404 handler (used by tests). */
   mount?: (app: Express) => void;
 }
 
+/** Builds the Express app (middleware, routes, error handling) without listening. */
 export function createApp({ mount }: CreateAppOptions = {}): Express {
   const app = express();
 
   app.disable('x-powered-by');
-  // Behind Render/Railway proxies in production (spec §18): needed for correct client IPs.
-  if (config.isProd) app.set('trust proxy', 1);
+  // Behind Render/Railway proxies (spec §18): trust the first hop for client IPs.
+  app.set('trust proxy', 1);
 
   app.use(requestId);
   app.use(
     pinoHttp({
       logger,
-      genReqId: (req) => (req as express.Request).id,
+      genReqId: (req) => (req as Request).id,
+      // Health checks are polled often; keep them out of dev logs.
+      autoLogging: config.isDev
+        ? { ignore: (req) => (req as Request).originalUrl.startsWith(`${API_PREFIX}/health`) }
+        : true,
       // Log method, url and status only – never bodies or headers.
       serializers: {
         req: (req: { id: string; method: string; url: string }) => ({
@@ -48,19 +53,13 @@ export function createApp({ mount }: CreateAppOptions = {}): Express {
   );
 
   app.use(helmet());
-  app.use(
-    cors({
-      origin: config.clientUrl,
-      credentials: true,
-      exposedHeaders: ['X-Request-Id'],
-    }),
-  );
+  app.use(cors({ origin: config.clientUrl, credentials: true, exposedHeaders: ['X-Request-Id'] }));
   app.use(compression());
   app.use(express.json({ limit: BODY_LIMIT }));
-  app.use(express.urlencoded({ extended: false, limit: BODY_LIMIT }));
+  app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
   app.use(cookieParser());
 
-  app.use(API_PREFIX, apiLimiter);
+  app.use('/api', apiLimiter);
   app.use(API_PREFIX, apiRoutes);
   mount?.(app);
 

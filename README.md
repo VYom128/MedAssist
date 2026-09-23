@@ -87,15 +87,15 @@ All routes are under `/api/v1`.
 { "success": true, "message": "OK", "data": {}, "meta": {} }
 // error
 { "success": false, "message": "Validation failed",
-  "error": { "code": "VALIDATION_ERROR", "details": [{ "path": "body.email", "message": "Invalid email" }] },
+  "error": { "code": "VALIDATION_ERROR", "details": [{ "field": "body.email", "message": "Invalid email" }] },
   "requestId": "b9e965f5-…" }
 ```
 
 Error codes are listed in spec §16 and `server/src/config/constants.ts`. Every response carries an
 `X-Request-Id` header, which also appears in the logs and in error bodies.
 
-`GET /api/v1/health` returns `data: { api, db, uptime, timestamp }`. The status is **200** when the
-database is connected and **503** when it is not (the body shape is the same).
+`GET /api/v1/health` returns `data: { status, uptime, timestamp, db }` with status **200**; `db` is
+`connected`, `disconnected`, `connecting` or `disconnecting`.
 
 ## Environment variables
 

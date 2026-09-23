@@ -1,14 +1,23 @@
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, type Options } from 'express-rate-limit';
 import { config } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 
-/** Global per-IP limiter for the API. Stricter auth limiters are added in Phase 1. */
-export const apiLimiter = rateLimit({
+/**
+ * Builds a per-IP rate limiter whose 429 response goes through errorHandler
+ * (standard error format, code RATE_LIMITED).
+ */
+export function createRateLimiter(options: Partial<Options> = {}) {
+  return rateLimit({
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    handler: (_req, _res, next) => next(ApiError.tooManyRequests()),
+    ...options,
+  });
+}
+
+/** Global API limiter: 300 requests / 15 min per IP (configurable via env). Off in tests. */
+export const apiLimiter = createRateLimiter({
   windowMs: config.rateLimit.windowMs,
   limit: config.rateLimit.max,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  handler: (_req, _res, next) => {
-    next(ApiError.tooManyRequests());
-  },
+  skip: () => config.isTest,
 });

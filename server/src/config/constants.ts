@@ -79,4 +79,4 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = Object.fre
 export const API_PREFIX = '/api/v1';
 
 /** Max JSON / urlencoded body size. File uploads go through Multer with their own limit. */
-export const BODY_LIMIT = '100kb';
+export const BODY_LIMIT = '1mb';
