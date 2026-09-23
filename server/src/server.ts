@@ -1,6 +1,6 @@
 import type { Server } from 'node:http';
 import { connectDB, disconnectDB } from './config/db.js';
-import { env } from './config/env.js';
+import { config } from './config/env.js';
 import { createApp } from './app.js';
 import { logger } from './utils/logger.js';
 
@@ -10,8 +10,8 @@ async function start() {
   await connectDB();
 
   const app = createApp();
-  const server: Server = app.listen(env.PORT, () => {
-    logger.info({ port: env.PORT, env: env.NODE_ENV }, 'API listening');
+  const server: Server = app.listen(config.port, () => {
+    logger.info({ port: config.port, env: config.nodeEnv }, 'API listening');
   });
 
   let shuttingDown = false;

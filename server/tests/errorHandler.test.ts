@@ -16,7 +16,7 @@ const Thing = mongoose.model(
 
 const router = Router();
 router.get('/api-error', () => {
-  throw new ApiError('CONFLICT', 'Already exists', { field: 'email' });
+  throw ApiError.conflict('Already exists', { field: 'email' });
 });
 router.get(
   '/async-api-error',

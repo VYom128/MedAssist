@@ -48,7 +48,7 @@ export const validate =
     }
 
     if (issues.length > 0) {
-      next(ApiError.validation(issues));
+      next(ApiError.validation('Validation failed', issues));
       return;
     }
     next();

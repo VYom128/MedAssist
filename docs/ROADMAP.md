@@ -55,6 +55,8 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - Health: `data: { api, db, uptime, timestamp }`; 200 when DB is connected, 503 otherwise (same body).
 - `VALIDATION_ERROR.details` shape: `[{ path: 'body.email', message }]`.
 - New error code `PAYLOAD_TOO_LARGE` (413) for oversized JSON bodies (100 kb limit); not in §16. `FILE_TOO_LARGE` stays for uploads.
+- New error code `BUSINESS_RULE_VIOLATION` (422) for `ApiError.unprocessable()` when no specific §16 code fits; not in §16.
+- Server config is exported as a frozen `config` object (`config.isProd`, `config.isTest`, …); `MONGO_URI` is optional when `NODE_ENV=test`. `PORT` defaults to 5000 but `.env.example` sets 5001 (macOS AirPlay).
 - Duplicate-key errors → `409 CONFLICT` with `details.fields` only (values never echoed).
 - Global rate limit 300 req / 15 min per IP (env `RATE_LIMIT_WINDOW_MS`, `RATE_LIMIT_MAX`); auth limiters come in Phase 1.
 - Incoming `X-Request-Id` is reused if it matches `[A-Za-z0-9_-]{8,64}`, otherwise a UUID is generated.

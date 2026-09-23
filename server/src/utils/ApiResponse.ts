@@ -7,22 +7,25 @@ export interface PaginationMeta {
   totalPages: number;
 }
 
-interface SuccessOptions<T> {
+export interface SuccessOptions<T> {
   statusCode?: number;
   message?: string;
-  data?: T;
+  data?: T | null;
   meta?: PaginationMeta | Record<string, unknown>;
 }
 
-/** Sends `{ success: true, message, data, meta? }` (spec §7.1). */
+/**
+ * Sends the standard success envelope (spec §7.1): `{ success: true, message, data, meta? }`.
+ * `meta` is left out when undefined.
+ */
 export function sendSuccess<T>(
   res: Response,
-  { statusCode = 200, message = 'OK', data, meta }: SuccessOptions<T> = {},
+  { statusCode = 200, message = 'OK', data = null, meta }: SuccessOptions<T> = {},
 ) {
   return res.status(statusCode).json({
     success: true,
     message,
-    data: data ?? null,
-    ...(meta ? { meta } : {}),
+    data,
+    ...(meta !== undefined ? { meta } : {}),
   });
 }

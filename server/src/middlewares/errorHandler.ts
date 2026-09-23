@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler } from 'express';
 import mongoose from 'mongoose';
 import { ZodError } from 'zod';
+import { ERROR_CODES } from '../config/constants.js';
 import { ApiError } from '../utils/ApiError.js';
 import { logger } from '../utils/logger.js';
 
@@ -20,12 +21,14 @@ function toApiError(err: unknown): ApiError {
 
   if (err instanceof ZodError) {
     return ApiError.validation(
+      'Validation failed',
       err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
     );
   }
 
   if (err instanceof mongoose.Error.ValidationError) {
     return ApiError.validation(
+      'Validation failed',
       Object.values(err.errors).map((e) => ({ path: e.path, message: e.message })),
     );
   }
@@ -40,7 +43,7 @@ function toApiError(err: unknown): ApiError {
       return ApiError.badRequest('Malformed JSON in request body');
     }
     if (bodyErr.type === 'entity.too.large') {
-      return new ApiError('PAYLOAD_TOO_LARGE', 'Request body is too large');
+      return new ApiError(413, 'Request body is too large', ERROR_CODES.PAYLOAD_TOO_LARGE);
     }
 
     const mongoErr = err as MongoServerErrorLike;

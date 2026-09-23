@@ -1,6 +1,9 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
-/** Forwards rejected promises from async route handlers to the error handler. */
+/**
+ * Wraps an async route handler so a rejected promise is passed to `next()`
+ * (and so to errorHandler) instead of becoming an unhandled rejection.
+ */
 export const asyncHandler =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>): RequestHandler =>
   (req, res, next) => {

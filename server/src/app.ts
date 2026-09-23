@@ -5,7 +5,7 @@ import express, { type Express } from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { API_PREFIX, BODY_LIMIT } from './config/constants.js';
-import { env, isProduction } from './config/env.js';
+import { config } from './config/env.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { notFound } from './middlewares/notFound.js';
 import { apiLimiter } from './middlewares/rateLimiters.js';
@@ -23,7 +23,7 @@ export function createApp({ mount }: CreateAppOptions = {}): Express {
 
   app.disable('x-powered-by');
   // Behind Render/Railway proxies in production (spec §18): needed for correct client IPs.
-  if (isProduction) app.set('trust proxy', 1);
+  if (config.isProd) app.set('trust proxy', 1);
 
   app.use(requestId);
   app.use(
@@ -50,7 +50,7 @@ export function createApp({ mount }: CreateAppOptions = {}): Express {
   app.use(helmet());
   app.use(
     cors({
-      origin: env.CLIENT_URL,
+      origin: config.clientUrl,
       credentials: true,
       exposedHeaders: ['X-Request-Id'],
     }),

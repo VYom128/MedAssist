@@ -11,8 +11,6 @@ export default defineConfig({
     testTimeout: 20_000,
     env: {
       NODE_ENV: 'test',
-      // Real URI comes from MongoMemoryReplSet (see tests/setup); this only satisfies env validation.
-      MONGO_URI: 'mongodb://127.0.0.1:1/placeholder',
       CLIENT_URL: 'http://localhost:5173',
       LOG_LEVEL: 'silent',
       RATE_LIMIT_MAX: '10000',
