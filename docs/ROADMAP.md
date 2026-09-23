@@ -12,7 +12,7 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | Phase | Name | Status |
 |---|---|---|
 | 0 | Project setup | ✅ Done |
-| 1 | Authentication, RBAC and audit logging | ⬜ Not started |
+| 1 | Authentication, RBAC and audit logging | 🟡 In progress |
 | 2 | Admin setup data | ⬜ Not started |
 | 3 | Patients | ⬜ Not started |
 | 4 | Appointments and queue | ⬜ Not started |
@@ -64,6 +64,9 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - Zod v4. React 18 pinned per spec. `npm audit` reports 2 moderate React Router v6 advisories (fix only in v7); revisit before deploy.
 - Client uses axios for the health check; plan is RTK Query with an axios-based `baseQuery` in Phase 1.
 - Local MongoDB (Homebrew) is standalone; needs converting to a replica set before Phase 4 (see README).
+- Errors are logged via `serializeError()` (name/message/stack only) so request bodies and duplicate-key values never reach logs; covered by `tests/logging.test.ts`.
+- Tests: one in-memory replica set per test file (`tests/setup.ts`); test-only routes via `createApp({ extraRoutes })`. 53 tests at the end of Phase 0.
+- Spec divergences above are recorded here rather than in spec §20 "Open decisions" (the spec was kept read-only during Phase 0).
 
 ---
 

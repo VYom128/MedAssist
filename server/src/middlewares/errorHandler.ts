@@ -4,7 +4,7 @@ import { ZodError } from 'zod';
 import { ERROR_CODES } from '../config/constants.js';
 import { config } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
-import { logger } from '../utils/logger.js';
+import { logger, serializeError } from '../utils/logger.js';
 
 interface BodyParserError extends Error {
   type?: string;
@@ -72,12 +72,11 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   const original = err instanceof Error ? err : new Error(String(err));
 
   if (apiError.statusCode >= 500) {
-    // Log name/message/stack only: body-parser errors carry the raw body as a property.
     logger.error(
       {
         requestId: req.id,
         code: apiError.code,
-        err: { name: original.name, message: original.message, stack: original.stack },
+        err: serializeError(err),
       },
       'Request failed',
     );

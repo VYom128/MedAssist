@@ -3,7 +3,7 @@ import { connectDB, disconnectDB } from './config/db.js';
 import { API_PREFIX } from './config/constants.js';
 import { config } from './config/env.js';
 import { createApp } from './app.js';
-import { logger } from './utils/logger.js';
+import { logger, serializeError } from './utils/logger.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -35,7 +35,7 @@ async function start() {
         logger.info('Shutdown complete');
         process.exit(0);
       } catch (err) {
-        logger.error({ err }, 'Error during shutdown');
+        logger.error({ err: serializeError(err) }, 'Error during shutdown');
         process.exit(1);
       }
     });
@@ -46,16 +46,16 @@ async function start() {
 }
 
 process.on('unhandledRejection', (reason) => {
-  logger.fatal({ err: reason }, 'Unhandled promise rejection');
+  logger.fatal({ err: serializeError(reason) }, 'Unhandled promise rejection');
   process.exit(1);
 });
 
 process.on('uncaughtException', (err) => {
-  logger.fatal({ err }, 'Uncaught exception');
+  logger.fatal({ err: serializeError(err) }, 'Uncaught exception');
   process.exit(1);
 });
 
 start().catch((err) => {
-  logger.fatal({ err }, 'Failed to start server');
+  logger.fatal({ err: serializeError(err) }, 'Failed to start server');
   process.exit(1);
 });

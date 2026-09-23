@@ -34,3 +34,13 @@ if (config.isDev) {
 
 /** Application logger. Use this instead of console. */
 export const logger = pino(options);
+
+/**
+ * Reduces any thrown value to `{ name, message, stack }` for logging.
+ * Raw error objects can carry request data as properties (body-parser's `body`,
+ * Mongo duplicate-key `keyValue`), which must never reach the logs.
+ */
+export function serializeError(err: unknown): { name: string; message: string; stack?: string } {
+  if (err instanceof Error) return { name: err.name, message: err.message, stack: err.stack };
+  return { name: 'NonError', message: typeof err === 'string' ? err : 'Non-error value thrown' };
+}

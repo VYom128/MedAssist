@@ -33,6 +33,7 @@ if (!parsed.success) {
   for (const issue of parsed.error.issues) {
     console.error(`  - ${issue.path.join('.')}: ${issue.message}`);
   }
+  console.error('Set them in server/.env (see server/.env.example).');
   process.exit(1);
 }
 

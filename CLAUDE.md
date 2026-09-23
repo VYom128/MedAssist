@@ -8,20 +8,20 @@ MERN capstone: a clinic management system for admins, doctors, receptionists, la
 Read the relevant spec sections for the current phase before planning. Do not read the whole spec every time.
 
 ## Current phase
-**Phase 0 – project setup.** Only build what the current phase prompt asks for. Do not build features from later phases early. If something from a later phase seems needed, ask first.
+**Phase 1 – Authentication, RBAC and audit logging.** Spec: §2, §6.3, §6.4, §6.25, §7.2, §7.3, §10.1–10.5, §13.1–13.2. Only build what the current phase prompt asks for. Do not build features from later phases early. If something from a later phase seems needed, ask first.
 
 ## Stack
 - Monorepo with npm workspaces: `server/` and `client/`
 - Server: Node 20+, Express 4, Mongoose 8, Zod, Pino, JWT + bcrypt, Socket.IO, Multer, PDFKit, Nodemailer
 - Client: React 18, Vite, React Router v6, Redux Toolkit + RTK Query, Tailwind CSS, react-hook-form + Zod
-- TypeScript with ES modules
+- TypeScript with ES modules (strict). File names in the spec and below (`model.js`, `api.js`, `AppRoutes.jsx`) mean `.ts` / `.tsx`. Server imports use `.js` extensions (NodeNext).
 - Tests: Vitest + Supertest + mongodb-memory-server (replica set, for transactions); React Testing Library
 - AI: Anthropic Claude API via `@anthropic-ai/sdk`, behind `server/src/ai/ai.service.js`; `AI_PROVIDER=mock` for dev and tests
 
 ## Commands
-- `npm run dev` – run server + client
-- `npm test` – server tests
-- `npm run lint` / `npm run lint:fix` / `npm run format` / `npm run format:check`
+- `npm run dev` – run server + client (`dev:server` / `dev:client` for one side). Dev API port is 5001 (macOS AirPlay holds 5000).
+- `npm test` – server tests; `npm run test:coverage -w server` for coverage
+- `npm run lint` / `npm run lint:fix` / `npm run format` / `npm run format:check` / `npm run typecheck`
 - `npm run seed` – seed demo data (from Phase 2 onward)
 
 ## Backend conventions (always follow)
@@ -35,6 +35,12 @@ Read the relevant spec sections for the current phase before planning. Do not re
 - Money is integer paise. Dates stored in UTC; business days computed in the clinic timezone.
 - Human-readable numbers (MRN, APT, INV…) come from the `counters` collection.
 - Multi-document writes (booking, signing, payments) use MongoDB transactions.
+- Config comes from the frozen `config` object in `server/src/config/env.ts` – never read `process.env` elsewhere. Add each new env var to the Zod schema and `server/.env.example` (with a comment) in the phase that needs it.
+- Error codes: use `ERROR_CODES` from `constants.ts` (never string literals); add new codes to both `ERROR_CODES` and `ERROR_HTTP_STATUS`. Prefer `ApiError` helpers (`notFound`, `conflict`, `unprocessable`, …) or `new ApiError(status, message, ERROR_CODES.X, details)`.
+- Validation errors are `details: [{ field: 'body.email', message }]`. Let Zod/Mongoose errors bubble to `errorHandler`; never format error responses in controllers.
+- Mount new modules in `server/src/routes/index.ts`. Use `parsePagination()` / `buildMeta()` from `utils/pagination.ts` for lists.
+- Logging: use `logger` (never `console`). Log errors via `serializeError(err)`, never raw error objects (they can carry request bodies or duplicate-key values).
+- Tests: each file gets its own in-memory replica set (`tests/setup.ts`); use `api(router)` from `tests/helpers/testApp.ts` to mount test-only routes; assert errors with `expectErrorShape()`.
 
 ## Frontend conventions
 - Feature folders in `client/src/features/<feature>/` (`api.js`, `components/`, `pages/`, `schemas.js`).

@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { config } from './env.js';
-import { logger } from '../utils/logger.js';
+import { logger, serializeError } from '../utils/logger.js';
 
 mongoose.set('strictQuery', true);
 
@@ -24,7 +24,7 @@ function attachListeners() {
   conn.on('disconnected', () => logger.warn({ db: conn.name }, 'MongoDB disconnected'));
   conn.on('reconnected', () => logger.info({ db: conn.name }, 'MongoDB reconnected'));
   conn.on('error', (err: Error) =>
-    logger.error({ err: { name: err.name, message: err.message } }, 'MongoDB connection error'),
+    logger.error({ err: serializeError(err) }, 'MongoDB connection error'),
   );
 }
 
