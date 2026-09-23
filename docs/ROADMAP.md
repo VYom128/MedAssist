@@ -13,8 +13,8 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 |---|---|---|
 | 0 | Project setup | ✅ Done |
 | 1 | Authentication, RBAC and audit logging | ✅ Done |
-| 2 | Admin setup data | 🟡 In progress |
-| 3 | Patients | ⬜ Not started |
+| 2 | Admin setup data | ✅ Done |
+| 3 | Patients | 🟡 In progress |
 | 4 | Appointments and queue | ⬜ Not started |
 | 5 | Visit notes and prescriptions | ⬜ Not started |
 | 6 | Lab workflow and documents | ⬜ Not started |
@@ -125,20 +125,37 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 **Goal:** the admin can configure the clinic, departments, services, doctors and lab tests.
 **Spec:** §4.2, §6.5–6.10, §6.19, §7.4–7.6, §15.3
 
-- [ ] Clinic settings (single document) + public settings endpoint
-- [ ] Departments CRUD (activate/deactivate)
-- [ ] Services CRUD with prices in paise
-- [ ] Doctor profiles (create User + profile in one transaction)
-- [ ] Weekly schedules and leave
-- [ ] Lab test catalogue with parameters and reference ranges
-- [ ] Counter service for human-readable numbers
-- [ ] Admin pages: settings (tabs), departments, services, doctors (profile/schedule/leave), lab tests (users and audit logs were built in Phase 1)
-- [ ] Seed script v1 (`npm run seed`, `--reset`)
-- [ ] Tests for validation, permissions and schedule overlap rules
+- [x] Clinic settings (single document) + public settings endpoint
+- [x] Departments CRUD (activate/deactivate)
+- [x] Services CRUD with prices in paise
+- [x] Doctor profiles (create User + profile in one transaction)
+- [x] Weekly schedules and leave
+- [x] Lab test catalogue with parameters and reference ranges
+- [x] Counter service for human-readable numbers
+- [x] Admin pages: settings (tabs), departments, services, doctors (profile/schedule/leave), lab tests (users and audit logs were built in Phase 1)
+- [x] Seed script v1 (`npm run seed`, `--reset`)
+- [x] Tests for validation, permissions and schedule overlap rules
 
 **Done when:** a fresh seed produces a fully configured clinic that the admin can edit in the UI.
+Verified 2026-09-23: `npm run seed -- --reset` on the local replica set, then `npm run smoke` (21 checks: settings, 5 departments, 12 services, 8 doctors with schedules, 2 with leave, 15 lab tests, no private fields in public responses, all 15 demo logins, audit chain). Editing in the UI is covered by component tests (RTL + MSW); a manual browser pass is in the Phase 2 test script (see below).
 
-**Notes / decisions:**
+**Notes / decisions:** (recorded as D41–D59 in spec §20 "Decisions made")
+- Doctors are identified by their **User id** everywhere; `POST /doctors` creates User + DoctorProfile in one transaction; `POST /users` rejects `doctor` (D41, D42).
+- Schedule and leave responses return `affectedAppointments: []` with `TODO(Phase 4)` (D43). Logo is a URL until uploads (D44).
+- Settings: one document, cached in memory, refreshed after each update plus a 60 s TTL; reading never writes (D45).
+- Money is integer paise in the API and database; the UI types rupees (`MoneyInput`); tax is % in the UI and basis points in the API (D46).
+- Weekly schedules are versioned 7-day templates (`effectiveFrom`/`effectiveTo` calendar dates at UTC midnight; session times `HH:mm` clinic time); saving closes the previous version the day before (D47). Leave is `[startAt, endAt)` in UTC; full days are converted with the clinic timezone; overlaps → 409, serialised per doctor (D49).
+- Lab test catalogue stores and validates reference ranges; flag helpers come in Phase 6 (D48).
+- Public reads (`/settings/public`, `/departments`, `/services`, `/doctors`) use `optionalAuthenticate`; admins get extra fields (D50). Accepted deviations 3a–3f from the step reports (D51).
+- New audit actions beyond §10.4 (D54). **Audit chain fix:** the writer now reads the chain head from the database on every write and retries on a `seq` clash; before, a seed `--reset` while `npm run dev` was running broke the chain, and a second writer could lose an entry (D55).
+- Seed v1: faker `en_IN` with a fixed seed, 8 doctors, 2 receptionists, 2 lab techs; seeders go through the services (validation + audit) and are idempotent (D56). **Local MongoDB must now be a replica set** (doctor creation uses a transaction).
+- date-fns + date-fns-tz on server and client; the client takes the clinic timezone from `GET /settings/public` at app start (supersedes D38) (D57).
+- Server additions for the admin UI: active doctor count in the admin department view, admin `isActive` filter on services.
+- Fixed along the way: Zod 4 object refinements run even after a field fails (schedule/lab validation could 500); settings loads bumped `updatedAt`; identical lab-test parameters counted as a change; a flaky Phase 1 audit test (secret "abc" could appear in hex hashes).
+- Guard tests added: every allowed write in the RBAC matrix must write an audit entry; anonymous public reads are scanned for private keys; `npm run smoke` covers the Phase 2 data.
+- **Watch:** three one-off failures in full-suite runs (`routeInventory`/`rbac`, different routes, < 100 ms, not reproducible in 9 full runs + 6 parallel stress runs). Assertions now print the response body so the next one can be diagnosed.
+- Not verified in a real browser by Claude (Playwright not installed); see the manual test script.
+- Tests: 747 server (was 356) + 78 client (was 35). Phase 2 complete 2026-09-23.
 
 ---
 

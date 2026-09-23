@@ -13,7 +13,7 @@ AI-assisted summaries.
 
 - **Node.js 20+** and **npm 10+** (`.nvmrc` pins 20)
 - **MongoDB**: a MongoDB Atlas cluster, or a local MongoDB running as a **replica set**
-  (transactions are used from Phase 4; a standalone `mongod` works for Phases 0–3)
+  (required from Phase 2: creating a doctor, saving a schedule and the seed use transactions)
 
 <details>
 <summary>Turning a local Homebrew MongoDB into a single-node replica set</summary>
@@ -25,8 +25,9 @@ replication:
   replSetName: rs0
 ```
 
-Then run `brew services restart mongodb-community`, run `rs.initiate()` once in `mongosh`,
-and use `MONGO_URI=mongodb://127.0.0.1:27017/med_assist?replicaSet=rs0`.
+Then run `brew services restart mongodb-community`, run `rs.initiate()` once in `mongosh`
+(`brew install mongosh` if needed), and use
+`MONGO_URI=mongodb://127.0.0.1:27017/med_assist?replicaSet=rs0`.
 
 </details>
 
@@ -53,23 +54,28 @@ in development.
 
 ## Demo accounts
 
-`npm run seed` upserts one login per role (password **`Password@123`**): missing accounts are
-created and existing ones are reset to the demo password, active, unlocked and without a forced
-password change. It prints the table below when it finishes. `npm run seed -- --reset` first wipes
-users, sessions and audit logs (development only). The seed refuses to run when
-`NODE_ENV=production`.
+`npm run seed` builds a configured demo clinic (spec §15.3): clinic settings (Bengaluru,
+Asia/Kolkata, INR, Mon–Sat), 5 departments, 12 services, 8 doctors with profiles and weekly
+schedules (2 with upcoming leave), 15 lab tests with reference ranges, and the logins below. It is
+idempotent: running it again changes nothing, and demo accounts are reset to the demo password,
+active, unlocked and without a forced password change. `npm run seed -- --reset` first wipes the
+data (development only). The seed refuses to run when `NODE_ENV=production`. Every password is
+**`Password@123`**; the seed prints the full table (including the 6 generated doctors).
 
-| Role         | Email                      | Lands on               |
-| ------------ | -------------------------- | ---------------------- |
-| Admin        | `admin@medassist.dev`      | `/admin/dashboard`     |
-| Receptionist | `reception1@medassist.dev` | `/reception/dashboard` |
-| Lab tech     | `lab1@medassist.dev`       | `/lab/dashboard`       |
-| Doctor       | `dr.mehta@medassist.dev`   | `/doctor/dashboard`    |
-| Doctor       | `dr.iyer@medassist.dev`    | `/doctor/dashboard`    |
-| Patient      | `patient1@medassist.dev`   | `/patient/dashboard`   |
-| Patient      | `patient2@medassist.dev`   | `/patient/dashboard`   |
+| Role         | Email                                                  | Lands on               |
+| ------------ | ------------------------------------------------------ | ---------------------- |
+| Admin        | `admin@medassist.dev`                                  | `/admin/dashboard`     |
+| Receptionist | `reception1@medassist.dev`, `reception2@medassist.dev` | `/reception/dashboard` |
+| Lab tech     | `lab1@medassist.dev`, `lab2@medassist.dev`             | `/lab/dashboard`       |
+| Doctor       | `dr.mehta@medassist.dev` (General Medicine)            | `/doctor/dashboard`    |
+| Doctor       | `dr.iyer@medassist.dev` (Paediatrics)                  | `/doctor/dashboard`    |
+| Patient      | `patient1@medassist.dev`, `patient2@medassist.dev`     | `/patient/dashboard`   |
 
 Patients can also sign up at `/register`. Their Patient record and linking arrive in Phase 3.
+
+Admin set-up pages: `/admin/settings`, `/admin/departments`, `/admin/services`, `/admin/doctors`
+(profile, weekly schedule, leave) and `/admin/lab-tests`. Doctors manage their own hours and leave
+at `/doctor/schedule` and their bio and languages at `/doctor/profile`.
 
 ## Authentication overview
 
@@ -130,20 +136,20 @@ missing or invalid, the server names it and exits with code 1.
 
 Run from the repo root.
 
-| Command                                     | What it does                                                                                                  |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                               | Server (nodemon + tsx) and client (Vite) together                                                             |
-| `npm run dev:server` / `npm run dev:client` | One side only                                                                                                 |
-| `npm test`                                  | Server tests (Vitest + Supertest + in-memory replica set), then client tests (Vitest + React Testing Library) |
-| `npm run test:client`                       | Client tests only                                                                                             |
-| `npm run seed` / `npm run seed -- --reset`  | Demo accounts (see above)                                                                                     |
-| `npm run smoke`                             | API smoke test (login, refresh, RBAC, audit verify). Reuses a running dev API and never stops it              |
-| `npm run test:coverage -w server`           | Server tests with v8 coverage (`server/coverage/`)                                                            |
-| `npm run lint` / `npm run lint:fix`         | ESLint (flat config) over the whole repo                                                                      |
-| `npm run format` / `npm run format:check`   | Prettier                                                                                                      |
-| `npm run typecheck`                         | `tsc --noEmit` for server and client                                                                          |
-| `npm run build`                             | Compile server to `server/dist`, build client to `client/dist`                                                |
-| `npm start`                                 | Run the compiled server                                                                                       |
+| Command                                     | What it does                                                                                                   |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                               | Server (nodemon + tsx) and client (Vite) together                                                              |
+| `npm run dev:server` / `npm run dev:client` | One side only                                                                                                  |
+| `npm test`                                  | Server tests (Vitest + Supertest + in-memory replica set), then client tests (Vitest + React Testing Library)  |
+| `npm run test:client`                       | Client tests only                                                                                              |
+| `npm run seed` / `npm run seed -- --reset`  | Demo clinic and accounts (see above)                                                                           |
+| `npm run smoke`                             | API smoke test (auth, RBAC, audit chain, seeded clinic data, public fields, demo logins). Reuses a running API |
+| `npm run test:coverage -w server`           | Server tests with v8 coverage (`server/coverage/`)                                                             |
+| `npm run lint` / `npm run lint:fix`         | ESLint (flat config) over the whole repo                                                                       |
+| `npm run format` / `npm run format:check`   | Prettier                                                                                                       |
+| `npm run typecheck`                         | `tsc --noEmit` for server and client                                                                           |
+| `npm run build`                             | Compile server to `server/dist`, build client to `client/dist`                                                 |
+| `npm start`                                 | Run the compiled server                                                                                        |
 
 The first test run downloads a MongoDB binary (about 100 MB) for mongodb-memory-server.
 
