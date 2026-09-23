@@ -83,3 +83,12 @@ export const minutesOf = (hhmm: string) => {
   const [h = 0, m = 0] = hhmm.split(':').map(Number);
   return h * 60 + m;
 };
+
+/** Any date-fns pattern in the clinic timezone ('HH:mm', 'yyyy-MM-dd', …). */
+export function formatInClinic(
+  value: string | Date,
+  pattern: string,
+  timeZone = getClinicTimezone(),
+) {
+  return formatInTimeZone(typeof value === 'string' ? new Date(value) : value, timeZone, pattern);
+}

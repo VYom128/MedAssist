@@ -1,9 +1,13 @@
 import {
   Building2,
+  CalendarClock,
+  FlaskConical,
+  IdCard,
   LayoutDashboard,
   Receipt,
   ScrollText,
   Settings,
+  Stethoscope,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -81,10 +85,49 @@ export const APP_ROUTES: AppRoute[] = [
     nav: { label: 'Services', icon: Receipt },
   },
   {
+    path: '/admin/doctors',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/doctors/pages/DoctorsPage'),
+    nav: { label: 'Doctors', icon: Stethoscope },
+  },
+  {
+    path: '/admin/doctors/:id',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/doctors/pages/DoctorDetailPage'),
+  },
+  {
+    path: '/admin/lab-tests',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/labTests/pages/LabTestsPage'),
+    nav: { label: 'Lab tests', icon: FlaskConical },
+  },
+  {
+    path: '/admin/lab-tests/new',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/labTests/pages/LabTestEditorPage'),
+  },
+  {
+    path: '/admin/lab-tests/:id',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/labTests/pages/LabTestEditorPage'),
+  },
+  {
     path: '/admin/audit-logs',
     roles: [ROLES.ADMIN],
     load: () => import('../features/audit/pages/AuditLogsPage'),
     nav: { label: 'Audit logs', icon: ScrollText },
+  },
+  {
+    path: '/doctor/schedule',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/doctors/pages/MySchedulePage'),
+    nav: { label: 'My schedule', icon: CalendarClock },
+  },
+  {
+    path: '/doctor/profile',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/doctors/pages/MyDoctorProfilePage'),
+    nav: { label: 'My doctor profile', icon: IdCard },
   },
   {
     path: '/admin/settings',
