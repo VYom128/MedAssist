@@ -92,3 +92,14 @@ export function formatInClinic(
 ) {
   return formatInTimeZone(typeof value === 'string' ? new Date(value) : value, timeZone, pattern);
 }
+
+/** Whole years on `today` ('YYYY-MM-DD', default the clinic date) of someone born on `dob`. */
+export function ageOn(dob: string, today = clinicDate()): number {
+  const years = Number(today.slice(0, 4)) - Number(dob.slice(0, 4));
+  return today.slice(5) < dob.slice(5) ? years - 1 : years;
+}
+
+/** A calendar date ('YYYY-MM-DD', no time of day) as "17 May 1990". */
+export function formatCalendarDate(value: string | null | undefined): string {
+  return value ? formatDate(`${value}T12:00:00Z`, 'UTC') : '—';
+}
