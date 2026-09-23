@@ -1,6 +1,16 @@
 import { z } from 'zod';
 import { ADMIN_CREATABLE_ROLES, ROLE_VALUES } from '../../config/constants.js';
-import { email, idParams, namePart, phone } from '../../utils/zod.js';
+import { email, idParams, namePart, phone, sortQuery } from '../../utils/zod.js';
+
+/** Fields GET /users can sort by. */
+export const USER_SORT_FIELDS = [
+  'createdAt',
+  'firstName',
+  'lastName',
+  'email',
+  'role',
+  'lastLoginAt',
+] as const;
 
 export const listUsersSchema = {
   query: z.object({
@@ -12,10 +22,11 @@ export const listUsersSchema = {
       .transform((v) => v === 'true')
       .optional(),
     q: z.string().trim().min(1).max(100).optional(),
+    sort: sortQuery(USER_SORT_FIELDS, { createdAt: -1 }),
   }),
 };
 
-/** POST /users – staff accounts (not doctors: Phase 2 creates them with their profile). */
+/** POST /users – staff accounts (admin, doctor, receptionist, labtech). Never patients. */
 export const createUserSchema = {
   body: z.object({
     firstName: namePart,

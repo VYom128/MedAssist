@@ -18,14 +18,10 @@ export const STAFF_ROLES = Object.freeze([
   ROLES.LABTECH,
 ] as const);
 /**
- * Roles an admin can create through POST /users. Doctors are created with their profile via
- * POST /doctors (Phase 2); patients sign up or are invited (Phase 3).
+ * Roles an admin can create through POST /users (staff). Patients sign up or are invited
+ * (Phase 3). Phase 2 adds the doctor profile for doctor accounts.
  */
-export const ADMIN_CREATABLE_ROLES = Object.freeze([
-  ROLES.ADMIN,
-  ROLES.RECEPTIONIST,
-  ROLES.LABTECH,
-] as const);
+export const ADMIN_CREATABLE_ROLES = STAFF_ROLES;
 
 /** Patient portal link state (spec §4.4). Set from Phase 3. */
 export const PATIENT_LINK_STATUSES = Object.freeze(['linked', 'pending_verification'] as const);

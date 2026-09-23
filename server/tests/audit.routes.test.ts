@@ -36,8 +36,15 @@ describe('/audit-logs', () => {
     expect(byActor.body.data).toHaveLength(1);
     expect(byActor.body.meta).toMatchObject({ total: 1 });
 
+    // Prefix match: "auth.login" also covers auth.login_failed; "auth." covers every auth action.
     const byAction = await api().get('/api/v1/audit-logs?action=auth.login').set(admin.auth);
-    expect(byAction.body.data).toHaveLength(2);
+    expect(byAction.body.data).toHaveLength(3);
+    const allAuth = await api().get('/api/v1/audit-logs?action=auth.').set(admin.auth);
+    expect(allAuth.body.meta.total).toBe(3);
+    const noUser = await api().get('/api/v1/audit-logs?action=user.').set(admin.auth);
+    expect(noUser.body.data).toHaveLength(0);
+    const injected = await api().get('/api/v1/audit-logs?action=.*').set(admin.auth);
+    expectErrorShape(injected.body, 'VALIDATION_ERROR');
 
     const future = new Date(Date.now() + 3_600_000).toISOString();
     const none = await api()

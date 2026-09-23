@@ -10,7 +10,7 @@ import type { AuditLogQuery } from './validation.js';
 export async function listAuditLogs(query: AuditLogQuery, { page, limit, skip }: Pagination) {
   const filter: FilterQuery<AuditLogDoc> = {};
   if (query.actor) filter['actor.user'] = query.actor;
-  if (query.action) filter.action = query.action;
+  if (query.action) filter.action = { $regex: `^${query.action.replace(/\./g, '\\.')}` };
   if (query.resourceType) filter['resource.type'] = query.resourceType;
   if (query.patient) filter.patient = query.patient;
   if (query.outcome) filter.outcome = query.outcome;

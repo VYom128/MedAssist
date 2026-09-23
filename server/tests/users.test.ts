@@ -39,6 +39,15 @@ describe('/users (admin)', () => {
       const regexSafe = await api().get('/api/v1/users?q=.*').set(admin.auth);
       expect(regexSafe.body.data).toHaveLength(0);
 
+      const byName = await api().get('/api/v1/users?sort=lastName,-firstName').set(admin.auth);
+      const names = byName.body.data.map((u: { lastName: string }) => u.lastName);
+      expect(names).toEqual([...names].sort());
+
+      const badSort = await api().get('/api/v1/users?sort=passwordHash').set(admin.auth);
+      expect(expectErrorShape(badSort.body, 'VALIDATION_ERROR').error.details).toEqual([
+        expect.objectContaining({ field: 'query.sort' }),
+      ]);
+
       const page = await api().get('/api/v1/users?limit=2&page=2').set(admin.auth);
       expect(page.body.meta).toEqual({ page: 2, limit: 2, total: 4, totalPages: 2 });
 
@@ -69,6 +78,7 @@ describe('/users (admin)', () => {
         email: 'ravi@clinic.dev',
         role: 'receptionist',
         isActive: true,
+        mustChangePassword: true,
       });
 
       const token = await emails.lastToken();
@@ -91,13 +101,26 @@ describe('/users (admin)', () => {
         .post('/api/v1/auth/login')
         .send({ email: 'ravi@clinic.dev', password: 'Welcome-2026' });
       expect(login.status).toBe(200);
+      // Setting the password through the link completes the forced change.
+      expect(login.body.data.user.mustChangePassword).toBe(false);
 
       const [entry] = await auditEntries('user.create');
       expect(entry).toMatchObject({ metadata: { role: 'receptionist' } });
       emails.restore();
     });
 
-    it.each(['doctor', 'patient', 'superuser'])('rejects role %s', async (role) => {
+    it.each(['admin', 'doctor', 'labtech'])('creates a %s account', async (role) => {
+      const emails = captureEmails();
+      const res = await api()
+        .post('/api/v1/users')
+        .set(admin.auth)
+        .send({ firstName: 'A', lastName: 'B', email: `${role}-new@clinic.dev`, role });
+      expect(res.status).toBe(201);
+      expect(res.body.data.role).toBe(role);
+      emails.restore();
+    });
+
+    it.each(['patient', 'superuser'])('rejects role %s', async (role) => {
       const res = await api()
         .post('/api/v1/users')
         .set(admin.auth)

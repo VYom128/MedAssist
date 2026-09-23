@@ -53,9 +53,11 @@ in development.
 
 ## Demo accounts
 
-`npm run seed` creates one login per role (password **`Password@123`**). It skips accounts that
-already exist; `npm run seed -- --reset` wipes users, sessions and audit logs first (refused when
-`NODE_ENV=production`).
+`npm run seed` upserts one login per role (password **`Password@123`**): missing accounts are
+created and existing ones are reset to the demo password, active, unlocked and without a forced
+password change. It prints the table below when it finishes. `npm run seed -- --reset` first wipes
+users, sessions and audit logs (development only). The seed refuses to run when
+`NODE_ENV=production`.
 
 | Role         | Email                      | Lands on               |
 | ------------ | -------------------------- | ---------------------- |
@@ -68,6 +70,57 @@ already exist; `npm run seed -- --reset` wipes users, sessions and audit logs fi
 | Patient      | `patient2@medassist.dev`   | `/patient/dashboard`   |
 
 Patients can also sign up at `/register`. Their Patient record and linking arrive in Phase 3.
+
+## Authentication overview
+
+MedAssist uses a short-lived **access token** plus a rotating **refresh token** (spec §10.1).
+
+- **Access token:** a JWT (HS256, 15 min, claims `sub`, `role`, `sid`), returned in the body of
+  login, register, refresh and change-password. The client keeps it **in memory only** and sends
+  `Authorization: Bearer <token>`.
+- **Refresh token:** 64 random bytes in the httpOnly cookie `ma_rt` (path `/api/v1/auth`). The
+  database stores only its SHA-256 hash, in a `sessions` document.
+  - `POST /api/v1/auth/refresh` needs the header `X-Requested-With: medassist` (CSRF
+    protection). Every refresh rotates the token: the old session is revoked (`rotated`) and a new
+    one continues the same family.
+  - A rotated token used again within 10 s (two tabs refreshing at once) gets an access token for
+    the replacement. Used again later, it counts as theft: every session of that login is revoked
+    and the event is audited as `auth.refresh_reuse`.
+- **Every request** checks the session and the user, so logout, "sign out everywhere", a password
+  change and deactivation take effect at once, not when the access token expires.
+- **The client** restores the session on page load by calling refresh. On a 401 it refreshes once
+  (shared by parallel requests) and retries; if that fails, the user is logged out.
+- **Lockout:** 5 failed logins within 15 minutes lock the account for 15 minutes. Admins can
+  unlock it (`POST /api/v1/users/:id/unlock`).
+- **New staff** (`POST /api/v1/users`) get a random temporary password nobody sees and an email
+  with a "set your password" link (valid 72 h).
+- **Access control:** routes use `authenticate` → `authorize(...roles)`. Patient data goes
+  through `canAccessPatient()`. Denials and every sensitive action land in the hash-chained audit
+  log (`GET /api/v1/audit-logs`, `GET /api/v1/audit-logs/verify`, admin only).
+
+## Environment variables (server)
+
+All are validated at startup (`server/src/config/env.ts`); see `server/.env.example`.
+
+| Variable                                                    | Default                 | Notes                                                                            |
+| ----------------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------- |
+| `NODE_ENV`                                                  | `development`           | `development` / `test` / `production`                                            |
+| `PORT`                                                      | `5000`                  | `.env.example` uses 5001 (macOS AirPlay holds 5000)                              |
+| `MONGO_URI`                                                 | –                       | Required outside test                                                            |
+| `CLIENT_URL`                                                | `http://localhost:5173` | CORS origin and base of email links                                              |
+| `LOG_LEVEL`                                                 | `info`                  |                                                                                  |
+| `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX`                   | 15 min / 300            | Global API limit per IP                                                          |
+| `JWT_ACCESS_SECRET`                                         | –                       | **Required**, at least 32 characters (`openssl rand -hex 32`)                    |
+| `JWT_ACCESS_EXPIRES_IN`                                     | `15m`                   | Number + `s`/`m`/`h`/`d`                                                         |
+| `REFRESH_TOKEN_TTL_DAYS`                                    | `7`                     | Sliding: each refresh extends it                                                 |
+| `COOKIE_SECURE`                                             | `false`                 | Must be `true` in production                                                     |
+| `COOKIE_SAMESITE`                                           | `lax`                   | `lax` / `strict` / `none` (`none` needs `COOKIE_SECURE=true`; use it cross-site) |
+| `BCRYPT_ROUNDS`                                             | `12` (`4` in test)      | 4–15                                                                             |
+| `AUDIT_HASH_SECRET`                                         | –                       | **Required**, at least 32 characters                                             |
+| `EMAIL_TRANSPORT`                                           | `console`               | `console` logs recipient, subject and links; must be `smtp` in production        |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `MAIL_FROM` | –                       | Host, port and `MAIL_FROM` are required when `EMAIL_TRANSPORT=smtp`              |
+
+In `NODE_ENV=test` the secrets get placeholder values, so tests need no `.env`.
 
 The example env uses port **5001** because macOS reserves 5000 for AirPlay Receiver. If you change
 `PORT`, update `VITE_API_URL` in `client/.env` too. If a required variable such as `MONGO_URI` is

@@ -107,7 +107,8 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - Follow-up (step 1 prompt): `AUTH_LIMITS`, `'deactivated'` revoke reason, `COOKIE_SECURE` required in production, `checkPasswordStrength()` with the name/email rule, `User.fullName` / `comparePassword()` / `toJSON` hiding secrets, email templates, `utils/cookies.ts` with the session's `expiresAt`, unit tests in `server/tests/unit/` (D24–D27).
 - Follow-up (step 2 prompt): `audit.record({ req, … })`, nested secret redaction, `diffChanges()`, `verifyChain()` → `{ ok, checked, firstBrokenId, reason }` in `(at, _id)` order, audit indexes `{ at: -1, _id: -1 }` and `{ action: 1, at: -1 }`, `canonicalJson` unit tests (D28).
 - Follow-up (step 3 prompt): register takes `dateOfBirth` + `acceptTerms`; session checked before user in `authenticate`; `req.user` adds `sessionId`, `email`, `mustChangePassword`; change password starts a fresh session; `newPassword` on reset; per-IP password-reset limiters; pure `canAccessPatient` with `SCOPES` (D29–D33).
-- Tests: 308 server (was 53) + 20 client.
+- Follow-up (step 4 prompt): staff creation includes doctors with a forced password change; `?sort=` on `/users`; prefix `action` filter on `/audit-logs`; upserting seed with a login table; exact-status RBAC matrix; README auth overview and env table (D34–D36).
+- Tests: 321 server (was 53) + 20 client.
 
 ---
 

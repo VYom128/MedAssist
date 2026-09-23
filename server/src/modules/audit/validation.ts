@@ -9,10 +9,11 @@ export const listAuditLogsSchema = {
       page: z.coerce.number().int().positive().optional(),
       limit: z.coerce.number().int().positive().max(100).optional(),
       actor: objectId.optional(),
+      // Prefix match: "auth." (all auth actions), "auth.login" (also matches auth.login_failed).
       action: z
         .string()
         .trim()
-        .regex(/^[a-z_]+\.[a-z_]+$/, 'Must look like "auth.login"')
+        .regex(/^[a-z_]+(\.[a-z_]*)?$/, 'Must look like "auth." or "auth.login"')
         .optional(),
       resourceType: z.string().trim().max(50).optional(),
       patient: objectId.optional(),

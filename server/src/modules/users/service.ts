@@ -43,7 +43,7 @@ export async function listUsers(query: ListUsersQuery, { page, limit, skip }: Pa
     filter.$or = [{ firstName: re }, { lastName: re }, { email: re }];
   }
   const [items, total] = await Promise.all([
-    User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    User.find(filter).sort(query.sort).skip(skip).limit(limit).lean(),
     User.countDocuments(filter),
   ]);
   return { items: items.map((u) => toAdminView(u)), meta: buildMeta({ page, limit, total }) };
@@ -54,8 +54,9 @@ export async function getUser(id: string) {
 }
 
 /**
- * Creates a staff account and emails a "set your password" link (valid 72 h). The account gets
- * a random unusable password until then, so no password is ever emailed or logged.
+ * Creates a staff account with a random temporary password that nobody sees, and
+ * `mustChangePassword: true`. The welcome email carries a "set your password" link (reset-token
+ * flow, valid 72 h), so no password is ever emailed or logged.
  */
 export async function createUser(admin: AuthUser, input: CreateUserInput, meta: RequestMeta) {
   if (await User.exists({ email: input.email })) {
@@ -64,6 +65,7 @@ export async function createUser(admin: AuthUser, input: CreateUserInput, meta: 
   const created = await User.create({
     ...input,
     passwordHash: await hashPassword(randomBytes(32).toString('base64url')),
+    mustChangePassword: true,
     createdBy: admin.id,
     updatedBy: admin.id,
   });
