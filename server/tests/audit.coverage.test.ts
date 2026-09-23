@@ -2,6 +2,7 @@ import { AUDIT_ACTIONS } from '../src/config/constants.js';
 import { AuditLog } from '../src/modules/audit/model.js';
 import { Session } from '../src/modules/sessions/model.js';
 import { flushAudit } from '../src/services/audit.service.js';
+import { addDaysToDate, clinicToday } from '../src/utils/dates.js';
 import { hashToken, verifyAccessToken } from '../src/utils/tokens.js';
 import {
   createUser,
@@ -139,6 +140,53 @@ describe('audit coverage', () => {
     await api().patch(`/api/v1/services/${svcId}`).set(admin.auth).send({ pricePaise: 55_000 });
     await api().post(`/api/v1/services/${svcId}/deactivate`).set(admin.auth);
     await api().post(`/api/v1/services/${svcId}/activate`).set(admin.auth);
+
+    // doctor.create, doctor.update
+    const dr = await api().post('/api/v1/doctors').set(admin.auth).send({
+      firstName: 'Kavya',
+      lastName: 'Iyer',
+      email: 'kavya@clinic.dev',
+      department: deptId,
+      specialization: 'Paediatrician',
+      registrationNumber: 'AUD-REG-1',
+    });
+    keep(await emails.lastToken());
+    const drId = dr.body.data.id as string;
+    await api().patch(`/api/v1/doctors/${drId}`).set(admin.auth).send({ bio: 'Child health' });
+
+    // doctor.schedule_update, doctor.leave_create, doctor.leave_cancel
+    const soon = addDaysToDate(clinicToday('Asia/Kolkata'), 7);
+    await api()
+      .put(`/api/v1/doctors/${drId}/schedule`)
+      .set(admin.auth)
+      .send({
+        effectiveFrom: soon,
+        days: [{ weekday: 1, sessions: [{ start: '09:00', end: '13:00' }] }],
+      });
+    const leave = await api()
+      .post(`/api/v1/doctors/${drId}/leaves`)
+      .set(admin.auth)
+      .send({ date: soon, fullDay: true });
+    await api()
+      .post(`/api/v1/doctors/${drId}/leaves/${leave.body.data.leave.id}/cancel`)
+      .set(admin.auth);
+
+    // lab_test.create, lab_test.update, lab_test.deactivate, lab_test.activate
+    const test = await api()
+      .post('/api/v1/lab-tests')
+      .set(admin.auth)
+      .send({
+        code: 'AUD-T',
+        name: 'Audit test',
+        category: 'other',
+        sampleType: 'blood',
+        pricePaise: 100,
+        parameters: [{ key: 'v', name: 'Value', valueType: 'text' }],
+      });
+    const testId = test.body.data.id as string;
+    await api().patch(`/api/v1/lab-tests/${testId}`).set(admin.auth).send({ pricePaise: 200 });
+    await api().post(`/api/v1/lab-tests/${testId}/deactivate`).set(admin.auth);
+    await api().post(`/api/v1/lab-tests/${testId}/activate`).set(admin.auth);
     emails.restore();
 
     await flushAudit();

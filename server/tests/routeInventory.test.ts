@@ -24,6 +24,8 @@ const PUBLIC = new Set([
   'GET /departments/:id',
   'GET /services',
   'GET /services/:id',
+  'GET /doctors',
+  'GET /doctors/:id',
 ]);
 
 /** Mount prefixes whose every route is admin-only. */

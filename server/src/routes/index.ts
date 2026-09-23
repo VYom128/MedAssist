@@ -2,7 +2,9 @@ import { Router } from 'express';
 import auditRoutes from '../modules/audit/routes.js';
 import authRoutes from '../modules/auth/routes.js';
 import departmentRoutes from '../modules/departments/routes.js';
+import doctorRoutes from '../modules/doctors/routes.js';
 import healthRoutes from '../modules/health/routes.js';
+import labTestRoutes from '../modules/labTests/routes.js';
 import serviceRoutes from '../modules/services/routes.js';
 import settingsRoutes from '../modules/settings/routes.js';
 import userRoutes from '../modules/users/routes.js';
@@ -17,5 +19,7 @@ router.use('/audit-logs', auditRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/departments', departmentRoutes);
 router.use('/services', serviceRoutes);
+router.use('/doctors', doctorRoutes);
+router.use('/lab-tests', labTestRoutes);
 
 export default router;

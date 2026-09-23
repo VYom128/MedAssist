@@ -1,9 +1,12 @@
 import type { Role } from '../src/config/constants.js';
 import { Department } from '../src/modules/departments/model.js';
+import { LabTest } from '../src/modules/labTests/model.js';
+import { DoctorLeave } from '../src/modules/leaves/model.js';
 import { Service } from '../src/modules/services/model.js';
 import { verifyAccessToken } from '../src/utils/tokens.js';
 import { createUser, loginAs, resetDb, TEST_PASSWORD } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
+import { addDoctorProfile, createDoctor } from './helpers/fixtures.js';
 import {
   ALL,
   ENDPOINTS,
@@ -38,6 +41,26 @@ async function buildContext(role: Role): Promise<Ctx> {
     { code: `S-${n}`, name: 'Service', type: 'other', pricePaise: 100 },
     { code: `OS-${n}`, name: 'Old service', type: 'other', pricePaise: 100, isActive: false },
   ]);
+  // Doctors get their own department, so `departmentId` can still be deactivated.
+  const doctorDepartment = (
+    await Department.create({ name: `Doctors ${n}`, code: `DR${letters(n)}` })
+  )._id;
+  if (role === 'doctor') await addDoctorProfile(me.user._id, { department: doctorDepartment });
+  const doctorId =
+    role === 'doctor'
+      ? me.user._id.toString()
+      : (await createDoctor({}, { department: doctorDepartment })).id;
+  const other = await createDoctor({}, { department: doctorDepartment });
+  const leave = await DoctorLeave.create({
+    doctor: doctorId,
+    startAt: new Date(Date.now() + 30 * 86_400_000),
+    endAt: new Date(Date.now() + 31 * 86_400_000),
+  });
+  const labTest = { category: 'other', sampleType: 'blood', pricePaise: 100 };
+  const [lab, inactiveLab] = await LabTest.create([
+    { ...labTest, code: `LT-A${n}`, name: 'Lab test' },
+    { ...labTest, code: `LT-B${n}`, name: 'Old lab test', isActive: false },
+  ]);
   return {
     me,
     targetId: target._id.toString(),
@@ -47,6 +70,11 @@ async function buildContext(role: Role): Promise<Ctx> {
     inactiveDepartmentId: inactiveDepartment!._id.toString(),
     serviceId: service!._id.toString(),
     inactiveServiceId: inactiveService!._id.toString(),
+    doctorId,
+    otherDoctorId: other.id,
+    leaveId: leave._id.toString(),
+    labTestId: lab!._id.toString(),
+    inactiveLabTestId: inactiveLab!._id.toString(),
     n,
   };
 }
@@ -63,6 +91,11 @@ const send = (row: Row, c: Ctx | null) => {
       inactiveDepartmentId: zero,
       serviceId: zero,
       inactiveServiceId: zero,
+      doctorId: zero,
+      otherDoctorId: zero,
+      leaveId: zero,
+      labTestId: zero,
+      inactiveLabTestId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);

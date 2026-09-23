@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ADMIN_CREATABLE_ROLES, ROLE_VALUES } from '../../config/constants.js';
+import { ROLE_VALUES, ROLES, USER_CREATABLE_ROLES } from '../../config/constants.js';
 import { email, idParams, namePart, phone, sortQuery } from '../../utils/zod.js';
 
 /** Fields GET /users can sort by. */
@@ -26,14 +26,26 @@ export const listUsersSchema = {
   }),
 };
 
-/** POST /users – staff accounts (admin, doctor, receptionist, labtech). Never patients. */
+/** Message for POST /users with role "doctor". */
+export const DOCTOR_VIA_DOCTORS_MESSAGE =
+  'Create doctor accounts with POST /doctors (it also creates the doctor profile)';
+
+/**
+ * POST /users – staff accounts (admin, receptionist, labtech). Doctors go through POST /doctors;
+ * patients sign up or are invited.
+ */
 export const createUserSchema = {
   body: z.object({
     firstName: namePart,
     lastName: namePart,
     email,
     phone: phone.optional(),
-    role: z.enum(ADMIN_CREATABLE_ROLES),
+    role: z.enum(USER_CREATABLE_ROLES, {
+      error: (issue) =>
+        issue.input === ROLES.DOCTOR
+          ? DOCTOR_VIA_DOCTORS_MESSAGE
+          : `Role must be one of: ${USER_CREATABLE_ROLES.join(', ')}`,
+    }),
   }),
 };
 

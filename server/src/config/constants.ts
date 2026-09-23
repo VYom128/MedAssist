@@ -18,10 +18,14 @@ export const STAFF_ROLES = Object.freeze([
   ROLES.LABTECH,
 ] as const);
 /**
- * Roles an admin can create through POST /users (staff). Patients sign up or are invited
- * (Phase 3). Phase 2 adds the doctor profile for doctor accounts.
+ * Roles an admin can create through POST /users. Doctors are created with their profile through
+ * POST /doctors (one transaction); patients sign up or are invited (Phase 3).
  */
-export const ADMIN_CREATABLE_ROLES = STAFF_ROLES;
+export const USER_CREATABLE_ROLES = Object.freeze([
+  ROLES.ADMIN,
+  ROLES.RECEPTIONIST,
+  ROLES.LABTECH,
+] as const);
 
 /** Patient portal link state (spec §4.4). Set from Phase 3. */
 export const PATIENT_LINK_STATUSES = Object.freeze(['linked', 'pending_verification'] as const);
@@ -96,6 +100,15 @@ export const AUDIT_ACTIONS = Object.freeze({
   SERVICE_UPDATE: 'service.update',
   SERVICE_DEACTIVATE: 'service.deactivate',
   SERVICE_ACTIVATE: 'service.activate',
+  DOCTOR_CREATE: 'doctor.create',
+  DOCTOR_UPDATE: 'doctor.update',
+  DOCTOR_SCHEDULE_UPDATE: 'doctor.schedule_update',
+  DOCTOR_LEAVE_CREATE: 'doctor.leave_create',
+  DOCTOR_LEAVE_CANCEL: 'doctor.leave_cancel',
+  LAB_TEST_CREATE: 'lab_test.create',
+  LAB_TEST_UPDATE: 'lab_test.update',
+  LAB_TEST_DEACTIVATE: 'lab_test.deactivate',
+  LAB_TEST_ACTIVATE: 'lab_test.activate',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /** The same user reading the same record within this window produces one audit entry (§10.4). */
@@ -125,6 +138,39 @@ export const EXPLANATION_LANGUAGES = Object.freeze(['en', 'hi'] as const);
 /** Billable service types (spec §6.7). */
 export const SERVICE_TYPES = Object.freeze(['consultation', 'procedure', 'other'] as const);
 export type ServiceType = (typeof SERVICE_TYPES)[number];
+
+/** Profile fields a doctor may change on their own profile (spec §7.6); admins change all. */
+export const DOCTOR_SELF_EDITABLE_FIELDS = Object.freeze(['bio', 'languages'] as const);
+
+/** Weekly schedules (spec §6.9): session times on 5-minute steps, at most 6 sessions a day. */
+export const SCHEDULE_RULES = Object.freeze({ stepMinutes: 5, maxSessionsPerDay: 6 });
+
+/** Doctor leave types (spec §6.10). */
+export const LEAVE_TYPES = Object.freeze(['leave', 'conference', 'emergency', 'other'] as const);
+export type LeaveType = (typeof LEAVE_TYPES)[number];
+/** Longest single leave record, in days. */
+export const MAX_LEAVE_DAYS = 90;
+
+/** Lab test catalogue enums (spec §6.19). */
+export const LAB_TEST_CATEGORIES = Object.freeze([
+  'haematology',
+  'biochemistry',
+  'microbiology',
+  'immunology',
+  'urine',
+  'imaging',
+  'other',
+] as const);
+export const LAB_SAMPLE_TYPES = Object.freeze([
+  'blood',
+  'urine',
+  'stool',
+  'swab',
+  'sputum',
+  'other',
+] as const);
+export const LAB_VALUE_TYPES = Object.freeze(['number', 'text', 'option'] as const);
+export const RANGE_GENDERS = Object.freeze(['male', 'female', 'any'] as const);
 
 /** Scopes for canAccessPatient (spec §2.3). */
 export const PATIENT_ACCESS_SCOPES = Object.freeze([

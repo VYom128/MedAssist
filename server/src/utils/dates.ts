@@ -100,3 +100,34 @@ export function endOfClinicDay(date: Date | string, timezone: string): Date {
   const next = addDaysToDate(dateStringOf(date, timezone), 1);
   return new Date(startOfClinicDay(next, timezone).getTime() - 1);
 }
+
+/** Weekday names, index 0 = Sunday (spec §6.9). */
+export const WEEKDAY_NAMES = Object.freeze([
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+] as const);
+
+/**
+ * A calendar date ('YYYY-MM-DD', no time of day) as a `Date` at UTC midnight. Used for
+ * date-only fields such as schedule `effectiveFrom` / `effectiveTo`, which mean a clinic
+ * calendar day rather than an instant.
+ */
+export function calendarDate(date: string): Date {
+  if (!isValidDateOnly(date)) throw new RangeError(`Not a valid date: ${date}`);
+  return new Date(`${date}T00:00:00.000Z`);
+}
+
+/** Inverse of `calendarDate`: a UTC-midnight `Date` → 'YYYY-MM-DD'. */
+export function calendarDateString(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** Weekday (0 = Sunday) of a 'YYYY-MM-DD' calendar date. */
+export function weekdayOf(date: string): number {
+  return calendarDate(date).getUTCDay();
+}

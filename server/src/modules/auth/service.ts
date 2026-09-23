@@ -1,4 +1,4 @@
-import type { Types } from 'mongoose';
+import type { ClientSession, Types } from 'mongoose';
 import {
   AUDIT_ACTIONS,
   ERROR_CODES,
@@ -387,11 +387,13 @@ export async function changePassword(
 /**
  * Stores a hashed single-use reset token on the user and emails the link.
  * @param ttlMs 30 min for resets; 72 h for new-account setup links.
+ * @param session Inside a transaction (new accounts created with their doctor profile).
  * @returns the raw token (for the email only).
  */
 export async function createPasswordResetToken(
   userId: Types.ObjectId | string,
   ttlMs: number = AUTH_LIMITS.resetTokenMinutes * 60_000,
+  { session }: { session?: ClientSession } = {},
 ): Promise<string> {
   const token = generateOpaqueToken();
   await User.updateOne(
@@ -401,6 +403,7 @@ export async function createPasswordResetToken(
         passwordReset: { tokenHash: hashToken(token), expiresAt: new Date(Date.now() + ttlMs) },
       },
     },
+    { session },
   );
   return token;
 }

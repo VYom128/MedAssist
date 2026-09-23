@@ -6,6 +6,8 @@ import { ApiError } from '../../utils/ApiError.js';
 import { buildMeta, type Pagination } from '../../utils/pagination.js';
 import { containsRegex, exactRegex } from '../../utils/regex.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
+import { DoctorProfile } from '../doctors/model.js';
+import { User } from '../users/model.js';
 import { Department, type DepartmentDoc } from './model.js';
 import { toAdminView, toPublicView, type DepartmentLike } from './serializer.js';
 import type {
@@ -26,12 +28,11 @@ async function findDepartment(id: string | Types.ObjectId): Promise<DepartmentLi
   return d;
 }
 
-/**
- * Number of active doctors in a department (active doctor User with a profile there).
- * TODO(Phase 2 step 2): count DoctorProfiles once the doctors module exists.
- */
-export async function countActiveDoctors(_departmentId: string | Types.ObjectId): Promise<number> {
-  return 0;
+/** Active doctors (an active doctor User with a profile) in a department. */
+export async function countActiveDoctorsIn(departmentId: string | Types.ObjectId): Promise<number> {
+  const userIds = await DoctorProfile.distinct('user', { department: departmentId });
+  if (userIds.length === 0) return 0;
+  return User.countDocuments({ _id: { $in: userIds }, role: ROLES.DOCTOR, isActive: true });
 }
 
 /**
@@ -146,7 +147,7 @@ export async function updateDepartment(
 export async function deactivateDepartment(admin: AuthUser, id: string, meta: RequestMeta) {
   const d = await findDepartment(id);
   if (!d.isActive) throw invalidTransition('Department is already inactive');
-  const activeDoctors = await countActiveDoctors(id);
+  const activeDoctors = await countActiveDoctorsIn(id);
   if (activeDoctors > 0) {
     throw ApiError.conflict(
       `This department still has ${activeDoctors} active doctor${activeDoctors === 1 ? '' : 's'}. ` +
