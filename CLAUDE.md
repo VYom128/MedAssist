@@ -23,6 +23,7 @@ Read the relevant spec sections for the current phase before planning. Do not re
 - `npm test` – server then client tests (`npm run test:client` for client only); `npm run test:coverage -w server` for coverage
 - `npm run lint` / `npm run lint:fix` / `npm run format` / `npm run format:check` / `npm run typecheck`
 - `npm run seed` – seed demo data (Phase 1: one account per role, password `Password@123`); `npm run seed -- --reset` wipes first
+- `npm run smoke` – API smoke test against the seeded DB. Reuses a server already running on `PORT` (and leaves it running); otherwise starts a temporary one on a free port and stops only that.
 
 ## Backend conventions (always follow)
 - Features live in `server/src/modules/<feature>/` with `model.js`, `service.js`, `controller.js`, `routes.js`, `validation.js`, `serializer.js`.
@@ -59,6 +60,7 @@ Read the relevant spec sections for the current phase before planning. Do not re
 - AI never diagnoses or changes treatment; doctors approve every clinical summary; patient explanations pass server guardrails (spec §9).
 
 ## Workflow
+- Never stop or kill a process you did not start (e.g. `kill $(lsof -ti :5001)`): the user's `npm run dev` may be on that port. Check the port first; to exercise the API use `npm run smoke`; stop your own processes by the PID you started.
 - Show a short plan and wait for approval before large changes.
 - Write tests for every new endpoint, including access-denied cases.
 - Run tests and lint before saying a task is done.

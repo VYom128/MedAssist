@@ -4,6 +4,7 @@ import { API_PREFIX } from './config/constants.js';
 import { config } from './config/env.js';
 import { createApp } from './app.js';
 import { flushAudit } from './services/audit.service.js';
+import { listen, PortInUseError } from './utils/listen.js';
 import { logger, serializeError } from './utils/logger.js';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -12,11 +13,14 @@ async function start() {
   await connectDB();
 
   const app = createApp();
-  const server: Server = app.listen(config.port, () => {
-    logger.info(
-      `API listening on http://localhost:${config.port}${API_PREFIX} (${config.nodeEnv})`,
-    );
-  });
+  let server: Server;
+  try {
+    server = await listen(app, config.port);
+  } catch (err) {
+    await disconnectDB();
+    throw err;
+  }
+  logger.info(`API listening on http://localhost:${config.port}${API_PREFIX} (${config.nodeEnv})`);
 
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
@@ -58,6 +62,10 @@ process.on('uncaughtException', (err) => {
 });
 
 start().catch((err) => {
-  logger.fatal({ err: serializeError(err) }, 'Failed to start server');
+  if (err instanceof PortInUseError) {
+    logger.fatal(err.message); // expected situation: a clear message, no stack trace
+  } else {
+    logger.fatal({ err: serializeError(err) }, 'Failed to start server');
+  }
   process.exit(1);
 });

@@ -24,7 +24,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "seed": "npm run seed -w server --"
+    "seed": "npm run seed -w server --",
+    "smoke": "npm run smoke -w server"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

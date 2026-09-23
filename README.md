@@ -137,6 +137,7 @@ Run from the repo root.
 | `npm test`                                  | Server tests (Vitest + Supertest + in-memory replica set), then client tests (Vitest + React Testing Library) |
 | `npm run test:client`                       | Client tests only                                                                                             |
 | `npm run seed` / `npm run seed -- --reset`  | Demo accounts (see above)                                                                                     |
+| `npm run smoke`                             | API smoke test (login, refresh, RBAC, audit verify). Reuses a running dev API and never stops it              |
 | `npm run test:coverage -w server`           | Server tests with v8 coverage (`server/coverage/`)                                                            |
 | `npm run lint` / `npm run lint:fix`         | ESLint (flat config) over the whole repo                                                                      |
 | `npm run format` / `npm run format:check`   | Prettier                                                                                                      |
