@@ -3,6 +3,7 @@ import request from 'supertest';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { createRegisterLimiter } from '../src/middlewares/rateLimiters.js';
 import { requestId } from '../src/middlewares/requestId.js';
+import { Patient } from '../src/modules/patients/model.js';
 import { User } from '../src/modules/users/model.js';
 import { verifyPassword } from '../src/utils/password.js';
 import { auditEntries, createUser, refreshCookieFrom, resetDb } from './helpers/auth.js';
@@ -16,6 +17,7 @@ const valid = {
   dateOfBirth: '1990-05-17',
   password: 'Clinic2026!pass',
   acceptTerms: true,
+  consent: { dataProcessing: true },
 };
 
 const register = (body: Record<string, unknown>) => api().post('/api/v1/auth/register').send(body);
@@ -23,12 +25,19 @@ const register = (body: Record<string, unknown>) => api().post('/api/v1/auth/reg
 describe('POST /auth/register', () => {
   beforeEach(resetDb);
 
-  it('creates a patient user, logs them in and audits it', async () => {
+  it('creates a patient user linked to a new patient record, logs them in and audits it', async () => {
     const res = await register(valid);
     expect(res.status).toBe(201);
+    const patient = await Patient.findOne().lean();
     expect(res.body.data).toMatchObject({
       accessToken: expect.any(String),
-      user: { email: 'priya.sharma@example.com', role: 'patient', patientId: null },
+      user: {
+        email: 'priya.sharma@example.com',
+        role: 'patient',
+        patientId: patient!._id.toString(),
+        patientLinkStatus: 'linked',
+      },
+      link: { status: 'linked', message: 'Your account is ready.' },
     });
     expect(refreshCookieFrom(res)).toBeDefined();
 
@@ -42,10 +51,11 @@ describe('POST /auth/register', () => {
       dateOfBirth: new Date('1990-05-17T00:00:00.000Z'),
       termsAcceptedAt: expect.any(Date),
     });
-    expect(user?.patient).toBeUndefined();
-    expect(user?.patientLinkStatus).toBeUndefined();
+    expect(user?.patient).toEqual(patient!._id);
+    expect(user?.patientLinkStatus).toBe('linked');
     expect(await verifyPassword(valid.password, user?.passwordHash ?? '')).toBe(true);
-    expect(await auditEntries('auth.register')).toHaveLength(1);
+    const [entry] = await auditEntries('auth.register');
+    expect(entry).toMatchObject({ metadata: { linkStatus: 'linked' }, patient: patient!._id });
   });
 
   it('ignores a role in the body (always patient)', async () => {
@@ -86,12 +96,13 @@ describe('POST /auth/register', () => {
     }
   });
 
-  it('requires names, a valid email, phone, date of birth and accepted terms', async () => {
+  it('requires names, a valid email, phone, date of birth, accepted terms and consent', async () => {
     const res = await register({ password: valid.password, email: 'bad', phone: '12' });
     const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
     const fields = (body.error.details as { field: string }[]).map((d) => d.field).sort();
     expect(fields).toEqual([
       'body.acceptTerms',
+      'body.consent',
       'body.dateOfBirth',
       'body.email',
       'body.firstName',
@@ -117,6 +128,19 @@ describe('POST /auth/register', () => {
       const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
       expect(body.error.details).toEqual([
         { field: 'body.acceptTerms', message: 'You must accept the terms to create an account' },
+      ]);
+    }
+  });
+
+  it('requires consent to data processing to be exactly true', async () => {
+    for (const consent of [{ dataProcessing: false }, {}, { dataProcessing: 'yes' }]) {
+      const res = await register({ ...valid, consent });
+      const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
+      expect(body.error.details).toEqual([
+        {
+          field: 'body.consent.dataProcessing',
+          message: 'Consent to data processing is required',
+        },
       ]);
     }
   });

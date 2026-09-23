@@ -8,10 +8,14 @@ import * as patientsController from './controller.js';
 import {
   checkDuplicateSchema,
   clinicalProfileSchema,
+  confirmLinkSchema,
   createPatientSchema,
   listPatientsSchema,
   patientIdSchema,
   patientStatusSchema,
+  pendingLinksSchema,
+  rejectLinkSchema,
+  updateMyRecordSchema,
   updatePatientSchema,
 } from './validation.js';
 
@@ -43,6 +47,21 @@ router.post(
   ...frontDesk,
   validate(createPatientSchema),
   asyncHandler(patientsController.createPatient),
+);
+// Patient portal (before /:id). A pending self-signup gets 403 PATIENT_LINK_PENDING.
+router.get('/me', authenticate, authorize(PATIENT), asyncHandler(patientsController.getMyRecord));
+router.patch(
+  '/me',
+  authenticate,
+  authorize(PATIENT),
+  validate(updateMyRecordSchema),
+  asyncHandler(patientsController.updateMyRecord),
+);
+router.get(
+  '/pending-links',
+  ...frontDesk,
+  validate(pendingLinksSchema),
+  asyncHandler(patientsController.listPendingLinks),
 );
 router.get(
   '/:id',
@@ -77,6 +96,27 @@ router.post(
   authorize(ADMIN),
   validate(patientStatusSchema),
   asyncHandler(patientsController.activatePatient),
+);
+
+router.post(
+  '/:id/portal-invite',
+  ...frontDesk,
+  validate(patientIdSchema),
+  asyncHandler(patientsController.inviteToPortal),
+);
+router.post(
+  '/:id/confirm-link',
+  authenticate,
+  authorize(RECEPTIONIST),
+  validate(confirmLinkSchema),
+  asyncHandler(patientsController.confirmLink),
+);
+router.post(
+  '/:id/reject-link',
+  authenticate,
+  authorize(RECEPTIONIST),
+  validate(rejectLinkSchema),
+  asyncHandler(patientsController.rejectLink),
 );
 
 export default router;

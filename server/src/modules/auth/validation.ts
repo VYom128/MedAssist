@@ -7,8 +7,8 @@ import {
 import { dateOfBirth, email, idParams, namePart, phone } from '../../utils/zod.js';
 
 /**
- * POST /auth/register – patient self-signup. DOB is stored on the user until the Patient record
- * and phone+DOB matching arrive in Phase 3 (§4.4).
+ * POST /auth/register – patient self-signup (§4.4). Phone + DOB are matched against existing
+ * patient records; consent to data processing is required (§10.6).
  */
 export const registerSchema = {
   body: z
@@ -20,6 +20,16 @@ export const registerSchema = {
       dateOfBirth,
       password: passwordSchema,
       acceptTerms: z.literal(true, 'You must accept the terms to create an account'),
+      consent: z.strictObject(
+        {
+          dataProcessing: z.literal(true, 'Consent to data processing is required'),
+          aiExplanations: z.boolean().optional(),
+          communications: z
+            .strictObject({ email: z.boolean().optional(), sms: z.boolean().optional() })
+            .optional(),
+        },
+        'Consent to data processing is required',
+      ),
     })
     .superRefine((b, ctx) => {
       const problems = checkPasswordStrength(b.password, b);

@@ -18,8 +18,10 @@ export function toSelfView(u: UserLike) {
     emailVerifiedAt: u.emailVerifiedAt ?? null,
     lastLoginAt: u.lastLoginAt ?? null,
     avatarUrl: u.avatarUrl ?? null,
-    /** Linked Patient record (Phase 3). */
-    patientId: u.patient?.toString() ?? null,
+    /** Linked Patient record: only once the link is confirmed (spec §4.4). */
+    patientId: u.patientLinkStatus === 'linked' ? (u.patient?.toString() ?? null) : null,
+    /** Patients: 'linked', or 'pending_verification' until reception confirms their identity. */
+    patientLinkStatus: u.patientLinkStatus ?? null,
     /** Doctor profile (Phase 2). */
     doctorProfileId: null,
   };

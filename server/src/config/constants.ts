@@ -156,6 +156,9 @@ export const AUDIT_ACTIONS = Object.freeze({
   PATIENT_CLINICAL_PROFILE_UPDATE: 'patient.clinical_profile_update',
   PATIENT_DEACTIVATE: 'patient.deactivate',
   PATIENT_ACTIVATE: 'patient.activate',
+  PATIENT_PORTAL_INVITE: 'patient.portal_invite',
+  PATIENT_LINK_CONFIRM: 'patient.link_confirm',
+  PATIENT_LINK_REJECT: 'patient.link_reject',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /** The same user reading the same record within this window produces one audit entry (§10.4). */
@@ -247,6 +250,8 @@ export const ERROR_CODES = Object.freeze({
   NOT_FOUND: 'NOT_FOUND',
   CONFLICT: 'CONFLICT',
   DUPLICATE_PATIENT: 'DUPLICATE_PATIENT',
+  // Not in §16: a self-registered patient whose record link awaits reception's identity check.
+  PATIENT_LINK_PENDING: 'PATIENT_LINK_PENDING',
   SLOT_UNAVAILABLE: 'SLOT_UNAVAILABLE',
   PATIENT_DOUBLE_BOOKED: 'PATIENT_DOUBLE_BOOKED',
   DOCTOR_UNAVAILABLE: 'DOCTOR_UNAVAILABLE',
@@ -287,6 +292,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = Object.fre
   NOT_FOUND: 404,
   CONFLICT: 409,
   DUPLICATE_PATIENT: 409,
+  PATIENT_LINK_PENDING: 403,
   SLOT_UNAVAILABLE: 409,
   PATIENT_DOUBLE_BOOKED: 409,
   DOCTOR_UNAVAILABLE: 409,

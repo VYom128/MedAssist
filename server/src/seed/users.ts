@@ -14,8 +14,8 @@ export interface DemoAccount {
 }
 
 /**
- * Staff and patient demo logins (spec §15.3: 1 admin, 2 receptionists, 2 lab techs). Doctors are
- * seeded with their profiles by seed/doctors.ts.
+ * Staff demo logins (spec §15.3: 1 admin, 2 receptionists, 2 lab techs). Doctors are seeded with
+ * their profiles by seed/doctors.ts, patient logins with their records by seed/patients.ts.
  */
 export const DEMO_ACCOUNTS: readonly DemoAccount[] = [
   { email: 'admin@medassist.dev', firstName: 'Asha', lastName: 'Rao', role: ROLES.ADMIN },
@@ -33,9 +33,6 @@ export const DEMO_ACCOUNTS: readonly DemoAccount[] = [
   },
   { email: 'lab1@medassist.dev', firstName: 'Lakshmi', lastName: 'Nair', role: ROLES.LABTECH },
   { email: 'lab2@medassist.dev', firstName: 'Arjun', lastName: 'Reddy', role: ROLES.LABTECH },
-  // Patient records and linking arrive in Phase 3; these are portal logins only for now.
-  { email: 'patient1@medassist.dev', firstName: 'Priya', lastName: 'Sharma', role: ROLES.PATIENT },
-  { email: 'patient2@medassist.dev', firstName: 'Rahul', lastName: 'Verma', role: ROLES.PATIENT },
 ];
 
 /** Hash of the demo password (computed once per seed run). */

@@ -152,6 +152,7 @@ async function runChecks(api: string): Promise<boolean> {
   }
 
   await phase2Checks(api, check, login);
+  await phase3Checks(api, check, login);
 
   for (const [name, ok, detail] of results) {
     out(`${ok ? 'PASS' : 'FAIL'}  ${name}${!ok && detail ? ` (${detail})` : ''}`);
@@ -268,6 +269,95 @@ async function phase2Checks(
       });
   }
   check(`all ${demoLogins().length} demo accounts log in`, failed.length === 0, failed.join(', '));
+}
+
+/** Phase 3: seeded patients, role views, own-record access and the pending sign-up. */
+async function phase3Checks(
+  api: string,
+  check: (name: string, ok: boolean, detail?: string) => void,
+  login: (email: string) => ReturnType<typeof call>,
+) {
+  const as = async (email: string) => {
+    const r = await login(email);
+    const token = r.body.data?.accessToken;
+    if (!token) check(`${email} logs in for Phase 3 checks`, false, `status ${r.res.status}`);
+    return token ? { Authorization: `Bearer ${token}` } : null;
+  };
+  const logout = (headers: Record<string, string>) =>
+    call(api, '/auth/logout', { method: 'POST', headers });
+
+  const patient = await as('patient1@medassist.dev');
+  const reception = await as('reception1@medassist.dev');
+  const admin = await as('admin@medassist.dev');
+  if (!patient || !reception || !admin) return;
+
+  const me = await call(api, '/patients/me', { headers: patient });
+  const myId = (me.body.data as Item | undefined)?.id;
+  check('patient1 sees their own record', me.res.status === 200 && Boolean(myId));
+
+  const list = await call(api, '/patients?limit=100', { headers: reception });
+  const total = (list.body as { meta?: { total?: number } }).meta?.total ?? 0;
+  check('at least 60 active patients', total >= 60, `got ${total}`);
+  const other = ((list.body.data as unknown as Item[]) ?? []).find((p) => p.id !== myId);
+  if (other) {
+    const denied = await call(api, `/patients/${other.id}`, { headers: patient });
+    check("patient1 gets 404 on someone else's record", denied.res.status === 404);
+  }
+  if (myId) {
+    const phone = (me.body.data as { phone?: string }).phone ?? '';
+    const found = await call(api, `/patients?q=${encodeURIComponent(phone.slice(3))}`, {
+      headers: reception,
+    });
+    check(
+      'reception finds a patient by phone (national format)',
+      ((found.body.data as unknown as Item[]) ?? []).some((p) => p.id === myId),
+    );
+    const receptionView = JSON.stringify(
+      (await call(api, `/patients/${myId}`, { headers: reception })).body,
+    );
+    const adminView = JSON.stringify(
+      (await call(api, `/patients/${myId}`, { headers: admin })).body,
+    );
+    check(
+      'reception view has allergies but no chronic conditions',
+      receptionView.includes('"allergies"') && !receptionView.includes('"chronicConditions"'),
+    );
+    check(
+      'admin view has neither allergies nor chronic conditions',
+      !/"allergies"|"chronicConditions"/.test(adminView),
+    );
+  }
+
+  const pendingLinks = await call(api, '/patients/pending-links', { headers: reception });
+  const pendingTotal = (pendingLinks.body as { meta?: { total?: number } }).meta?.total ?? 0;
+  check('a pending self-sign-up waits for reception', pendingTotal >= 1, `got ${pendingTotal}`);
+  const pending = await as('pending1@medassist.dev');
+  if (pending) {
+    const blocked = await call(api, '/patients/me', { headers: pending });
+    check(
+      'pending sign-up is blocked from records',
+      blocked.res.status === 403 && blocked.body.error?.code === 'PATIENT_LINK_PENDING',
+      `status ${blocked.res.status}`,
+    );
+    await logout(pending);
+  }
+
+  const doctor = await as('dr.mehta@medassist.dev');
+  if (doctor) {
+    const none = await call(api, '/patients', { headers: doctor });
+    check(
+      'doctors see no patients until care relationships (Phase 5)',
+      none.res.status === 200 && ((none.body.data as unknown as Item[]) ?? []).length === 0,
+    );
+    await logout(doctor);
+  }
+  const lab = await as('lab1@medassist.dev');
+  if (lab) {
+    const denied = await call(api, '/patients', { headers: lab });
+    check('lab technicians get 403 on /patients', denied.res.status === 403);
+    await logout(lab);
+  }
+  await Promise.all([logout(patient), logout(reception), logout(admin)]);
 }
 
 async function main() {

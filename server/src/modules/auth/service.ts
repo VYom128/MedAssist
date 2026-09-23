@@ -3,7 +3,7 @@ import {
   AUDIT_ACTIONS,
   ERROR_CODES,
   AUTH_LIMITS,
-  ROLES,
+  type PatientLinkStatus,
   type Role,
 } from '../../config/constants.js';
 import { config } from '../../config/env.js';
@@ -20,6 +20,7 @@ import {
 } from '../../utils/password.js';
 import type { AuditActor, RequestMeta } from '../../utils/requestContext.js';
 import { generateOpaqueToken, hashToken, signAccessToken } from '../../utils/tokens.js';
+import { LINK_MESSAGES, registerPatientAccount } from '../patients/portal.service.js';
 import * as sessions from '../sessions/service.js';
 import { toSessionView } from '../sessions/serializer.js';
 import { User, type UserDoc } from '../users/model.js';
@@ -89,32 +90,29 @@ async function startSession(user: UserWithId, meta: RequestMeta): Promise<AuthRe
 }
 
 /**
- * Patient self-signup (spec §4.4, Phase 1 scope): creates a `patient` user only and logs them in.
- * The Patient record and linking arrive in Phase 3.
+ * Patient self-signup (spec §4.4): creates the patient user, links it to a patient record by
+ * phone + DOB (new record, or pending reception's identity check) and logs them in. `link`
+ * tells the client which message to show.
+ * @throws 409 for a taken email; 422 (generic message) when the matched record has an account.
  */
-export async function register(input: RegisterInput, meta: RequestMeta): Promise<AuthResult> {
+export async function register(
+  input: RegisterInput,
+  meta: RequestMeta,
+): Promise<AuthResult & { link: { status: PatientLinkStatus; message: string } }> {
   if (await User.exists({ email: input.email })) {
     throw ApiError.conflict('An account with this email already exists', { fields: ['email'] });
   }
-  const user = await User.create({
-    firstName: input.firstName,
-    lastName: input.lastName,
-    email: input.email,
-    phone: input.phone,
-    dateOfBirth: input.dateOfBirth,
-    termsAcceptedAt: new Date(),
-    passwordHash: await hashPassword(input.password),
-    role: ROLES.PATIENT,
-    lastLoginAt: new Date(),
-  });
-  const plain = user.toObject() as UserWithId;
+  const { user, linkStatus, patientId } = await registerPatientAccount(input, meta);
   await audit.record({
     action: AUDIT_ACTIONS.AUTH_REGISTER,
-    actor: actorOf(plain),
-    resource: { type: 'user', id: plain._id },
+    actor: actorOf(user),
+    resource: { type: 'user', id: user._id },
+    patient: patientId,
     request: meta,
+    metadata: { linkStatus },
   });
-  return startSession(plain, meta);
+  const result = await startSession(user, meta);
+  return { ...result, link: { status: linkStatus, message: LINK_MESSAGES[linkStatus] } };
 }
 
 /**

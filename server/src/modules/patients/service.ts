@@ -75,7 +75,7 @@ export async function portalInfo(patientId: string | Types.ObjectId): Promise<Po
 }
 
 /** The role's view, with the portal account for staff who manage it. */
-async function viewFor(user: AuthUser, p: PatientLike) {
+export async function viewFor(user: AuthUser, p: PatientLike) {
   const staff = user.role === ROLES.ADMIN || user.role === ROLES.RECEPTIONIST;
   return viewForRole(user.role, p, staff ? await portalInfo(p._id) : undefined);
 }
@@ -83,13 +83,20 @@ async function viewFor(user: AuthUser, p: PatientLike) {
 // ---- Audit ---------------------------------------------------------------------------------
 
 /** Fields whose before/after values are safe to keep in the audit log (not identifying). */
-const AUDIT_VALUE_FIELDS = new Set(['gender', 'bloodGroup', 'preferredLanguage', 'isActive']);
+const AUDIT_VALUE_FIELDS = new Set([
+  'gender',
+  'bloodGroup',
+  'preferredLanguage',
+  'isActive',
+  'consentAiExplanations',
+  'consentCommunications',
+]);
 
 /**
  * `diffChanges` for patient records: changed field names always; before/after values only for
  * non-identifying fields. Names, DOB, contact details, allergies etc. are '[REDACTED]' (§10.4).
  */
-function patientChanges(
+export function patientChanges(
   before: Record<string, unknown>,
   after: Record<string, unknown>,
   fields: readonly string[],

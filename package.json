@@ -2,7 +2,7 @@
   "name": "med-assist",
   "version": "0.1.0",
   "private": true,
-  "description": "MedAssist – Clinic Operations & Patient Care Portal",
+  "description": "MedAssist \u2013 Clinic Operations & Patient Care Portal",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -25,7 +25,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "seed": "npm run seed -w server --",
-    "smoke": "npm run smoke -w server"
+    "smoke": "npm run smoke -w server",
+    "migrate:link-patients": "npm run migrate:link-patients -w server"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

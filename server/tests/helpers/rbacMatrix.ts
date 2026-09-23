@@ -44,6 +44,11 @@ export interface Ctx {
   otherPatientId: string;
   /** An inactive patient (for activate). */
   inactivePatientId: string;
+  /** A patient with an email and no portal account (for portal-invite). */
+  invitablePatientId: string;
+  /** A self-registered user waiting for verification against `pendingPatientId`. */
+  pendingUserId: string;
+  pendingPatientId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -67,6 +72,8 @@ const ADMIN_DOCTOR: readonly Role[] = ['admin', 'doctor'];
 const ADMIN_DOCTOR_RECEPTION: readonly Role[] = ['admin', 'doctor', 'receptionist'];
 const ADMIN_RECEPTION: readonly Role[] = ['admin', 'receptionist'];
 const DOCTOR: readonly Role[] = ['doctor'];
+const PATIENT: readonly Role[] = ['patient'];
+const RECEPTION: readonly Role[] = ['receptionist'];
 const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'patient'];
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
@@ -335,6 +342,35 @@ ENDPOINTS.push(
     roles: ADMIN_RECEPTION,
     status: 201,
   },
+  { method: 'get', path: () => '/patients/me', roles: PATIENT, status: 200 },
+  {
+    method: 'patch',
+    path: () => '/patients/me',
+    body: () => ({ preferredLanguage: 'hi' }),
+    roles: PATIENT,
+    status: 200,
+  },
+  { method: 'get', path: () => '/patients/pending-links', roles: ADMIN_RECEPTION, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/patients/${c.invitablePatientId}/portal-invite`,
+    roles: ADMIN_RECEPTION,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/patients/${c.pendingPatientId}/confirm-link`,
+    body: (c) => ({ userId: c.pendingUserId }),
+    roles: RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/patients/${c.pendingPatientId}/reject-link`,
+    body: (c) => ({ userId: c.pendingUserId, reason: 'Different person (twin)' }),
+    roles: RECEPTION,
+    status: 200,
+  },
   {
     method: 'get',
     path: (c) => `/patients/${c.patientId}`,
@@ -410,6 +446,9 @@ export const PATTERN_CTX = {
   patientId: ':id',
   otherPatientId: ':id',
   inactivePatientId: ':id',
+  invitablePatientId: ':id',
+  pendingUserId: ':userId',
+  pendingPatientId: ':id',
   n: 0,
 } as unknown as Ctx;
 

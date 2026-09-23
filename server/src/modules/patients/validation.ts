@@ -236,6 +236,41 @@ export const checkDuplicateSchema = {
     }),
 };
 
+/** PATCH /patients/me – what a patient may change themselves (not name, DOB or gender). */
+export const updateMyRecordSchema = {
+  body: z
+    .strictObject({
+      phone: phone.optional(),
+      email: optionalEmail,
+      address: address.nullable().optional(),
+      emergencyContact: emergencyContact.nullable().optional(),
+      preferredLanguage: z.enum(PATIENT_LANGUAGES).optional(),
+      consent: z
+        .strictObject({
+          aiExplanations: z.boolean().optional(),
+          communications: communications.optional(),
+        })
+        .optional(),
+    })
+    .refine((b) => Object.keys(b).length > 0, 'Nothing to update'),
+};
+
+/** GET /patients/pending-links */
+export const pendingLinksSchema = { query: z.object({ ...paginationQuery }) };
+
+/** POST /patients/:id/confirm-link */
+export const confirmLinkSchema = {
+  params: idParams,
+  body: z.strictObject({ userId: objectId }),
+};
+
+/** POST /patients/:id/reject-link – why the sign-up is not this patient. */
+export const rejectLinkSchema = {
+  params: idParams,
+  body: z.strictObject({ userId: objectId, reason }),
+};
+
+export type UpdateMyRecordInput = z.infer<typeof updateMyRecordSchema.body>;
 export type CreatePatientInput = z.infer<typeof createPatientSchema.body>;
 export type UpdatePatientInput = z.infer<typeof updatePatientSchema.body>;
 export type ClinicalProfileInput = z.infer<typeof clinicalProfileSchema.body>;
@@ -243,4 +278,3 @@ export type ListPatientsQuery = z.infer<typeof listPatientsSchema.query>;
 export type CheckDuplicateQuery = z.infer<typeof checkDuplicateSchema.query>;
 export type AllergyInput = z.infer<typeof allergy>;
 export type ChronicConditionInput = z.infer<typeof chronicCondition>;
-export { reason as overrideReasonSchema };

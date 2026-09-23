@@ -3,13 +3,13 @@ import { AuditLog } from '../src/modules/audit/model.js';
 import { Department } from '../src/modules/departments/model.js';
 import { LabTest } from '../src/modules/labTests/model.js';
 import { DoctorLeave } from '../src/modules/leaves/model.js';
+import { Patient } from '../src/modules/patients/model.js';
 import { Service } from '../src/modules/services/model.js';
+import { User } from '../src/modules/users/model.js';
 import { flushAudit } from '../src/services/audit.service.js';
 import { verifyAccessToken } from '../src/utils/tokens.js';
 import { createUser, loginAs, resetDb, TEST_PASSWORD } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
-import { Patient } from '../src/modules/patients/model.js';
-import { User } from '../src/modules/users/model.js';
 import { addDoctorProfile, createDoctor, createPatient } from './helpers/fixtures.js';
 import {
   ALL,
@@ -68,6 +68,13 @@ async function buildContext(role: Role): Promise<Ctx> {
   const patient = await createPatient();
   const otherPatient = await createPatient();
   const inactivePatient = await createPatient({ isActive: false });
+  const invitable = await createPatient({ email: `invite${n}@example.com` });
+  const pendingPatient = await createPatient({ dateOfBirth: '1991-02-03' });
+  const pendingUser = await createUser('patient', {
+    patient: pendingPatient.id,
+    patientLinkStatus: 'pending_verification',
+    dateOfBirth: new Date('1991-02-03T00:00:00Z'),
+  });
   if (role === 'patient') {
     await User.updateOne(
       { _id: me.user._id },
@@ -92,6 +99,9 @@ async function buildContext(role: Role): Promise<Ctx> {
     patientId: patient.id,
     otherPatientId: otherPatient.id,
     inactivePatientId: inactivePatient.id,
+    invitablePatientId: invitable.id,
+    pendingUserId: pendingUser._id.toString(),
+    pendingPatientId: pendingPatient.id,
     n,
   };
 }
@@ -116,6 +126,9 @@ const send = (row: Row, c: Ctx | null) => {
       patientId: zero,
       otherPatientId: zero,
       inactivePatientId: zero,
+      invitablePatientId: zero,
+      pendingUserId: zero,
+      pendingPatientId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);

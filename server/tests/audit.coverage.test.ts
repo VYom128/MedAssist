@@ -35,15 +35,18 @@ describe('audit coverage', () => {
       secrets.push(...values.filter((v): v is string => Boolean(v)));
 
     // auth.register
-    const reg = await api().post('/api/v1/auth/register').send({
-      firstName: 'Neha',
-      lastName: 'Gupta',
-      email: 'neha@example.com',
-      phone: '+919812345678',
-      dateOfBirth: '1992-03-04',
-      password: 'Audit-2026-pass',
-      acceptTerms: true,
-    });
+    const reg = await api()
+      .post('/api/v1/auth/register')
+      .send({
+        firstName: 'Neha',
+        lastName: 'Gupta',
+        email: 'neha@example.com',
+        phone: '+919812345678',
+        dateOfBirth: '1992-03-04',
+        password: 'Audit-2026-pass',
+        acceptTerms: true,
+        consent: { dataProcessing: true },
+      });
     keep('Audit-2026-pass', reg.body.data.accessToken, refreshCookieFrom(reg));
 
     // auth.login, auth.login_failed
@@ -237,6 +240,42 @@ describe('audit coverage', () => {
       .post(`/api/v1/patients/${patientId}/activate`)
       .set(admin.auth)
       .send({ reason: 'Came back' });
+
+    // patient.portal_invite
+    await api()
+      .patch(`/api/v1/patients/${patientId}`)
+      .set(reception.auth)
+      .send({ email: 'anita@example.com' });
+    await api().post(`/api/v1/patients/${patientId}/portal-invite`).set(reception.auth);
+    keep(await emails.lastToken());
+
+    // patient.link_confirm, patient.link_reject: two sign-ups matching the twins' phone + DOB
+    const signup = {
+      firstName: 'Sunita',
+      lastName: 'Desai',
+      phone: '9812300001',
+      dateOfBirth: '1980-01-02',
+      password: 'Signup-2026-pass',
+      acceptTerms: true,
+      consent: { dataProcessing: true },
+    };
+    keep('Signup-2026-pass');
+    const pending = await api()
+      .post('/api/v1/auth/register')
+      .send({ ...signup, email: 'sunita@example.com' });
+    keep(pending.body.data.accessToken, refreshCookieFrom(pending));
+    await api()
+      .post(`/api/v1/patients/${twin.body.data.id}/reject-link`)
+      .set(reception.auth)
+      .send({ userId: pending.body.data.user.id, reason: 'Not the same person' });
+    const sunitaAgain = await api()
+      .post('/api/v1/auth/register')
+      .send({ ...signup, email: 'sunita.two@example.com' });
+    keep(sunitaAgain.body.data.accessToken, refreshCookieFrom(sunitaAgain));
+    await api()
+      .post(`/api/v1/patients/${twin.body.data.id}/confirm-link`)
+      .set(reception.auth)
+      .send({ userId: sunitaAgain.body.data.user.id });
     emails.restore();
 
     await flushAudit();

@@ -1,13 +1,13 @@
 import { fileURLToPath } from 'node:url';
 import { connectDB, disconnectDB } from '../config/db.js';
 import { config } from '../config/env.js';
-import { ROLES } from '../config/constants.js';
 import { AuditLog } from '../modules/audit/model.js';
 import { Counter } from '../modules/counters/model.js';
 import { Department } from '../modules/departments/model.js';
 import { DoctorProfile } from '../modules/doctors/model.js';
 import { LabTest } from '../modules/labTests/model.js';
 import { DoctorLeave } from '../modules/leaves/model.js';
+import { Patient } from '../modules/patients/model.js';
 import { DoctorSchedule } from '../modules/schedules/model.js';
 import { Service } from '../modules/services/model.js';
 import { Session } from '../modules/sessions/model.js';
@@ -19,6 +19,7 @@ import { logger, serializeError } from '../utils/logger.js';
 import { seedDepartments } from './departments.js';
 import { doctorLogins, seedDoctors } from './doctors.js';
 import { seedLabTests } from './labTests.js';
+import { patientLogins, seedPatients } from './patients.js';
 import { seedServices } from './services.js';
 import { seedSettings } from './settings.js';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD, seedUsers } from './users.js';
@@ -35,6 +36,7 @@ const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = 
   { name: 'services', run: seedServices },
   { name: 'doctors', run: seedDoctors },
   { name: 'labTests', run: seedLabTests },
+  { name: 'patients', run: seedPatients },
 ];
 
 /** Collections `--reset` empties (raw driver for audit logs: Mongoose blocks those deletes). */
@@ -50,16 +52,18 @@ async function resetData() {
     DoctorSchedule.deleteMany({}),
     DoctorLeave.deleteMany({}),
     LabTest.deleteMany({}),
+    Patient.deleteMany({}),
     Counter.deleteMany({}),
   ]);
   clearSettingsCache();
 }
 
-/** Every seeded login: staff first, then doctors, then patients. */
+/**
+ * Every seeded login: staff first, then doctors, then patients (the last one, pending1, is a
+ * self-sign-up waiting for reception to confirm it).
+ */
 export function demoLogins() {
-  const staff = DEMO_ACCOUNTS.filter((a) => a.role !== ROLES.PATIENT);
-  const patients = DEMO_ACCOUNTS.filter((a) => a.role === ROLES.PATIENT);
-  return [...staff, ...doctorLogins(), ...patients];
+  return [...DEMO_ACCOUNTS, ...doctorLogins(), ...patientLogins()];
 }
 
 function table(rows: string[][]): string {
@@ -104,7 +108,7 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
 
   if (reset) {
     await resetData();
-    logger.info('Wiped users, sessions, audit logs, clinic setup data and counters');
+    logger.info('Wiped users, sessions, audit logs, clinic setup data, patients and counters');
   }
   const summary: Record<string, Record<string, number>> = {};
   for (const seeder of SEEDERS) summary[seeder.name] = await seeder.run();

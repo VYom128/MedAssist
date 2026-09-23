@@ -57,3 +57,40 @@ export function staffWelcomeEmail(name: string, link: string): EmailTemplate {
     links: [link],
   };
 }
+
+/**
+ * Portal invitation for a registered patient, with a "set your password" link (72 hours). No
+ * medical information (spec §10.3).
+ */
+export function patientPortalInviteEmail(name: string, link: string): EmailTemplate {
+  return {
+    subject: 'Your MedAssist patient portal account',
+    text:
+      `Hello ${name},\n\nThe clinic has created a MedAssist patient portal account for you. ` +
+      `You can use it to book appointments and see your records.\n\n` +
+      `Set your password here (the link expires in 72 hours): ${link}`,
+    html: layout(
+      `<p>Hello ${escapeHtml(name)},</p><p>The clinic has created a MedAssist patient portal ` +
+        `account for you. You can use it to book appointments and see your records.</p>` +
+        button(link, 'Set your password') +
+        `<p>The link expires in 72 hours.</p>`,
+    ),
+    links: [link],
+  };
+}
+
+/** Sent when reception has verified a self-registered patient: their records are available. */
+export function patientRecordsLinkedEmail(name: string, link: string): EmailTemplate {
+  return {
+    subject: 'Your MedAssist records are now available',
+    text:
+      `Hello ${name},\n\nThe clinic has confirmed your identity, and your records are now ` +
+      `available in the MedAssist patient portal.\n\nLog in here: ${link}`,
+    html: layout(
+      `<p>Hello ${escapeHtml(name)},</p><p>The clinic has confirmed your identity, and your ` +
+        `records are now available in the MedAssist patient portal.</p>` +
+        button(link, 'Log in'),
+    ),
+    links: [link],
+  };
+}
