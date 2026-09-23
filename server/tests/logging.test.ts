@@ -79,3 +79,65 @@ describe('logging never includes request data', () => {
     }
   });
 });
+
+describe('request logs and auth flows', () => {
+  it('logs the path without the query string', async () => {
+    const logs = captureLogs();
+    try {
+      await api().get(`/api/v1/health?q=${SENSITIVE}`);
+    } finally {
+      logs.restore();
+    }
+    expect(logs.text()).toContain('/api/v1/health');
+    expect(logs.text()).not.toContain(SENSITIVE);
+  });
+
+  it('never logs passwords, tokens, hashes or cookies during a full auth flow', async () => {
+    const { resetDb, refreshWith, refreshCookieFrom } = await import('./helpers/auth.js');
+    const { captureEmails } = await import('./helpers/email.js');
+    await resetDb();
+    const emails = captureEmails();
+    const PASSWORD = 'Logging-2026-pass';
+    const NEW_PASSWORD = 'Logging-2027-pass';
+    const logs = captureLogs();
+    const secrets: string[] = [PASSWORD, NEW_PASSWORD];
+    try {
+      const reg = await api().post('/api/v1/auth/register').send({
+        firstName: 'Meera',
+        lastName: 'Check',
+        email: 'logcheck@example.com',
+        phone: '+919800000001',
+        dateOfBirth: '1990-01-01',
+        password: PASSWORD,
+        acceptTerms: true,
+      });
+      const access = reg.body.data.accessToken as string;
+      const cookie = refreshCookieFrom(reg) ?? '';
+      secrets.push(access, cookie);
+
+      const refreshed = await refreshWith(cookie);
+      secrets.push(refreshed.body.data.accessToken, refreshCookieFrom(refreshed) ?? '');
+      await api()
+        .post('/api/v1/auth/login')
+        .send({ email: 'logcheck@example.com', password: 'Wrong-pass-9' });
+      await api()
+        .post('/api/v1/auth/change-password')
+        .set('Authorization', `Bearer ${refreshed.body.data.accessToken}`)
+        .send({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD });
+      await api().post('/api/v1/auth/forgot-password').send({ email: 'logcheck@example.com' });
+      const token = await emails.lastToken();
+      secrets.push(token);
+      await api()
+        .post('/api/v1/auth/reset-password')
+        .send({ token, newPassword: 'Logging-2028-pass' });
+      secrets.push('Logging-2028-pass');
+    } finally {
+      logs.restore();
+      emails.restore();
+    }
+    const text = logs.text();
+    expect(text.length).toBeGreaterThan(0);
+    for (const secret of secrets) expect(text).not.toContain(secret);
+    expect(text).not.toMatch(/passwordHash|refreshTokenHash|tokenHash|ma_rt=|\$2[aby]\$/);
+  });
+});

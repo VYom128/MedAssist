@@ -271,7 +271,6 @@ client/src/
 | `LOG_LEVEL` | info | |
 | `JWT_ACCESS_SECRET` | (random 64 chars) | |
 | `JWT_ACCESS_EXPIRES_IN` | 15m | |
-| `JWT_REFRESH_SECRET` | (random 64 chars) | |
 | `REFRESH_TOKEN_TTL_DAYS` | 7 | |
 | `COOKIE_SECURE` | false (dev) / true (prod) | |
 | `COOKIE_SAMESITE` | lax (dev) / none (prod cross-site) | |
@@ -283,7 +282,8 @@ client/src/
 | `STORAGE_DRIVER` | local / s3 / cloudinary | |
 | `UPLOAD_DIR` | ./uploads | local driver |
 | `MAX_UPLOAD_MB` | 10 | |
-| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `MAIL_FROM` | | Email |
+| `EMAIL_TRANSPORT` | console / smtp | `console` logs recipient, subject and links (dev/test only); `smtp` required in production (§20 D8) |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` `MAIL_FROM` | | Email (required when `EMAIL_TRANSPORT=smtp`) |
 | `AUDIT_HASH_SECRET` | (random) | HMAC for audit hash chain |
 
 **Client**: `VITE_API_URL`, `VITE_SOCKET_URL`, `VITE_APP_NAME`.
@@ -550,11 +550,14 @@ erDiagram
   emailVerifiedAt: Date
   lastLoginAt: Date
   failedLoginAttempts: Number, default 0
+  lastFailedLoginAt: Date          // start of the 15-min lockout window (§5.8, §20 D10)
   lockUntil: Date
   passwordChangedAt: Date          // tokens issued before this are rejected
   passwordReset: { tokenHash: String, expiresAt: Date }   // select: false
   patient: ObjectId ref Patient     // only for role=patient
   patientLinkStatus: enum ['linked','pending_verification']  // §4.4
+  dateOfBirth: Date                 // self-registered patients; used for the Phase 3 match (§20 D29)
+  termsAcceptedAt: Date             // consent at registration (§10.6)
   avatarUrl: String
   createdBy: ObjectId ref User
 }
@@ -570,7 +573,7 @@ indexes: { email: 1 } unique, { role: 1, isActive: 1 }, { patient: 1 } unique sp
   userAgent: String, ip: String
   lastUsedAt: Date
   expiresAt: Date, required                     // TTL index removes expired sessions
-  revokedAt: Date, revokedReason: enum ['logout','logout_all','reuse_detected','password_changed','admin']
+  revokedAt: Date, revokedReason: enum ['logout','logout_all','rotated','reuse_detected','password_changed','admin','deactivated']  // 'rotated' = normal refresh (§20 D4); 'deactivated' = admin deactivation (D24)
   replacedBy: ObjectId ref Session
 }
 indexes: { expiresAt: 1 } expireAfterSeconds 0
@@ -1012,6 +1015,7 @@ indexes: { recipient: 1, readAt: 1, createdAt: -1 }; TTL 180 days on createdAt
 ### 6.25 `audit_logs`
 ```js
 {
+  seq: Number, required, unique             // total order for the hash chain (§20 D13)
   at: Date, required, indexed
   actor: { user: ref User, role: String, name: String }    // null user = system job
   action: String, required, indexed          // e.g. 'encounter.sign' (catalogue in §10.4)
@@ -1748,3 +1752,49 @@ Record decisions here as they are made (date, decision, reason).
 | 4 | Patients can see AI clinical summaries? | Only if approved AND doctor ticks "share with patient" |
 | 5 | Kiosk authentication for queue board | Signed kiosk key in URL, tokens + rooms only |
 | 6 | File storage in production | Cloudinary (free tier) |
+
+### Decisions made
+Phase 1 key decisions: patient self-registration creates a User only, with no Patient record until Phase 3 (D1, D29); `bcryptjs` (D2); opaque refresh token stored hashed, so no `JWT_REFRESH_SECRET` (D3); `'rotated'` revoke reason (D4); 10 s refresh grace window (D5); console email transport in dev/test (D8); audit failures never break requests (D13).
+
+| # | Date | Decision | Reason |
+|---|---|---|---|
+| D1 | 2026-09-23 | Patient self-registration creates a `patient` User only; the Patient record, DOB and phone+DOB matching (§4.4) arrive in Phase 3. `user.patient` / `patientLinkStatus` stay empty until then. | Patient model is Phase 3. |
+| D2 | 2026-09-23 | `bcryptjs` with `BCRYPT_ROUNDS` (12; 4 in tests). | Pure JS, no native build problems. |
+| D3 | 2026-09-23 | Refresh token = 64 random bytes stored only as SHA-256; `JWT_REFRESH_SECRET` removed (§3.6). | The refresh token is not a JWT. |
+| D4 | 2026-09-23 | `'rotated'` added to `sessions.revokedReason`. | Distinguishes normal rotation from logout/theft. |
+| D5 | 2026-09-23 | Refresh grace window: a rotated token reused within 10 s gets an access token for its replacement session (no new cookie); later reuse revokes the family. | Two tabs refreshing at once is not theft. |
+| D6 | 2026-09-23 | Access tokens of a *rotated* session stay valid while their family has a live session. Logout, revoking a device and "revoke other sessions" act on the whole family. | Other tabs and in-flight requests would otherwise fail right after every refresh. |
+| D7 | 2026-09-23 | `authenticate` checks the user and the session on every request, so logout, password change and deactivation take effect immediately (not after 15 min). | Medical data; 2 indexed lookups per request. |
+| D8 | 2026-09-23 | Email service with `console` (dev/test; prints recipient, subject and links – never in production) and `smtp` (Nodemailer) transports. Full notifications in Phase 10. | Reset links are visible in dev without SMTP. |
+| D9 | 2026-09-23 | `POST /users` emails a "set your password" link (72 h) instead of a temporary password (§7.3); such accounts do not need `mustChangePassword`. | No password is ever emailed or logged. |
+| D10 | 2026-09-23 | Lockout (§5.8) uses a new `lastFailedLoginAt` field; the counter restarts if the last failure was over 15 min ago. Failures are counted atomically. | §6.3 had no window start. |
+| D11 | 2026-09-23 | Login responses: unknown email and wrong password → same 401 `INVALID_CREDENTIALS` (dummy bcrypt compare for timing); `ACCOUNT_LOCKED` while locked whatever the password; `ACCOUNT_INACTIVE` only after a correct password. Register returns 409 for a taken email (rate limited). | Limits account enumeration. |
+| D12 | 2026-09-23 | `mustChangePassword` is enforced by the server: 403 `PASSWORD_CHANGE_REQUIRED` except `GET /auth/me`, `POST /auth/change-password`, `POST /auth/logout`. Change-password returns a fresh access token. | Client-only enforcement is bypassable. |
+| D13 | 2026-09-23 | Audit writes go through an in-process queue with a `seq` field (added to §6.25); first `prevHash` = `GENESIS`. Audit failures never fail the request (logged at error level). Linear only within one API instance. Audit entries are written after transactions commit. | §10.5 chain needs a total order. |
+| D14 | 2026-09-23 | `authorize()` denials are audited as `access.denied` (role check); `canAccessPatient` denials are audited with the patient and return 404. | §10.2. |
+| D15 | 2026-09-23 | Audit actions added beyond §10.4: `auth.register`, `auth.logout_all`, `auth.session_revoke`, `auth.password_reset_requested`, `auth.profile_update`, `user.unlock`, `user.reset_password`, `audit.verify`. | Every sensitive write is audited. |
+| D16 | 2026-09-23 | `user.update` / `auth.profile_update` audit entries store changed field names; before/after values only for names and status – email/phone are `[REDACTED]`. | §10.4 redaction. |
+| D17 | 2026-09-23 | `POST /users` creates `admin`, `receptionist`, `labtech` only. Doctors are created with their profile via `POST /doctors` (Phase 2); patients sign up or are invited (Phase 3). Doctor demo accounts come from the seed. | Doctor = User + profile in one transaction. |
+| D18 | 2026-09-23 | Password policy: 8–72 characters (bcrypt limit), letter + number, not in the top-1,000 list (SecLists, case-insensitive). Reset tokens: 32 bytes, 30 min, single use; a reset clears lockout and revokes all sessions. Extra forgot-password limiter: 5/hour per IP + email. | §7.2 plus bcrypt's 72-byte limit. |
+| D19 | 2026-09-23 | `PATCH /auth/me` updates name and phone only; `avatarUrl` waits for uploads (Phase 6). Register logs the patient in (201 + cookie). Email verification (stretch) is not built. | Scope. |
+| D20 | 2026-09-23 | Refresh expiry is sliding: each rotation sets `now + REFRESH_TOKEN_TTL_DAYS`. | Active users stay signed in; idle sessions expire. |
+| D21 | 2026-09-23 | `GET /audit-logs` `from`/`to` are ISO date-times with offset until clinic settings (timezone) exist in Phase 2. `/audit-logs/patient/:id` comes with patients (Phase 3). | No clinic timezone yet. |
+| D22 | 2026-09-23 | Seed starts in Phase 1 with the 7 demo accounts (§15.3); idempotent; `--reset` wipes users, sessions and audit logs and refuses in production. | Needed to demo role logins. |
+| D23 | 2026-09-23 | Client: RTK Query `axiosBaseQuery` wraps the Phase 0 axios instance (`client/src/utils/http.ts`); refresh on any 401 except login/register/refresh/reset, with one shared in-flight refresh. The admin Users and Audit log pages are built with the other admin pages in Phase 2. | Reuse; roadmap order. |
+| D24 | 2026-09-23 | Admin deactivation revokes sessions with reason `'deactivated'` (added to §6.4). Auth limits live in `AUTH_LIMITS` in `constants.ts`. | Clearer audit of why a session ended. |
+| D25 | 2026-09-23 | Production refuses to start unless `COOKIE_SECURE=true` (as well as `EMAIL_TRANSPORT=smtp`). `BCRYPT_ROUNDS` defaults to 4 when `NODE_ENV=test`. | The refresh cookie must only travel over HTTPS. |
+| D26 | 2026-09-23 | Passwords must not contain the email name or first name (parts of 3+ characters, case-insensitive), checked on register, change and reset. Maximum stays **72 bytes**, not 128: bcrypt ignores everything after byte 72. | Stronger policy without silent truncation. |
+| D27 | 2026-09-23 | The console email transport logs recipient, subject and links, never the body. Templates live in `services/email.templates.ts`; the common-password list stays a `.ts` module (`src/data/commonPasswords.ts`) so the `tsc` build includes it. The Session model stays in `modules/sessions/model.ts` (module layout from CLAUDE.md); the cookie helpers live in `utils/cookies.ts`. | Keeps tokens out of logs and the list in `dist`. |
+| D28 | 2026-09-23 | `audit.record()` takes `req` (actor defaults to `req.user`; request path is `originalUrl` without the query string), redacts `password`/`token`/`secret`/`hash` keys at any depth in `changes` and `metadata`, and returns the entry or `null` on failure. `diffChanges()` keeps only changed fields (email/phone values `[REDACTED]`, D16). `verifyChain()` returns `{ ok, checked, firstBrokenId?, reason? }` reading in `(at, _id)` order; `seq` stays as a unique guard and gap check. | Step 2 audit spec. |
+| D29 | 2026-09-23 | Registration also takes `dateOfBirth` (YYYY-MM-DD, not in the future, ≤ 120 years) and `acceptTerms: true`. Both are stored on the User (`dateOfBirth`, `termsAcceptedAt`) until Phase 3 creates and matches the Patient record. Supersedes the DOB part of D1. | Needed for the §4.4 phone + DOB match and §10.6 consent. |
+| D30 | 2026-09-23 | `authenticate` checks the session before the user, so a deactivated user's old token (sessions revoked) gets 401 `SESSION_REVOKED`; `ACCOUNT_INACTIVE` shows when the session is still live. `req.user` = `{ id, role, sessionId, sessionFamily, firstName, lastName, email, mustChangePassword, patientId }`. | Step 3 spec order. |
+| D31 | 2026-09-23 | `passwordChangedAt` is stored as now − 1 s. Change password revokes **every** session and starts a new one (new access token and refresh cookie), so the caller's old access token also fails immediately. | Deterministic revocation of the old token. |
+| D32 | 2026-09-23 | `POST /auth/reset-password` takes `{ token, newPassword }`. Forgot and reset each have a 5/hour-per-IP `passwordResetLimiter` (replaces the IP + email forgot limiter). Failed-login audit metadata includes the submitted email (never the password). A missing refresh cookie → 401 `SESSION_REVOKED` and the cookie is cleared. The 423 message states the minutes remaining. | Step 3 spec. |
+| D33 | 2026-09-23 | `canAccessPatient(user, patientId, scope)` is a pure synchronous function; `SCOPES` is exported. The doctor care relationship (Phase 5) will need DB lookups, so the signature will change then. | Step 3 spec. |
+| D34 | 2026-09-23 | `POST /users` accepts `admin`, `doctor`, `receptionist`, `labtech` (supersedes D17; Phase 2 adds the doctor profile). New accounts get a random temporary password nobody sees and `mustChangePassword: true`; the welcome email carries the set-password link (reset-token flow, 72 h), which also clears `mustChangePassword` (refines D9). | Step 4 spec. |
+| D35 | 2026-09-23 | `GET /users` takes `?sort=` (whitelisted: createdAt, firstName, lastName, email, role, lastLoginAt; default `-createdAt`) via `parseSort()` / `sortQuery()`. `GET /audit-logs?action=` is a prefix match (`auth.` = all auth actions). | Spec §7.1 sorting; step 4 spec. |
+| D36 | 2026-09-23 | Seed upserts the §15.3 demo accounts (7, including `dr.iyer` and `patient2`), resetting them to the demo password, active and unlocked. Refuses to run in production; `--reset` only with `NODE_ENV=development`. One seeder function per data type in `server/src/seed/`. Refines D22. | Step 4 spec. |
+| D37 | 2026-09-23 | Client auth status is `restoring → authenticated \| guest`; the page-load refresh sends **no body** (axios would send the JSON text `null`, which the server's strict JSON parser rejects with 400 – found in the browser check). Routes and the sidebar come from one list, `client/src/routes/routeConfig.ts`. Login/register/forgot/reset redirect signed-in users home. The guest redirect keeps the target in `?next=` (survives a reload) rather than router state. | Step 5 spec. |
+| D38 | 2026-09-23 | Dates are shown in the clinic timezone from `client/src/constants/clinic.ts` (`Asia/Kolkata`) until Phase 2 clinic settings supply it. Audit-log date filters send the clinic day's start/end as ISO date-times with the zone's offset. | §3.7; settings arrive in Phase 2. |
+| D39 | 2026-09-23 | The admin Users and Audit log pages are built in Phase 1 (step 6), superseding the Phase 2 part of D23. Client tests use MSW (`client/tests/msw`) with unhandled requests failing the test; config in `client/vitest.config.ts`. | Step 6 spec. |
+| D40 | 2026-09-23 | Request logs record the path without the query string. Guard tests: `routeInventory` (every mounted non-public route needs authentication and an RBAC-matrix row; admin prefixes return 403 to others) and `audit.coverage` (every `AUDIT_ACTIONS` value is written; no secrets in audit entries). | Phase 1 security review (§10.3: queries can hold names). |

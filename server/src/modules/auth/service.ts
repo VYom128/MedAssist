@@ -1,0 +1,490 @@
+import type { Types } from 'mongoose';
+import {
+  AUDIT_ACTIONS,
+  ERROR_CODES,
+  AUTH_LIMITS,
+  ROLES,
+  type Role,
+} from '../../config/constants.js';
+import { config } from '../../config/env.js';
+import * as audit from '../../services/audit.service.js';
+import { emailService, sendInBackground } from '../../services/email.service.js';
+import type { AuthUser } from '../../types/express.js';
+import { ApiError } from '../../utils/ApiError.js';
+import {
+  PERSONAL_INFO_MESSAGE,
+  checkPasswordStrength,
+  fakePasswordCheck,
+  hashPassword,
+  verifyPassword,
+} from '../../utils/password.js';
+import type { AuditActor, RequestMeta } from '../../utils/requestContext.js';
+import { generateOpaqueToken, hashToken, signAccessToken } from '../../utils/tokens.js';
+import * as sessions from '../sessions/service.js';
+import { toSessionView } from '../sessions/serializer.js';
+import { User, type UserDoc } from '../users/model.js';
+import { toSelfView } from '../users/serializer.js';
+import type { RegisterInput, UpdateMeInput } from './validation.js';
+
+type UserWithId = UserDoc & { _id: Types.ObjectId };
+
+const invalidCredentials = () =>
+  new ApiError(401, 'Invalid email or password', ERROR_CODES.INVALID_CREDENTIALS);
+const accountLocked = (lockUntil: Date) => {
+  const minutes = Math.max(1, Math.ceil((lockUntil.getTime() - Date.now()) / 60_000));
+  return new ApiError(
+    423,
+    `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'} or reset your password.`,
+    ERROR_CODES.ACCOUNT_LOCKED,
+  );
+};
+const accountInactive = () =>
+  new ApiError(403, 'This account has been deactivated', ERROR_CODES.ACCOUNT_INACTIVE);
+const sessionRevoked = () =>
+  new ApiError(401, 'Your session has ended. Please log in again.', ERROR_CODES.SESSION_REVOKED);
+
+const actorOf = (u: { _id: Types.ObjectId; role: string; firstName: string; lastName: string }) =>
+  ({ user: u._id.toString(), role: u.role, name: `${u.firstName} ${u.lastName}` }) as AuditActor;
+
+const clientOf = (meta: RequestMeta) => ({ userAgent: meta.userAgent, ip: meta.ip });
+
+/**
+ * `passwordChangedAt` is stored 1 s in the past: tokens are checked with second precision (`iat`),
+ * so the fresh token issued right after the change must not look older than the change.
+ */
+const passwordChangedNow = () => new Date(Date.now() - 1000);
+
+/**
+ * What login, register and refresh return. `refresh` goes into the cookie, never the body; it is
+ * null when the cookie should stay as it is (refresh grace window).
+ */
+export interface AuthResult {
+  accessToken: string;
+  expiresIn: number;
+  user: ReturnType<typeof toSelfView>;
+  refresh: { token: string; expiresAt: Date } | null;
+}
+
+function issueAccessToken(user: UserWithId, sessionId: string) {
+  return {
+    accessToken: signAccessToken({
+      sub: user._id.toString(),
+      role: user.role as Role,
+      sid: sessionId,
+    }),
+    expiresIn: config.auth.accessExpiresIn,
+  };
+}
+
+async function startSession(user: UserWithId, meta: RequestMeta): Promise<AuthResult> {
+  const { sessionId, refreshToken, expiresAt } = await sessions.createSession(
+    user._id,
+    clientOf(meta),
+  );
+  return {
+    ...issueAccessToken(user, sessionId),
+    user: toSelfView(user),
+    refresh: { token: refreshToken, expiresAt },
+  };
+}
+
+/**
+ * Patient self-signup (spec §4.4, Phase 1 scope): creates a `patient` user only and logs them in.
+ * The Patient record and linking arrive in Phase 3.
+ */
+export async function register(input: RegisterInput, meta: RequestMeta): Promise<AuthResult> {
+  if (await User.exists({ email: input.email })) {
+    throw ApiError.conflict('An account with this email already exists', { fields: ['email'] });
+  }
+  const user = await User.create({
+    firstName: input.firstName,
+    lastName: input.lastName,
+    email: input.email,
+    phone: input.phone,
+    dateOfBirth: input.dateOfBirth,
+    termsAcceptedAt: new Date(),
+    passwordHash: await hashPassword(input.password),
+    role: ROLES.PATIENT,
+    lastLoginAt: new Date(),
+  });
+  const plain = user.toObject() as UserWithId;
+  await audit.record({
+    action: AUDIT_ACTIONS.AUTH_REGISTER,
+    actor: actorOf(plain),
+    resource: { type: 'user', id: plain._id },
+    request: meta,
+  });
+  return startSession(plain, meta);
+}
+
+/**
+ * Records a failed password for an existing user and locks the account after 5 failures within
+ * 15 minutes (spec §5.8). One atomic pipeline update, so parallel attempts all count.
+ * @returns the lock expiry if this failure locked the account, otherwise null.
+ */
+async function registerFailedLogin(userId: Types.ObjectId): Promise<Date | null> {
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - AUTH_LIMITS.failedWindowMinutes * 60_000);
+  const updated = await User.findOneAndUpdate(
+    { _id: userId },
+    [
+      {
+        $set: {
+          failedLoginAttempts: {
+            $cond: [
+              { $gte: ['$lastFailedLoginAt', windowStart] },
+              { $add: ['$failedLoginAttempts', 1] },
+              1,
+            ],
+          },
+          lastFailedLoginAt: now,
+        },
+      },
+      {
+        $set: {
+          lockUntil: {
+            $cond: [
+              { $gte: ['$failedLoginAttempts', AUTH_LIMITS.maxFailedLogins] },
+              new Date(now.getTime() + AUTH_LIMITS.lockMinutes * 60_000),
+              '$lockUntil',
+            ],
+          },
+        },
+      },
+    ],
+    { new: true, projection: { lockUntil: 1 } },
+  ).lean();
+  return updated?.lockUntil && updated.lockUntil > now ? updated.lockUntil : null;
+}
+
+/**
+ * Email + password login (spec §7.2, §10.1). Unknown emails and wrong passwords get the same
+ * message and similar timing. `ACCOUNT_LOCKED` is returned while locked whatever the password;
+ * `ACCOUNT_INACTIVE` only after a correct password.
+ */
+export async function login(
+  emailAddress: string,
+  password: string,
+  meta: RequestMeta,
+): Promise<AuthResult> {
+  const user = (await User.findOne({ email: emailAddress }).select('+passwordHash').lean()) as
+    (UserWithId & { passwordHash: string }) | null;
+
+  if (!user) {
+    await fakePasswordCheck(password);
+    await audit.record({
+      action: AUDIT_ACTIONS.AUTH_LOGIN_FAILED,
+      outcome: 'failure',
+      request: meta,
+      metadata: { email: emailAddress, reason: 'unknown_email' },
+    });
+    throw invalidCredentials();
+  }
+
+  const failed = (reason: string) =>
+    audit.record({
+      action: AUDIT_ACTIONS.AUTH_LOGIN_FAILED,
+      outcome: 'failure',
+      actor: actorOf(user),
+      resource: { type: 'user', id: user._id },
+      request: meta,
+      metadata: { email: emailAddress, reason },
+    });
+
+  if (user.lockUntil && user.lockUntil > new Date()) {
+    await fakePasswordCheck(password);
+    await failed('locked');
+    throw accountLocked(user.lockUntil);
+  }
+
+  if (!(await verifyPassword(password, user.passwordHash))) {
+    const lockedUntil = await registerFailedLogin(user._id);
+    await failed(lockedUntil ? 'bad_password_locked' : 'bad_password');
+    throw lockedUntil ? accountLocked(lockedUntil) : invalidCredentials();
+  }
+
+  if (!user.isActive) {
+    await failed('inactive');
+    throw accountInactive();
+  }
+
+  const now = new Date();
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: { lastLoginAt: now, failedLoginAttempts: 0 },
+      $unset: { lockUntil: 1, lastFailedLoginAt: 1 },
+    },
+  );
+  const result = await startSession({ ...user, lastLoginAt: now }, meta);
+  await audit.record({
+    action: AUDIT_ACTIONS.AUTH_LOGIN,
+    actor: actorOf(user),
+    resource: { type: 'user', id: user._id },
+    request: meta,
+  });
+  return result;
+}
+
+/**
+ * Rotates the refresh token and returns a new access token (spec §10.1). A rotated token reused
+ * within 10 s gets an access token for its replacement (two tabs refreshing at once); later
+ * reuse revokes the whole family and is audited as `auth.refresh_reuse`.
+ */
+export async function refresh(rawToken: string, meta: RequestMeta): Promise<AuthResult> {
+  const result = await sessions.rotateRefreshToken(rawToken, clientOf(meta));
+
+  if (result.kind === 'invalid') throw sessionRevoked();
+
+  const user = (await User.findById(result.userId).lean()) as UserWithId | null;
+
+  if (result.kind === 'reuse') {
+    await audit.record({
+      action: AUDIT_ACTIONS.AUTH_REFRESH_REUSE,
+      outcome: 'denied',
+      actor: user ? actorOf(user) : null,
+      resource: { type: 'session_family', number: result.family },
+      request: meta,
+    });
+    throw sessionRevoked();
+  }
+
+  if (!user || !user.isActive) {
+    await sessions.revokeAllForUser(result.userId, 'deactivated');
+    throw user ? accountInactive() : sessionRevoked();
+  }
+
+  return {
+    ...issueAccessToken(user, result.sessionId),
+    user: toSelfView(user),
+    refresh:
+      result.kind === 'rotated'
+        ? { token: result.refreshToken, expiresAt: result.expiresAt }
+        : null,
+  };
+}
+
+/** Ends the caller's current login (its whole rotation family). */
+export async function logout(authUser: AuthUser, meta: RequestMeta) {
+  await sessions.revokeFamily(authUser.sessionFamily, 'logout');
+  await audit.record({
+    action: AUDIT_ACTIONS.AUTH_LOGOUT,
+    actor: authActor(authUser),
+    resource: { type: 'session', id: authUser.sessionId },
+    request: meta,
+  });
+}
+
+/** Revokes every session of the caller, on all devices. */
+export async function logoutAll(authUser: AuthUser, meta: RequestMeta) {
+  const revoked = await sessions.revokeAllForUser(authUser.id, 'logout_all');
+  await audit.record({
+    action: AUDIT_ACTIONS.AUTH_LOGOUT_ALL,
+    actor: authActor(authUser),
+    resource: { type: 'user', id: authUser.id },
+    request: meta,
+    metadata: { sessionsRevoked: revoked },
+  });
+  return { sessionsRevoked: revoked };
+}
+
+function authActor(u: AuthUser): AuditActor {
+  return { user: u.id, role: u.role, name: `${u.firstName} ${u.lastName}` };
+}
+
+async function loadUser(id: string): Promise<UserWithId> {
+  const user = (await User.findById(id).lean()) as UserWithId | null;
+  if (!user) throw ApiError.notFound('User not found');
+  return user;
+}
+
+/** The caller's own account. */
+export async function getMe(authUser: AuthUser) {
+  return toSelfView(await loadUser(authUser.id));
+}
+
+/** Updates the caller's name and/or phone. Audited with field names; phone values redacted. */
+export async function updateMe(authUser: AuthUser, input: UpdateMeInput, meta: RequestMeta) {
+  const before = await loadUser(authUser.id);
+  const changes = audit.diffChanges(before, { ...before, ...input }, Object.keys(input));
+  if (changes.fields.length === 0) return toSelfView(before);
+
+  const updated = (await User.findByIdAndUpdate(
+    authUser.id,
+    { $set: { ...input, updatedBy: authUser.id } },
+    { new: true, runValidators: true },
+  ).lean()) as UserWithId;
+
+  await audit.record({
+    action: AUDIT_ACTIONS.AUTH_PROFILE_UPDATE,
+    actor: authActor(authUser),
+    resource: { type: 'user', id: authUser.id },
+    request: meta,
+    changes,
+  });
+  return toSelfView(updated);
+}
+
+/** The generic rules run in validation; this adds the name/email rule once the user is known. */
+function assertNoPersonalInfo(
+  password: string,
+  user: { email: string; firstName: string },
+  field: string,
+) {
+  if (checkPasswordStrength(password, user).includes(PERSONAL_INFO_MESSAGE)) {
+    throw ApiError.validation('Validation failed', [{ field, message: PERSONAL_INFO_MESSAGE }]);
+  }
+}
+
+/**
+ * Changes the caller's password and clears `mustChangePassword`. Every session is revoked
+ * (reason password_changed) and the caller gets a fresh session: new access token and refresh
+ * cookie. So all other devices, and every older access token including the caller's, stop
+ * working immediately.
+ */
+export async function changePassword(
+  authUser: AuthUser,
+  currentPassword: string,
+  newPassword: string,
+  meta: RequestMeta,
+) {
+  const user = (await User.findById(authUser.id).select('+passwordHash').lean()) as
+    (UserWithId & { passwordHash: string }) | null;
+  if (!user) throw ApiError.notFound('User not found');
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    throw ApiError.validation('Validation failed', [
+      { field: 'body.currentPassword', message: 'Current password is incorrect' },
+    ]);
+  }
+  assertNoPersonalInfo(newPassword, user, 'body.newPassword');
+
+  await User.updateOne(
+    { _id: user._id },
+    {
+      $set: {
+        passwordHash: await hashPassword(newPassword),
+        passwordChangedAt: passwordChangedNow(),
+        mustChangePassword: false,
+        updatedBy: user._id,
+      },
+      $unset: { passwordReset: 1 },
+    },
+  );
+  // Other devices = sessions outside the caller's login; counted before everything is revoked.
+  const otherSessions = await sessions.countActiveForUser(user._id, authUser.sessionFamily);
+  await sessions.revokeAllForUser(user._id, 'password_changed');
+  const result = await startSession({ ...user, mustChangePassword: false }, meta);
+  await audit.record({
+    action: AUDIT_ACTIONS.AUTH_PASSWORD_CHANGED,
+    actor: authActor(authUser),
+    resource: { type: 'user', id: user._id },
+    request: meta,
+    metadata: { otherSessionsRevoked: otherSessions },
+  });
+  return result;
+}
+
+/**
+ * Stores a hashed single-use reset token on the user and emails the link.
+ * @param ttlMs 30 min for resets; 72 h for new-account setup links.
+ * @returns the raw token (for the email only).
+ */
+export async function createPasswordResetToken(
+  userId: Types.ObjectId | string,
+  ttlMs: number = AUTH_LIMITS.resetTokenMinutes * 60_000,
+): Promise<string> {
+  const token = generateOpaqueToken();
+  await User.updateOne(
+    { _id: userId },
+    {
+      $set: {
+        passwordReset: { tokenHash: hashToken(token), expiresAt: new Date(Date.now() + ttlMs) },
+      },
+    },
+  );
+  return token;
+}
+
+/**
+ * Forgot password (spec §7.2). The caller always gets the same 200 response. The email is sent
+ * in the background so response time does not reveal whether the account exists.
+ */
+export async function forgotPassword(emailAddress: string, meta: RequestMeta): Promise<void> {
+  const user = (await User.findOne({
+    email: emailAddress,
+    isActive: true,
+  }).lean()) as UserWithId | null;
+  if (!user) return;
+
+  const token = await createPasswordResetToken(user._id);
+  sendInBackground(() => emailService.sendPasswordReset(user.email, token), 'password_reset');
+  await audit.record({
+    action: AUDIT_ACTIONS.AUTH_PASSWORD_RESET_REQUESTED,
+    actor: actorOf(user),
+    resource: { type: 'user', id: user._id },
+    request: meta,
+  });
+}
+
+/**
+ * Sets a new password from a reset (or account setup) link. Single use: the token is consumed
+ * atomically with the password change. Also clears any lockout and revokes all sessions.
+ */
+export async function resetPassword(token: string, newPassword: string, meta: RequestMeta) {
+  const now = new Date();
+  const validLink = {
+    'passwordReset.tokenHash': hashToken(token),
+    'passwordReset.expiresAt': { $gt: now },
+    isActive: true,
+  };
+  const owner = await User.findOne(validLink, { email: 1, firstName: 1 }).lean();
+  if (!owner) throw ApiError.badRequest('This reset link is invalid or has expired');
+  assertNoPersonalInfo(newPassword, owner, 'body.newPassword');
+
+  const passwordHash = await hashPassword(newPassword);
+  // Consuming the token and setting the password is one atomic update: single use.
+  const user = (await User.findOneAndUpdate(
+    validLink,
+    {
+      $set: {
+        passwordHash,
+        passwordChangedAt: passwordChangedNow(),
+        mustChangePassword: false,
+        failedLoginAttempts: 0,
+      },
+      $unset: { passwordReset: 1, lockUntil: 1, lastFailedLoginAt: 1 },
+    },
+    { new: true },
+  ).lean()) as UserWithId | null;
+
+  if (!user) throw ApiError.badRequest('This reset link is invalid or has expired');
+
+  const revoked = await sessions.revokeAllForUser(user._id, 'password_changed');
+  await audit.record({
+    action: AUDIT_ACTIONS.AUTH_PASSWORD_RESET,
+    actor: actorOf(user),
+    resource: { type: 'user', id: user._id },
+    request: meta,
+    metadata: { sessionsRevoked: revoked },
+  });
+}
+
+/** The caller's active sessions. */
+export async function listSessions(authUser: AuthUser) {
+  const list = await sessions.listActiveSessions(authUser.id);
+  return list.map((s) => toSessionView(s, authUser.sessionFamily));
+}
+
+/** Signs out one of the caller's own devices; someone else's session is a 404. */
+export async function revokeOwnSession(authUser: AuthUser, sessionId: string, meta: RequestMeta) {
+  const session = await sessions.findActiveSession(authUser.id, sessionId);
+  if (!session) throw ApiError.notFound('Session not found');
+  await sessions.revokeFamily(session.family, 'logout');
+  await audit.record({
+    action: AUDIT_ACTIONS.AUTH_SESSION_REVOKE,
+    actor: authActor(authUser),
+    resource: { type: 'session', id: session._id },
+    request: meta,
+  });
+  return { current: session.family === authUser.sessionFamily };
+}

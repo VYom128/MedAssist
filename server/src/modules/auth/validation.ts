@@ -1,0 +1,90 @@
+import { z } from 'zod';
+import {
+  PERSONAL_INFO_MESSAGE,
+  checkPasswordStrength,
+  passwordSchema,
+} from '../../utils/password.js';
+import { email, idParams, namePart, phone } from '../../utils/zod.js';
+
+const MAX_AGE_YEARS = 120;
+
+/** YYYY-MM-DD date of birth: a real date, not in the future, at most 120 years ago. */
+const dateOfBirth = z.iso
+  .date('Use the format YYYY-MM-DD')
+  .transform((v) => new Date(`${v}T00:00:00.000Z`))
+  .refine((d) => d.getTime() <= Date.now(), 'Date of birth cannot be in the future')
+  .refine(
+    (d) => d.getUTCFullYear() >= new Date().getUTCFullYear() - MAX_AGE_YEARS,
+    'Enter a valid date of birth',
+  );
+
+/**
+ * POST /auth/register – patient self-signup. DOB is stored on the user until the Patient record
+ * and phone+DOB matching arrive in Phase 3 (§4.4).
+ */
+export const registerSchema = {
+  body: z
+    .object({
+      firstName: namePart,
+      lastName: namePart,
+      email,
+      phone,
+      dateOfBirth,
+      password: passwordSchema,
+      acceptTerms: z.literal(true, 'You must accept the terms to create an account'),
+    })
+    .superRefine((b, ctx) => {
+      const problems = checkPasswordStrength(b.password, b);
+      if (problems.includes(PERSONAL_INFO_MESSAGE)) {
+        ctx.addIssue({ code: 'custom', path: ['password'], message: PERSONAL_INFO_MESSAGE });
+      }
+    }),
+};
+
+/** POST /auth/login. Only presence is checked so the error never hints at the policy. */
+export const loginSchema = {
+  body: z.object({
+    email,
+    password: z.string().min(1, 'Required').max(200),
+  }),
+};
+
+/** PATCH /auth/me – name and phone (avatar arrives with uploads in Phase 6). */
+export const updateMeSchema = {
+  body: z
+    .strictObject({
+      firstName: namePart.optional(),
+      lastName: namePart.optional(),
+      phone: phone.optional(),
+    })
+    .refine((b) => Object.keys(b).length > 0, 'Nothing to update'),
+};
+
+export const changePasswordSchema = {
+  body: z
+    .object({
+      currentPassword: z.string().min(1, 'Required').max(200),
+      newPassword: passwordSchema,
+    })
+    .refine((b) => b.currentPassword !== b.newPassword, {
+      message: 'New password must be different from the current one',
+      path: ['newPassword'],
+    }),
+};
+
+export const forgotPasswordSchema = { body: z.object({ email }) };
+
+export const resetPasswordSchema = {
+  body: z.object({
+    token: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_-]{20,200}$/, 'Invalid reset link'),
+    newPassword: passwordSchema,
+  }),
+};
+
+export const sessionIdSchema = { params: idParams };
+
+export type RegisterInput = z.infer<typeof registerSchema.body>;
+export type UpdateMeInput = z.infer<typeof updateMeSchema.body>;

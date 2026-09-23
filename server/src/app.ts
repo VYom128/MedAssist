@@ -35,12 +35,13 @@ export function createApp({ extraRoutes }: CreateAppOptions = {}): Express {
       autoLogging: config.isDev
         ? { ignore: (req) => (req as Request).originalUrl.startsWith(`${API_PREFIX}/health`) }
         : true,
-      // Log method, url and status only – never bodies or headers.
+      // Log method, path and status only – never bodies, headers or query strings (queries can
+      // hold search terms such as patient names; spec §10.3).
       serializers: {
         req: (req: { id: string; method: string; url: string }) => ({
           id: req.id,
           method: req.method,
-          url: req.url,
+          url: req.url.split('?')[0],
         }),
         res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
       },
