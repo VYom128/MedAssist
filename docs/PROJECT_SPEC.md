@@ -1754,6 +1754,7 @@ Record decisions here as they are made (date, decision, reason).
 | 6 | File storage in production | Cloudinary (free tier) |
 
 ### Decisions made
+Phase 1 key decisions: patient self-registration creates a User only, with no Patient record until Phase 3 (D1, D29); `bcryptjs` (D2); opaque refresh token stored hashed, so no `JWT_REFRESH_SECRET` (D3); `'rotated'` revoke reason (D4); 10 s refresh grace window (D5); console email transport in dev/test (D8); audit failures never break requests (D13).
 
 | # | Date | Decision | Reason |
 |---|---|---|---|
@@ -1796,3 +1797,4 @@ Record decisions here as they are made (date, decision, reason).
 | D37 | 2026-09-23 | Client auth status is `restoring → authenticated \| guest`; the page-load refresh sends **no body** (axios would send the JSON text `null`, which the server's strict JSON parser rejects with 400 – found in the browser check). Routes and the sidebar come from one list, `client/src/routes/routeConfig.ts`. Login/register/forgot/reset redirect signed-in users home. The guest redirect keeps the target in `?next=` (survives a reload) rather than router state. | Step 5 spec. |
 | D38 | 2026-09-23 | Dates are shown in the clinic timezone from `client/src/constants/clinic.ts` (`Asia/Kolkata`) until Phase 2 clinic settings supply it. Audit-log date filters send the clinic day's start/end as ISO date-times with the zone's offset. | §3.7; settings arrive in Phase 2. |
 | D39 | 2026-09-23 | The admin Users and Audit log pages are built in Phase 1 (step 6), superseding the Phase 2 part of D23. Client tests use MSW (`client/tests/msw`) with unhandled requests failing the test; config in `client/vitest.config.ts`. | Step 6 spec. |
+| D40 | 2026-09-23 | Request logs record the path without the query string. Guard tests: `routeInventory` (every mounted non-public route needs authentication and an RBAC-matrix row; admin prefixes return 403 to others) and `audit.coverage` (every `AUDIT_ACTIONS` value is written; no secrets in audit entries). | Phase 1 security review (§10.3: queries can hold names). |

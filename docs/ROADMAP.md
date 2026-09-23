@@ -110,7 +110,14 @@ Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 - Follow-up (step 4 prompt): staff creation includes doctors with a forced password change; `?sort=` on `/users`; prefix `action` filter on `/audit-logs`; upserting seed with a login table; exact-status RBAC matrix; README auth overview and env table (D34–D36).
 - Follow-up (step 5–6 prompts): UI kit (FormField, Input, Select, PasswordInput, Card, Badge, EmptyState, Modal, ConfirmDialog, Table with phone cards, Pagination), routeConfig-driven routes and sidebar, top-bar user menu, toasts, live password checklist, admin Users (list/detail/add staff/actions) and Audit log (filters, expandable rows, integrity check) pages, MSW client tests (D37–D39).
 - Browser check (Chrome via Playwright, seeded local DB): every demo account lands on its dashboard, patient → /403 on admin pages, reload keeps the session, no token in web storage, logout, admin users/filters/audit verify, 360 px layouts. It found the refresh-body bug (D37).
-- Tests: 321 server (was 53) + 35 client.
+- Busy-port handling and `npm run smoke` (reuses a running API, never stops it).
+- Security review (§10.1–10.5), 2026-09-23. All items passed; one fix:
+  - Responses: no password, hash, token or cookie in any body (`auth.noSecrets` sweep). Logs: a full auth flow logs none (`logging` test). The only exception is the dev/test console email transport, which logs reset links on purpose (D8) and is refused in production. **Fixed:** request logs used to include query strings; now path only (D40). Audit: `audit.coverage` scans every entry.
+  - Refresh cookie `ma_rt`: HttpOnly, SameSite from env, Path `/api/v1/auth`, Secure required in production, expires with the session. The client keeps the access token in Redux memory only (no web storage; checked in the browser).
+  - `routeInventory`: all 17 non-public routes return 401 without a token; all 10 `/users` and `/audit-logs` routes return 403 to a patient; every route has an RBAC row.
+  - Lockout (tests); rate limiters mounted on login/register/forgot/reset (factory tests + live check: 11th login → 429); refresh without `X-Requested-With` → 403 (tests + live).
+  - All 19 Phase 1 audit actions are written by real endpoints; audit logs reject every Mongoose update/delete path with 409 `RECORD_LOCKED`.
+- Tests: 356 server (was 53) + 35 client. Phase 1 complete 2026-09-23.
 
 ---
 
