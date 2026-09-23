@@ -2,8 +2,7 @@ import type { Types } from 'mongoose';
 import {
   AUDIT_ACTIONS,
   ERROR_CODES,
-  LOCKOUT,
-  PASSWORD_RESET,
+  AUTH_LIMITS,
   ROLES,
   type Role,
 } from '../../config/constants.js';
@@ -12,9 +11,15 @@ import * as audit from '../../services/audit.service.js';
 import { emailService, sendInBackground } from '../../services/email.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { fakePasswordCheck, hashPassword, verifyPassword } from '../../utils/password.js';
+import {
+  PERSONAL_INFO_MESSAGE,
+  checkPasswordStrength,
+  fakePasswordCheck,
+  hashPassword,
+  verifyPassword,
+} from '../../utils/password.js';
 import type { AuditActor, RequestMeta } from '../../utils/requestContext.js';
-import { randomToken, sha256, signAccessToken } from '../../utils/tokens.js';
+import { generateOpaqueToken, hashToken, signAccessToken } from '../../utils/tokens.js';
 import * as sessions from '../sessions/service.js';
 import { toSessionView } from '../sessions/serializer.js';
 import { User, type UserDoc } from '../users/model.js';
@@ -41,12 +46,15 @@ const actorOf = (u: { _id: Types.ObjectId; role: string; firstName: string; last
 
 const clientOf = (meta: RequestMeta) => ({ userAgent: meta.userAgent, ip: meta.ip });
 
-/** What login, register and refresh return. `refreshToken` goes into the cookie, never the body. */
+/**
+ * What login, register and refresh return. `refresh` goes into the cookie, never the body; it is
+ * null when the cookie should stay as it is (refresh grace window).
+ */
 export interface AuthResult {
   accessToken: string;
   expiresIn: number;
   user: ReturnType<typeof toSelfView>;
-  refreshToken: string | null;
+  refresh: { token: string; expiresAt: Date } | null;
 }
 
 function issueAccessToken(user: UserWithId, sessionId: string) {
@@ -61,8 +69,15 @@ function issueAccessToken(user: UserWithId, sessionId: string) {
 }
 
 async function startSession(user: UserWithId, meta: RequestMeta): Promise<AuthResult> {
-  const { sessionId, refreshToken } = await sessions.createSession(user._id, clientOf(meta));
-  return { ...issueAccessToken(user, sessionId), user: toSelfView(user), refreshToken };
+  const { sessionId, refreshToken, expiresAt } = await sessions.createSession(
+    user._id,
+    clientOf(meta),
+  );
+  return {
+    ...issueAccessToken(user, sessionId),
+    user: toSelfView(user),
+    refresh: { token: refreshToken, expiresAt },
+  };
 }
 
 /**
@@ -99,7 +114,7 @@ export async function register(input: RegisterInput, meta: RequestMeta): Promise
  */
 async function registerFailedLogin(userId: Types.ObjectId): Promise<boolean> {
   const now = new Date();
-  const windowStart = new Date(now.getTime() - LOCKOUT.windowMs);
+  const windowStart = new Date(now.getTime() - AUTH_LIMITS.failedWindowMinutes * 60_000);
   const updated = await User.findOneAndUpdate(
     { _id: userId },
     [
@@ -119,8 +134,8 @@ async function registerFailedLogin(userId: Types.ObjectId): Promise<boolean> {
         $set: {
           lockUntil: {
             $cond: [
-              { $gte: ['$failedLoginAttempts', LOCKOUT.maxAttempts] },
-              new Date(now.getTime() + LOCKOUT.lockMs),
+              { $gte: ['$failedLoginAttempts', AUTH_LIMITS.maxFailedLogins] },
+              new Date(now.getTime() + AUTH_LIMITS.lockMinutes * 60_000),
               '$lockUntil',
             ],
           },
@@ -225,14 +240,17 @@ export async function refresh(rawToken: string, meta: RequestMeta): Promise<Auth
   }
 
   if (!user || !user.isActive) {
-    await sessions.revokeAllForUser(result.userId, 'admin');
+    await sessions.revokeAllForUser(result.userId, 'deactivated');
     throw user ? accountInactive() : sessionRevoked();
   }
 
   return {
     ...issueAccessToken(user, result.sessionId),
     user: toSelfView(user),
-    refreshToken: result.kind === 'rotated' ? result.refreshToken : null,
+    refresh:
+      result.kind === 'rotated'
+        ? { token: result.refreshToken, expiresAt: result.expiresAt }
+        : null,
   };
 }
 
@@ -313,6 +331,17 @@ export function redactedChanges(
   return { fields, before: pick(before), after: pick(after) };
 }
 
+/** The generic rules run in validation; this adds the name/email rule once the user is known. */
+function assertNoPersonalInfo(
+  password: string,
+  user: { email: string; firstName: string },
+  field: string,
+) {
+  if (checkPasswordStrength(password, user).includes(PERSONAL_INFO_MESSAGE)) {
+    throw ApiError.validation('Validation failed', [{ field, message: PERSONAL_INFO_MESSAGE }]);
+  }
+}
+
 /**
  * Changes the caller's password, clears `mustChangePassword`, revokes every other session and
  * returns a fresh access token for the current one (older tokens fail the passwordChangedAt check).
@@ -331,6 +360,7 @@ export async function changePassword(
       { field: 'body.currentPassword', message: 'Current password is incorrect' },
     ]);
   }
+  assertNoPersonalInfo(newPassword, user, 'body.newPassword');
 
   const now = new Date();
   await User.updateOne(
@@ -368,14 +398,14 @@ export async function changePassword(
  */
 export async function createPasswordResetToken(
   userId: Types.ObjectId | string,
-  ttlMs: number = PASSWORD_RESET.ttlMs,
+  ttlMs: number = AUTH_LIMITS.resetTokenMinutes * 60_000,
 ): Promise<string> {
-  const token = randomToken(PASSWORD_RESET.tokenBytes);
+  const token = generateOpaqueToken();
   await User.updateOne(
     { _id: userId },
     {
       $set: {
-        passwordReset: { tokenHash: sha256(token), expiresAt: new Date(Date.now() + ttlMs) },
+        passwordReset: { tokenHash: hashToken(token), expiresAt: new Date(Date.now() + ttlMs) },
       },
     },
   );
@@ -408,14 +438,20 @@ export async function forgotPassword(emailAddress: string, meta: RequestMeta): P
  * atomically with the password change. Also clears any lockout and revokes all sessions.
  */
 export async function resetPassword(token: string, password: string, meta: RequestMeta) {
-  const passwordHash = await hashPassword(password);
   const now = new Date();
+  const validLink = {
+    'passwordReset.tokenHash': hashToken(token),
+    'passwordReset.expiresAt': { $gt: now },
+    isActive: true,
+  };
+  const owner = await User.findOne(validLink, { email: 1, firstName: 1 }).lean();
+  if (!owner) throw ApiError.badRequest('This reset link is invalid or has expired');
+  assertNoPersonalInfo(password, owner, 'body.password');
+
+  const passwordHash = await hashPassword(password);
+  // Consuming the token and setting the password is one atomic update: single use.
   const user = (await User.findOneAndUpdate(
-    {
-      'passwordReset.tokenHash': sha256(token),
-      'passwordReset.expiresAt': { $gt: now },
-      isActive: true,
-    },
+    validLink,
     {
       $set: {
         passwordHash,

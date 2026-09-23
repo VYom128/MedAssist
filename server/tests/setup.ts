@@ -1,7 +1,6 @@
 // Must run before the app (and config/env.ts) is imported by any test file.
 process.env.NODE_ENV = 'test';
-// Cheap hashing keeps auth tests fast; secrets default to test placeholders in config/env.ts.
-process.env.BCRYPT_ROUNDS = '4';
+// config/env.ts gives tests placeholder secrets and BCRYPT_ROUNDS=4.
 process.env.EMAIL_TRANSPORT = 'console';
 
 import { MongoMemoryReplSet } from 'mongodb-memory-server';

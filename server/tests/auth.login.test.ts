@@ -1,6 +1,6 @@
 import express from 'express';
 import request from 'supertest';
-import { LOCKOUT, REFRESH_COOKIE } from '../src/config/constants.js';
+import { AUTH_LIMITS, REFRESH_COOKIE } from '../src/config/constants.js';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { createLoginLimiter } from '../src/middlewares/rateLimiters.js';
 import { requestId } from '../src/middlewares/requestId.js';
@@ -75,7 +75,7 @@ describe('POST /auth/login', () => {
 
   it('locks the account after 5 failures in 15 minutes, even for the right password', async () => {
     const user = await createUser('labtech');
-    for (let i = 1; i < LOCKOUT.maxAttempts; i++) {
+    for (let i = 1; i < AUTH_LIMITS.maxFailedLogins; i++) {
       expect((await login(user.email, 'Wrong-pass-123')).status).toBe(401);
     }
     const fifth = await login(user.email, 'Wrong-pass-123');
@@ -113,10 +113,12 @@ describe('POST /auth/login', () => {
   it('counts parallel failures atomically', async () => {
     const user = await createUser('patient');
     await Promise.all(
-      Array.from({ length: LOCKOUT.maxAttempts }, () => login(user.email, 'Wrong-pass-123')),
+      Array.from({ length: AUTH_LIMITS.maxFailedLogins }, () =>
+        login(user.email, 'Wrong-pass-123'),
+      ),
     );
     const after = await User.findById(user._id).lean();
-    expect(after?.failedLoginAttempts).toBe(LOCKOUT.maxAttempts);
+    expect(after?.failedLoginAttempts).toBe(AUTH_LIMITS.maxFailedLogins);
     expect(after?.lockUntil).toBeInstanceOf(Date);
   });
 

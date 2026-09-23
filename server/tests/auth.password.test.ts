@@ -1,8 +1,8 @@
-import { PASSWORD_RESET } from '../src/config/constants.js';
+import { AUTH_LIMITS } from '../src/config/constants.js';
 import { Session } from '../src/modules/sessions/model.js';
 import { User } from '../src/modules/users/model.js';
 import { verifyPassword } from '../src/utils/password.js';
-import { sha256 } from '../src/utils/tokens.js';
+import { hashToken } from '../src/utils/tokens.js';
 import {
   auditEntries,
   createUser,
@@ -51,6 +51,17 @@ describe('POST /auth/change-password', () => {
     expect((await api().get('/api/v1/auth/me').set(fresh)).status).toBe(200);
     expect((await refreshWith(me.refreshToken)).status).toBe(200); // current session kept
     expect(await auditEntries('auth.password_changed')).toHaveLength(1);
+  });
+
+  it("rejects a new password containing the user's first name", async () => {
+    const me = await loginAs('doctor', { firstName: 'Kavya' });
+    const res = await api()
+      .post('/api/v1/auth/change-password')
+      .set(me.auth)
+      .send({ currentPassword: TEST_PASSWORD, newPassword: 'kavya-2026x' });
+    expect(expectErrorShape(res.body, 'VALIDATION_ERROR').error.details).toEqual([
+      { field: 'body.newPassword', message: 'Must not contain your name or email' },
+    ]);
   });
 
   it('clears mustChangePassword so other routes work again', async () => {
@@ -112,9 +123,9 @@ describe('forgot and reset password', () => {
     );
 
     const stored = await User.findById(user._id).select('+passwordReset').lean();
-    expect(stored?.passwordReset?.tokenHash).toBe(sha256(await emails.lastToken()));
+    expect(stored?.passwordReset?.tokenHash).toBe(hashToken(await emails.lastToken()));
     expect(stored?.passwordReset?.expiresAt.getTime()).toBeLessThanOrEqual(
-      Date.now() + PASSWORD_RESET.ttlMs,
+      Date.now() + AUTH_LIMITS.resetTokenMinutes * 60_000,
     );
     emails.restore();
   });
@@ -152,6 +163,25 @@ describe('forgot and reset password', () => {
       .send({ email: me.user.email, password: NEW_PASSWORD });
     expect(login.status).toBe(200);
     expect(await auditEntries('auth.password_reset')).toHaveLength(1);
+    emails.restore();
+  });
+
+  it('rejects a reset password containing the name, without using up the link', async () => {
+    const emails = captureEmails();
+    const user = await createUser('patient', { firstName: 'Meera' });
+    await api().post('/api/v1/auth/forgot-password').send({ email: user.email });
+    const token = await emails.lastToken();
+
+    const bad = await api()
+      .post('/api/v1/auth/reset-password')
+      .send({ token, password: 'Meera-2026x' });
+    expect(expectErrorShape(bad.body, 'VALIDATION_ERROR').error.details).toEqual([
+      { field: 'body.password', message: 'Must not contain your name or email' },
+    ]);
+    const good = await api()
+      .post('/api/v1/auth/reset-password')
+      .send({ token, password: NEW_PASSWORD });
+    expect(good.status).toBe(200);
     emails.restore();
   });
 

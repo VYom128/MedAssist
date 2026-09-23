@@ -1,12 +1,11 @@
 import type { RequestHandler } from 'express';
-import jwt from 'jsonwebtoken';
 import { isValidObjectId } from 'mongoose';
 import { ERROR_CODES } from '../config/constants.js';
 import { Session } from '../modules/sessions/model.js';
 import { User } from '../modules/users/model.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { verifyAccessToken, type AccessTokenClaims } from '../utils/tokens.js';
+import { AccessTokenError, verifyAccessToken, type AccessTokenClaims } from '../utils/tokens.js';
 
 const sessionRevoked = () =>
   new ApiError(401, 'Your session has ended. Please log in again.', ERROR_CODES.SESSION_REVOKED);
@@ -17,7 +16,7 @@ function readClaims(header: string | undefined): AccessTokenClaims {
   try {
     return verifyAccessToken(match[1]);
   } catch (err) {
-    if (err instanceof jwt.TokenExpiredError) {
+    if (err instanceof AccessTokenError && err.reason === 'expired') {
       throw new ApiError(401, 'Access token expired', ERROR_CODES.TOKEN_EXPIRED);
     }
     throw ApiError.unauthorized('Invalid access token');

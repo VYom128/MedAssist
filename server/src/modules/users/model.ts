@@ -1,12 +1,11 @@
-import mongoose, {
-  Schema,
-  type HydratedDocument,
-  type InferSchemaType,
-  type Model,
-} from 'mongoose';
+import mongoose, { Schema, type InferSchemaType } from 'mongoose';
 import { PATIENT_LINK_STATUSES, ROLE_VALUES } from '../../config/constants.js';
+import { verifyPassword } from '../../utils/password.js';
 
 const { ObjectId } = Schema.Types;
+
+/** Fields `toJSON` always removes. Responses use serializers; this is a second safety net. */
+const HIDDEN_FIELDS = ['passwordHash', 'passwordReset', 'failedLoginAttempts', 'lockUntil'];
 
 const passwordResetSchema = new Schema(
   {
@@ -43,7 +42,35 @@ const userSchema = new Schema(
     createdBy: { type: ObjectId, ref: 'User' },
     updatedBy: { type: ObjectId, ref: 'User' },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    virtuals: {
+      fullName: {
+        get(this: { firstName: string; lastName: string }) {
+          return `${this.firstName} ${this.lastName}`;
+        },
+      },
+    },
+    methods: {
+      /**
+       * Compares a plain password with this user's hash. The document must have been loaded with
+       * `.select('+passwordHash')`.
+       */
+      comparePassword(this: { passwordHash?: string }, plain: string): Promise<boolean> {
+        if (!this.passwordHash) throw new Error('passwordHash not selected');
+        return verifyPassword(plain, this.passwordHash);
+      },
+    },
+    toJSON: {
+      virtuals: true,
+      versionKey: false,
+      // Never serialise secrets or lockout state, even by accident (e.g. logging a document).
+      transform(_doc, ret: Record<string, unknown>) {
+        for (const key of HIDDEN_FIELDS) delete ret[key];
+        return ret;
+      },
+    },
+  },
 );
 
 userSchema.index({ role: 1, isActive: 1 });
@@ -57,8 +84,9 @@ userSchema.index(
 );
 
 export type UserDoc = InferSchemaType<typeof userSchema>;
-export type UserDocument = HydratedDocument<UserDoc>;
 
-export const User: Model<UserDoc> =
-  (mongoose.models.User as Model<UserDoc> | undefined) ??
-  mongoose.model<UserDoc>('User', userSchema);
+const createModel = () => mongoose.model('User', userSchema);
+export type UserModel = ReturnType<typeof createModel>;
+export type UserDocument = InstanceType<UserModel>;
+
+export const User: UserModel = (mongoose.models.User as UserModel | undefined) ?? createModel();

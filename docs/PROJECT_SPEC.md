@@ -571,7 +571,7 @@ indexes: { email: 1 } unique, { role: 1, isActive: 1 }, { patient: 1 } unique sp
   userAgent: String, ip: String
   lastUsedAt: Date
   expiresAt: Date, required                     // TTL index removes expired sessions
-  revokedAt: Date, revokedReason: enum ['rotated','logout','logout_all','reuse_detected','password_changed','admin']  // 'rotated' = normal refresh (§20 D4)
+  revokedAt: Date, revokedReason: enum ['logout','logout_all','rotated','reuse_detected','password_changed','admin','deactivated']  // 'rotated' = normal refresh (§20 D4); 'deactivated' = admin deactivation (D24)
   replacedBy: ObjectId ref Session
 }
 indexes: { expiresAt: 1 } expireAfterSeconds 0
@@ -1778,3 +1778,7 @@ Record decisions here as they are made (date, decision, reason).
 | D21 | 2026-09-23 | `GET /audit-logs` `from`/`to` are ISO date-times with offset until clinic settings (timezone) exist in Phase 2. `/audit-logs/patient/:id` comes with patients (Phase 3). | No clinic timezone yet. |
 | D22 | 2026-09-23 | Seed starts in Phase 1 with the 7 demo accounts (§15.3); idempotent; `--reset` wipes users, sessions and audit logs and refuses in production. | Needed to demo role logins. |
 | D23 | 2026-09-23 | Client: RTK Query `axiosBaseQuery` wraps the Phase 0 axios instance (`client/src/utils/http.ts`); refresh on any 401 except login/register/refresh/reset, with one shared in-flight refresh. The admin Users and Audit log pages are built with the other admin pages in Phase 2. | Reuse; roadmap order. |
+| D24 | 2026-09-23 | Admin deactivation revokes sessions with reason `'deactivated'` (added to §6.4). Auth limits live in `AUTH_LIMITS` in `constants.ts`. | Clearer audit of why a session ended. |
+| D25 | 2026-09-23 | Production refuses to start unless `COOKIE_SECURE=true` (as well as `EMAIL_TRANSPORT=smtp`). `BCRYPT_ROUNDS` defaults to 4 when `NODE_ENV=test`. | The refresh cookie must only travel over HTTPS. |
+| D26 | 2026-09-23 | Passwords must not contain the email name or first name (parts of 3+ characters, case-insensitive), checked on register, change and reset. Maximum stays **72 bytes**, not 128: bcrypt ignores everything after byte 72. | Stronger policy without silent truncation. |
+| D27 | 2026-09-23 | The console email transport logs recipient, subject and links, never the body. Templates live in `services/email.templates.ts`; the common-password list stays a `.ts` module (`src/data/commonPasswords.ts`) so the `tsc` build includes it. The Session model stays in `modules/sessions/model.ts` (module layout from CLAUDE.md); the cookie helpers live in `utils/cookies.ts`. | Keeps tokens out of logs and the list in `dist`. |

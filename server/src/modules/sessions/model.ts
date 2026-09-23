@@ -1,5 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
-import { SESSION_REVOKED_REASONS } from '../../config/constants.js';
+import { SESSION_REVOKE_REASONS } from '../../config/constants.js';
 
 const { ObjectId } = Schema.Types;
 
@@ -18,7 +18,7 @@ const sessionSchema = new Schema(
     lastUsedAt: Date,
     expiresAt: { type: Date, required: true },
     revokedAt: { type: Date, default: null },
-    revokedReason: { type: String, enum: SESSION_REVOKED_REASONS },
+    revokedReason: { type: String, enum: SESSION_REVOKE_REASONS },
     replacedBy: { type: ObjectId, ref: 'Session' },
   },
   { timestamps: true },

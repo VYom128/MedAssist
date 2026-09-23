@@ -67,6 +67,17 @@ describe('POST /auth/register', () => {
     expect(body.error.details).toEqual([expect.objectContaining({ field: 'body.password' })]);
   });
 
+  it('rejects a password containing the first name or email name', async () => {
+    for (const password of ['Priya-2026x', 'sharma.2026x']) {
+      const email = password.startsWith('sharma') ? 'sharma.2026x@example.com' : valid.email;
+      const res = await register({ ...valid, email, password });
+      const body = expectErrorShape(res.body, 'VALIDATION_ERROR');
+      expect(body.error.details).toEqual([
+        { field: 'body.password', message: 'Must not contain your name or email' },
+      ]);
+    }
+  });
+
   it('requires names, a valid email and phone', async () => {
     const res = await register({ password: valid.password, email: 'bad', phone: '12' });
     const body = expectErrorShape(res.body, 'VALIDATION_ERROR');

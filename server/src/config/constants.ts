@@ -30,39 +30,40 @@ export const ADMIN_CREATABLE_ROLES = Object.freeze([
 /** Patient portal link state (spec §4.4). Set from Phase 3. */
 export const PATIENT_LINK_STATUSES = Object.freeze(['linked', 'pending_verification'] as const);
 
-/** Why a session was revoked (spec §6.4, plus 'rotated' for a normal refresh). */
-export const SESSION_REVOKED_REASONS = Object.freeze([
-  'rotated',
+/**
+ * Why a session was revoked (spec §6.4, plus 'rotated' for a normal refresh and 'deactivated'
+ * when an admin deactivates the account).
+ */
+export const SESSION_REVOKE_REASONS = Object.freeze([
   'logout',
   'logout_all',
+  'rotated',
   'reuse_detected',
   'password_changed',
   'admin',
+  'deactivated',
 ] as const);
-export type SessionRevokedReason = (typeof SESSION_REVOKED_REASONS)[number];
+export type SessionRevokeReason = (typeof SESSION_REVOKE_REASONS)[number];
 
-/** Login lockout (spec §5.8): 5 failures within 15 min lock the account for 15 min. */
-export const LOCKOUT = Object.freeze({
-  maxAttempts: 5,
-  windowMs: 15 * 60_000,
-  lockMs: 15 * 60_000,
+/**
+ * Auth limits: lockout after 5 failed logins within 15 min, for 15 min (spec §5.8); reset links
+ * valid 30 min; a rotated refresh token reused within 10 s (two tabs refreshing at once) gets an
+ * access token for its replacement instead of being treated as theft.
+ */
+export const AUTH_LIMITS = Object.freeze({
+  maxFailedLogins: 5,
+  failedWindowMinutes: 15,
+  lockMinutes: 15,
+  resetTokenMinutes: 30,
+  refreshGraceSeconds: 10,
 });
 
 /** Refresh token cookie (spec §7.1). */
 export const REFRESH_COOKIE = Object.freeze({ name: 'ma_rt', path: '/api/v1/auth' });
-/** Refresh token size in bytes (spec §10.1). */
-export const REFRESH_TOKEN_BYTES = 64;
-/**
- * A rotated refresh token reused within this many seconds (e.g. two tabs refreshing at once)
- * gets an access token for its replacement session instead of being treated as theft.
- */
-export const REFRESH_REUSE_GRACE_SECONDS = 10;
 
 /** CSRF protection for cookie-authenticated endpoints (spec §10.1). */
 export const CSRF_HEADER = Object.freeze({ name: 'X-Requested-With', value: 'medassist' });
 
-/** Password reset links: 32 random bytes, valid for 30 min, single use. */
-export const PASSWORD_RESET = Object.freeze({ tokenBytes: 32, ttlMs: 30 * 60_000 });
 /** "Set your password" links emailed to new staff accounts are valid for 72 hours. */
 export const ACCOUNT_SETUP_TTL_MS = 72 * 60 * 60_000;
 

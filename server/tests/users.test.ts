@@ -1,7 +1,7 @@
 import { Types } from 'mongoose';
 import { Session } from '../src/modules/sessions/model.js';
 import { User } from '../src/modules/users/model.js';
-import { sha256 } from '../src/utils/tokens.js';
+import { hashToken } from '../src/utils/tokens.js';
 import { auditEntries, createUser, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
 import { api, expectErrorShape } from './helpers/testApp.js';
@@ -79,7 +79,7 @@ describe('/users (admin)', () => {
       const created = await User.findOne({ email: 'ravi@clinic.dev' })
         .select('+passwordReset')
         .lean();
-      expect(created?.passwordReset?.tokenHash).toBe(sha256(token));
+      expect(created?.passwordReset?.tokenHash).toBe(hashToken(token));
       expect(created?.passwordReset?.expiresAt.getTime()).toBeGreaterThan(
         Date.now() + 71 * 3_600_000,
       );
@@ -162,9 +162,9 @@ describe('/users (admin)', () => {
       const res = await api().post(`/api/v1/users/${target.user._id}/deactivate`).set(admin.auth);
       expect(res.status).toBe(200);
       expect(res.body.data.isActive).toBe(false);
-      expect(await Session.countDocuments({ user: target.user._id, revokedReason: 'admin' })).toBe(
-        1,
-      );
+      expect(
+        await Session.countDocuments({ user: target.user._id, revokedReason: 'deactivated' }),
+      ).toBe(1);
       expect((await api().get('/api/v1/auth/me').set(target.auth)).status).toBe(403);
 
       const again = await api().post(`/api/v1/users/${target.user._id}/deactivate`).set(admin.auth);

@@ -1,14 +1,14 @@
-import { REFRESH_REUSE_GRACE_SECONDS } from '../src/config/constants.js';
+import { AUTH_LIMITS } from '../src/config/constants.js';
 import { Session } from '../src/modules/sessions/model.js';
 import { User } from '../src/modules/users/model.js';
-import { sha256, verifyAccessToken } from '../src/utils/tokens.js';
+import { hashToken, verifyAccessToken } from '../src/utils/tokens.js';
 import { auditEntries, loginAs, refreshCookieFrom, refreshWith, resetDb } from './helpers/auth.js';
 import { api, expectErrorShape } from './helpers/testApp.js';
 
 /** Moves a session's rotation time into the past (simulates waiting). */
 async function ageRotation(refreshToken: string, seconds: number) {
   await Session.updateOne(
-    { refreshTokenHash: sha256(refreshToken) },
+    { refreshTokenHash: hashToken(refreshToken) },
     { $set: { revokedAt: new Date(Date.now() - seconds * 1000) } },
   );
 }
@@ -27,8 +27,8 @@ describe('POST /auth/refresh', () => {
     expect(next).toBeDefined();
     expect(next).not.toBe(refreshToken);
 
-    const old = await Session.findOne({ refreshTokenHash: sha256(refreshToken) }).lean();
-    const replacement = await Session.findOne({ refreshTokenHash: sha256(next ?? '') }).lean();
+    const old = await Session.findOne({ refreshTokenHash: hashToken(refreshToken) }).lean();
+    const replacement = await Session.findOne({ refreshTokenHash: hashToken(next ?? '') }).lean();
     expect(old).toMatchObject({ revokedReason: 'rotated' });
     expect(old?.replacedBy?.toString()).toBe(replacement?._id.toString());
     expect(replacement?.family).toBe(old?.family);
@@ -82,7 +82,7 @@ describe('POST /auth/refresh', () => {
     const first = await refreshWith(refreshToken);
     const current = refreshCookieFrom(first) ?? '';
     const other = await loginAs('receptionist'); // unrelated user's session stays alive
-    await ageRotation(refreshToken, REFRESH_REUSE_GRACE_SECONDS + 1);
+    await ageRotation(refreshToken, AUTH_LIMITS.refreshGraceSeconds + 1);
 
     const reuse = await refreshWith(refreshToken);
     expect(reuse.status).toBe(401);
@@ -128,7 +128,7 @@ describe('POST /auth/refresh', () => {
   it('rejects expired sessions and deactivated users', async () => {
     const a = await loginAs('patient');
     await Session.updateOne(
-      { refreshTokenHash: sha256(a.refreshToken) },
+      { refreshTokenHash: hashToken(a.refreshToken) },
       { $set: { expiresAt: new Date(Date.now() - 1000) } },
     );
     expectErrorShape((await refreshWith(a.refreshToken)).body, 'SESSION_REVOKED');
@@ -143,12 +143,12 @@ describe('POST /auth/refresh', () => {
   it('slides the expiry forward on each rotation', async () => {
     const { refreshToken } = await loginAs('patient');
     await Session.updateOne(
-      { refreshTokenHash: sha256(refreshToken) },
+      { refreshTokenHash: hashToken(refreshToken) },
       { $set: { expiresAt: new Date(Date.now() + 60_000) } },
     );
     const res = await refreshWith(refreshToken);
     const next = await Session.findOne({
-      refreshTokenHash: sha256(refreshCookieFrom(res) ?? ''),
+      refreshTokenHash: hashToken(refreshCookieFrom(res) ?? ''),
     }).lean();
     expect(next?.expiresAt.getTime()).toBeGreaterThan(Date.now() + 6.9 * 86_400_000);
   });

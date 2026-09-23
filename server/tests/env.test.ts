@@ -78,7 +78,7 @@ describe('config/env', () => {
     }
   });
 
-  it('refuses the console email transport in production', async () => {
+  it('refuses the console email transport and insecure cookies in production', async () => {
     const res = await loadEnv({
       NODE_ENV: 'production',
       MONGO_URI: 'mongodb://127.0.0.1:27017/x',
@@ -86,12 +86,33 @@ describe('config/env', () => {
     });
     expect(res.code).toBe(1);
     expect(res.stderr).toContain('EMAIL_TRANSPORT');
+    expect(res.stderr).toContain('COOKIE_SECURE');
   });
 
-  it('does not require MONGO_URI in test', async () => {
+  it('starts in production with smtp and secure cookies', async () => {
+    const res = await loadEnv({
+      NODE_ENV: 'production',
+      MONGO_URI: 'mongodb://127.0.0.1:27017/x',
+      ...SECRETS,
+      COOKIE_SECURE: 'true',
+      COOKIE_SAMESITE: 'none',
+      EMAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_PORT: '587',
+      MAIL_FROM: 'MedAssist <no-reply@example.com>',
+    });
+    expect(res.code).toBe(0);
+    expect(JSON.parse(res.stdout)).toMatchObject({
+      isProd: true,
+      cookie: { secure: true, sameSite: 'none' },
+      email: { transport: 'smtp' },
+    });
+  });
+
+  it('does not require MONGO_URI or secrets in test, and hashes cheaply', async () => {
     const res = await loadEnv({ NODE_ENV: 'test' });
     expect(res.code).toBe(0);
-    expect(JSON.parse(res.stdout)).toMatchObject({ isTest: true });
+    expect(JSON.parse(res.stdout)).toMatchObject({ isTest: true, auth: { bcryptRounds: 4 } });
   });
 
   it('exits with code 1 and lists invalid variables without printing their values', async () => {

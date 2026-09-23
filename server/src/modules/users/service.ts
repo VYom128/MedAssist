@@ -143,7 +143,7 @@ export async function deactivateUser(admin: AuthUser, id: string, meta: RequestM
     }
   }
 
-  const revoked = await sessions.revokeAllForUser(id, 'admin');
+  const revoked = await sessions.revokeAllForUser(id, 'deactivated');
   await audit.record({
     action: AUDIT_ACTIONS.USER_DEACTIVATE,
     actor: actorOf(admin),

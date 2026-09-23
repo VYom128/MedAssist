@@ -1,12 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Types } from 'mongoose';
-import {
-  REFRESH_REUSE_GRACE_SECONDS,
-  REFRESH_TOKEN_BYTES,
-  type SessionRevokedReason,
-} from '../../config/constants.js';
+import { AUTH_LIMITS, type SessionRevokeReason } from '../../config/constants.js';
 import { config } from '../../config/env.js';
-import { randomToken, sha256 } from '../../utils/tokens.js';
+import { generateOpaqueToken, hashToken } from '../../utils/tokens.js';
 import { Session } from './model.js';
 
 export interface ClientInfo {
@@ -21,30 +17,31 @@ const newExpiry = (now: Date) => new Date(now.getTime() + config.auth.refreshTtl
 
 /**
  * Starts a session (login/register) or continues a family (rotation).
- * @returns the session id and the raw refresh token (only ever sent in the cookie).
+ * @returns the session id, its expiry and the raw refresh token (only ever sent in the cookie).
  */
 export async function createSession(
   userId: Types.ObjectId | string,
   client: ClientInfo,
   family: string = randomUUID(),
 ) {
-  const refreshToken = randomToken(REFRESH_TOKEN_BYTES);
+  const refreshToken = generateOpaqueToken();
   const now = new Date();
+  const expiresAt = newExpiry(now);
   const session = await Session.create({
     user: userId,
-    refreshTokenHash: sha256(refreshToken),
+    refreshTokenHash: hashToken(refreshToken),
     family,
     userAgent: client.userAgent,
     ip: client.ip,
     lastUsedAt: now,
-    expiresAt: newExpiry(now),
+    expiresAt,
   });
-  return { sessionId: session._id.toString(), refreshToken };
+  return { sessionId: session._id.toString(), refreshToken, expiresAt };
 }
 
 export type RotationResult =
   /** Normal rotation: new session + new refresh token for the cookie. */
-  | { kind: 'rotated'; userId: string; sessionId: string; refreshToken: string }
+  | { kind: 'rotated'; userId: string; sessionId: string; refreshToken: string; expiresAt: Date }
   /** A just-rotated token reused within the grace window: access token only, cookie unchanged. */
   | { kind: 'grace'; userId: string; sessionId: string }
   /** An old rotated token reused after the grace window: the family has been revoked. */
@@ -63,7 +60,7 @@ export async function rotateRefreshToken(
   rawToken: string,
   client: ClientInfo,
 ): Promise<RotationResult> {
-  const hash = sha256(rawToken);
+  const hash = hashToken(rawToken);
   const now = new Date();
   let current = await Session.findOne({ refreshTokenHash: hash }).lean();
   if (!current) return { kind: 'invalid' };
@@ -94,7 +91,7 @@ export async function rotateRefreshToken(
   if (current.revokedReason !== 'rotated') return { kind: 'invalid' };
 
   const revokedAt = current.revokedAt?.getTime() ?? 0;
-  if (now.getTime() - revokedAt <= REFRESH_REUSE_GRACE_SECONDS * 1000) {
+  if (now.getTime() - revokedAt <= AUTH_LIMITS.refreshGraceSeconds * 1000) {
     // Follow the rotation chain to the live session.
     let live = current;
     for (let hop = 0; hop < MAX_REPLACEMENT_HOPS && live.replacedBy; hop++) {
@@ -117,7 +114,7 @@ export async function rotateRefreshToken(
  * Revokes every active session in a rotation family (one login on one device).
  * @returns how many sessions were revoked.
  */
-export async function revokeFamily(family: string, reason: SessionRevokedReason): Promise<number> {
+export async function revokeFamily(family: string, reason: SessionRevokeReason): Promise<number> {
   const res = await Session.updateMany(
     { family, revokedAt: null },
     { $set: { revokedAt: new Date(), revokedReason: reason } },
@@ -131,7 +128,7 @@ export async function revokeFamily(family: string, reason: SessionRevokedReason)
  */
 export async function revokeAllForUser(
   userId: Types.ObjectId | string,
-  reason: SessionRevokedReason,
+  reason: SessionRevokeReason,
   exceptFamily?: string,
 ): Promise<number> {
   const res = await Session.updateMany(

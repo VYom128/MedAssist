@@ -22,24 +22,39 @@ export function signAccessToken(payload: { sub: string; role: Role; sid: string 
   });
 }
 
+/** Why an access token was rejected: `expired` (the client should refresh) or `invalid`. */
+export class AccessTokenError extends Error {
+  constructor(readonly reason: 'expired' | 'invalid') {
+    super(reason === 'expired' ? 'Access token expired' : 'Invalid access token');
+    this.name = 'AccessTokenError';
+  }
+}
+
 /**
- * Verifies an access JWT (signature, algorithm, expiry).
- * @throws jwt.TokenExpiredError / jwt.JsonWebTokenError
+ * Verifies an access JWT (signature, HS256 only, expiry, required claims).
+ * @throws AccessTokenError with reason 'expired' or 'invalid'
  */
 export function verifyAccessToken(token: string): AccessTokenClaims {
-  const decoded = jwt.verify(token, config.auth.accessSecret, { algorithms: [ALGORITHM] });
-  if (typeof decoded === 'string') throw new jwt.JsonWebTokenError('invalid payload');
+  let decoded: string | jwt.JwtPayload;
+  try {
+    decoded = jwt.verify(token, config.auth.accessSecret, { algorithms: [ALGORITHM] });
+  } catch (err) {
+    throw new AccessTokenError(err instanceof jwt.TokenExpiredError ? 'expired' : 'invalid');
+  }
+  if (typeof decoded === 'string') throw new AccessTokenError('invalid');
   const { sub, role, sid, iat, exp } = decoded as Partial<AccessTokenClaims>;
-  if (!sub || !role || !sid || !iat || !exp) throw new jwt.JsonWebTokenError('missing claims');
+  if (!sub || !role || !sid || !iat || !exp) throw new AccessTokenError('invalid');
   return { sub, role, sid, iat, exp };
 }
 
-/** URL-safe random token (refresh tokens, reset links). */
-export function randomToken(bytes: number): string {
-  return randomBytes(bytes).toString('base64url');
+const OPAQUE_TOKEN_BYTES = 64;
+
+/** 64 random bytes as base64url: refresh tokens and reset links (spec §10.1). */
+export function generateOpaqueToken(): string {
+  return randomBytes(OPAQUE_TOKEN_BYTES).toString('base64url');
 }
 
-/** SHA-256 hex digest. Tokens are stored only as this hash, never in plain text. */
-export function sha256(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
+/** SHA-256 hex digest. Opaque tokens are stored only as this hash, never in plain text. */
+export function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }

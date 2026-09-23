@@ -1,16 +1,27 @@
 import { z } from 'zod';
-import { passwordSchema } from '../../utils/passwordPolicy.js';
+import {
+  PERSONAL_INFO_MESSAGE,
+  checkPasswordStrength,
+  passwordSchema,
+} from '../../utils/password.js';
 import { email, idParams, namePart, phone } from '../../utils/zod.js';
 
 /** POST /auth/register – patient self-signup. DOB and patient matching come in Phase 3. */
 export const registerSchema = {
-  body: z.object({
-    firstName: namePart,
-    lastName: namePart,
-    email,
-    phone,
-    password: passwordSchema,
-  }),
+  body: z
+    .object({
+      firstName: namePart,
+      lastName: namePart,
+      email,
+      phone,
+      password: passwordSchema,
+    })
+    .superRefine((b, ctx) => {
+      const problems = checkPasswordStrength(b.password, b);
+      if (problems.includes(PERSONAL_INFO_MESSAGE)) {
+        ctx.addIssue({ code: 'custom', path: ['password'], message: PERSONAL_INFO_MESSAGE });
+      }
+    }),
 };
 
 /** POST /auth/login. Only presence is checked so the error never hints at the policy. */

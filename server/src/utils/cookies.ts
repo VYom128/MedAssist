@@ -1,6 +1,6 @@
 import type { CookieOptions, Request, Response } from 'express';
-import { REFRESH_COOKIE } from '../../config/constants.js';
-import { config } from '../../config/env.js';
+import { REFRESH_COOKIE } from '../config/constants.js';
+import { config } from '../config/env.js';
 
 const baseOptions = (): CookieOptions => ({
   httpOnly: true,
@@ -9,12 +9,12 @@ const baseOptions = (): CookieOptions => ({
   path: REFRESH_COOKIE.path,
 });
 
-/** Sets the httpOnly refresh cookie `ma_rt`, scoped to /api/v1/auth (spec §7.1). */
-export function setRefreshCookie(res: Response, token: string): void {
-  res.cookie(REFRESH_COOKIE.name, token, {
-    ...baseOptions(),
-    maxAge: config.auth.refreshTtlDays * 86_400_000,
-  });
+/**
+ * Sets the httpOnly refresh cookie `ma_rt`, scoped to /api/v1/auth (spec §7.1).
+ * @param expiresAt the session's expiry, so the cookie and the session end together.
+ */
+export function setRefreshCookie(res: Response, token: string, expiresAt: Date): void {
+  res.cookie(REFRESH_COOKIE.name, token, { ...baseOptions(), expires: expiresAt });
 }
 
 export function clearRefreshCookie(res: Response): void {

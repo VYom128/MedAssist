@@ -2,17 +2,17 @@ import type { Request, Response } from 'express';
 import { ApiError } from '../../utils/ApiError.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { buildRequestMeta } from '../../utils/requestContext.js';
-import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from './cookies.js';
+import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from '../../utils/cookies.js';
 import * as authService from './service.js';
 
 /** Sends login/register/refresh results: refresh token in the cookie, the rest in the body. */
 function sendAuthResult(
   res: Response,
-  { refreshToken, ...data }: authService.AuthResult,
+  { refresh, ...data }: authService.AuthResult,
   message: string,
   statusCode = 200,
 ) {
-  if (refreshToken) setRefreshCookie(res, refreshToken);
+  if (refresh) setRefreshCookie(res, refresh.token, refresh.expiresAt);
   return sendSuccess(res, { statusCode, message, data });
 }
 

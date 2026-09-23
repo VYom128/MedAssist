@@ -1,5 +1,5 @@
 // Top 1,000 of the SecLists "10k-most-common" password list (MIT licence,
-// github.com/danielmiessler/SecLists). One password per line. Used by utils/passwordPolicy.ts.
+// github.com/danielmiessler/SecLists). One password per line. Used by utils/password.ts.
 // Kept as a TS module (not a .txt file) so it is included in the compiled build.
 export const COMMON_PASSWORDS_TEXT = `
 password

@@ -56,7 +56,12 @@ const envSchema = z
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().max(90).default(7),
     COOKIE_SECURE: booleanString,
     COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
-    BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
+    BCRYPT_ROUNDS: z.coerce
+      .number()
+      .int()
+      .min(4)
+      .max(15)
+      .default(isTestEnv ? 4 : 12),
 
     // Audit hash chain (spec §10.5)
     AUDIT_HASH_SECRET: secret('AUDIT_HASH_SECRET'),
@@ -75,6 +80,13 @@ const envSchema = z
         code: 'custom',
         path: ['COOKIE_SAMESITE'],
         message: 'SameSite=none requires COOKIE_SECURE=true',
+      });
+    }
+    if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['COOKIE_SECURE'],
+        message: 'Must be true in production (the refresh cookie needs HTTPS)',
       });
     }
     if (env.NODE_ENV === 'production' && env.EMAIL_TRANSPORT !== 'smtp') {
