@@ -77,6 +77,10 @@ const envSchema = z
     // Queue board kiosk (spec §7.9): the key in /queue-board?key=… and the kiosk socket. Unset
     // = the board is switched off.
     KIOSK_KEY: z.string().trim().min(24, 'Must be at least 24 characters').optional(),
+
+    // Background jobs (spec §8.11: reminders, no-shows). Off unless "true"; tests call the job
+    // functions directly. Run them on one API instance only.
+    JOBS_ENABLED: booleanString,
   })
   .superRefine((env, ctx) => {
     if (env.COOKIE_SAMESITE === 'none' && !env.COOKIE_SECURE) {
@@ -159,6 +163,7 @@ export const config = Object.freeze({
     }),
   }),
   kiosk: Object.freeze({ key: env.KIOSK_KEY }),
+  jobs: Object.freeze({ enabled: env.JOBS_ENABLED }),
 });
 
 export type Config = typeof config;

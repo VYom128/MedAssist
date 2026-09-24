@@ -3,6 +3,7 @@ import { connectDB, disconnectDB } from './config/db.js';
 import { API_PREFIX } from './config/constants.js';
 import { config } from './config/env.js';
 import { createApp } from './app.js';
+import { startJobs } from './jobs/index.js';
 import { flushAudit } from './services/audit.service.js';
 import { closeSocket, initSocket } from './socket/index.js';
 import { listen, PortInUseError } from './utils/listen.js';
@@ -22,6 +23,7 @@ async function start() {
     throw err;
   }
   const io = initSocket(server);
+  const stopJobs = await startJobs();
   logger.info(`API listening on http://localhost:${config.port}${API_PREFIX} (${config.nodeEnv})`);
 
   let shuttingDown = false;
@@ -36,6 +38,7 @@ async function start() {
     }, SHUTDOWN_TIMEOUT_MS);
     force.unref();
 
+    await stopJobs();
     closeSocket(io); // disconnect real-time clients so server.close() can finish
     server.close(async () => {
       try {

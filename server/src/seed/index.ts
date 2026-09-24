@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { connectDB, disconnectDB } from '../config/db.js';
 import { config } from '../config/env.js';
+import { Appointment } from '../modules/appointments/model.js';
 import { AuditLog } from '../modules/audit/model.js';
 import { Counter } from '../modules/counters/model.js';
 import { Department } from '../modules/departments/model.js';
@@ -16,6 +17,7 @@ import { clearSettingsCache } from '../modules/settings/service.js';
 import { User } from '../modules/users/model.js';
 import * as audit from '../services/audit.service.js';
 import { logger, serializeError } from '../utils/logger.js';
+import { seedAppointments } from './appointments.js';
 import { seedDepartments } from './departments.js';
 import { doctorLogins, seedDoctors } from './doctors.js';
 import { seedLabTests } from './labTests.js';
@@ -37,6 +39,7 @@ const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = 
   { name: 'doctors', run: seedDoctors },
   { name: 'labTests', run: seedLabTests },
   { name: 'patients', run: seedPatients },
+  { name: 'appointments', run: seedAppointments },
 ];
 
 /** Collections `--reset` empties (raw driver for audit logs: Mongoose blocks those deletes). */
@@ -53,7 +56,8 @@ async function resetData() {
     DoctorLeave.deleteMany({}),
     LabTest.deleteMany({}),
     Patient.deleteMany({}),
-    Counter.deleteMany({}),
+    Appointment.deleteMany({}),
+    Counter.deleteMany({}), // MRN, appointment numbers and queue tokens
   ]);
   clearSettingsCache();
 }
@@ -108,7 +112,9 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
 
   if (reset) {
     await resetData();
-    logger.info('Wiped users, sessions, audit logs, clinic setup data, patients and counters');
+    logger.info(
+      'Wiped users, sessions, audit logs, clinic setup data, patients, appointments and counters',
+    );
   }
   const summary: Record<string, Record<string, number>> = {};
   for (const seeder of SEEDERS) summary[seeder.name] = await seeder.run();
@@ -123,6 +129,11 @@ async function main() {
     logger.info(`Seed complete:\n${summaryTable(summary)}`);
     // Demo-only shared password, shown on purpose (spec §15.3).
     logger.info(`Demo logins:\n${demoLoginTable()}`);
+    logger.info(
+      config.kiosk.key
+        ? `Queue board (kiosk): ${config.clientUrl}/queue-board?key=${encodeURIComponent(config.kiosk.key)}`
+        : 'Queue board: set KIOSK_KEY in server/.env to enable /queue-board',
+    );
   } finally {
     await disconnectDB();
   }

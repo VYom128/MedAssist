@@ -88,7 +88,8 @@ type AppointmentNotification =
   | typeof NOTIFICATION_TYPES.APPOINTMENT_BOOKED
   | typeof NOTIFICATION_TYPES.APPOINTMENT_RESCHEDULED
   | typeof NOTIFICATION_TYPES.APPOINTMENT_CANCELLED
-  | typeof NOTIFICATION_TYPES.APPOINTMENT_NO_SHOW;
+  | typeof NOTIFICATION_TYPES.APPOINTMENT_NO_SHOW
+  | typeof NOTIFICATION_TYPES.APPOINTMENT_REMINDER;
 
 const PATIENT_MESSAGES: Record<
   AppointmentNotification,
@@ -111,9 +112,14 @@ const PATIENT_MESSAGES: Record<
     body: (n, when) =>
       `We missed you at your appointment ${n} on ${when}. Please contact the clinic to book again.`,
   },
+  [NOTIFICATION_TYPES.APPOINTMENT_REMINDER]: {
+    title: 'Appointment reminder',
+    body: (n, when) => `Reminder: your appointment ${n} is on ${when}.`,
+  },
 };
 
-const DOCTOR_VERBS: Record<AppointmentNotification, string> = {
+/** What same-day emails tell the doctor (reminders go to patients only). */
+const DOCTOR_VERBS: Partial<Record<AppointmentNotification, string>> = {
   [NOTIFICATION_TYPES.APPOINTMENT_BOOKED]: 'booked',
   [NOTIFICATION_TYPES.APPOINTMENT_RESCHEDULED]: 'moved',
   [NOTIFICATION_TYPES.APPOINTMENT_CANCELLED]: 'cancelled',
@@ -154,13 +160,18 @@ export async function notifyAppointment(
       link: '/patient/appointments',
       email: true,
     });
-    if (notifyDoctorSameDay && toClinicDate(a.startAt, timezone) === clinicToday(timezone)) {
+    const verb = DOCTOR_VERBS[type];
+    if (
+      verb &&
+      notifyDoctorSameDay &&
+      toClinicDate(a.startAt, timezone) === clinicToday(timezone)
+    ) {
       const doctor = await User.findById(a.doctor._id).select('email').lean();
       await notify({
         recipients: [{ userId: a.doctor._id.toString(), email: doctor?.email ?? null }],
         type,
-        title: `Today's appointment ${DOCTOR_VERBS[type]}`,
-        body: `Appointment ${a.appointmentNumber} today at ${when} was ${DOCTOR_VERBS[type]}.`,
+        title: `Today's appointment ${verb}`,
+        body: `Appointment ${a.appointmentNumber} today at ${when} was ${verb}.`,
         link: '/doctor/appointments',
         email: true,
       });

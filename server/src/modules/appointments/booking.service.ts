@@ -313,6 +313,8 @@ export async function bookAppointment(
   user: AuthUser,
   input: BookAppointmentInput,
   meta: RequestMeta,
+  /** The seed books without emailing anyone. */
+  { notify = true }: { notify?: boolean } = {},
 ) {
   const settings = await getSettings();
   const { timezone } = settings;
@@ -389,9 +391,11 @@ export async function bookAppointment(
   });
   const view = await loadAppointment(created._id);
   void announceAppointment(view);
-  void notifyAppointment(NOTIFICATION_TYPES.APPOINTMENT_BOOKED, view, {
-    notifyDoctorSameDay: true,
-  });
+  if (notify) {
+    void notifyAppointment(NOTIFICATION_TYPES.APPOINTMENT_BOOKED, view, {
+      notifyDoctorSameDay: true,
+    });
+  }
   return viewForRole(user.role, view);
 }
 
@@ -655,4 +659,100 @@ export async function walkIn(user: AuthUser, input: WalkInInput, meta: RequestMe
   const view = await loadAppointment(created._id);
   void announceAppointment(view);
   return viewForRole(user.role, view);
+}
+
+/** What the seed records for an appointment it inserts (the outcome, not just the booking). */
+export interface SeedAppointmentInput {
+  patientId: string;
+  doctorId: string;
+  serviceId: string;
+  startAt: Date;
+  type: 'new' | 'follow_up' | 'walk_in';
+  source: 'reception' | 'patient_portal' | 'walk_in';
+  reason?: string;
+  priority?: 'normal' | 'priority' | 'emergency';
+  status: 'scheduled' | 'checked_in' | 'in_consultation' | 'completed' | 'cancelled' | 'no_show';
+  queue?: Record<string, unknown>;
+  cancellation?: Record<string, unknown>;
+  followUpOf?: Types.ObjectId;
+  statusHistory: { status: string; at: Date; by?: string | null; note?: string }[];
+}
+
+/**
+ * Seed only – never called from the API. Inserts an appointment at any time, including the
+ * past, with its outcome (status, queue times, cancellation). The same locked transaction,
+ * schedule-grid, leave, doctor-clash and patient-clash checks and the same numbering as a
+ * booking (numbered in the clinic year of its start); only the booking window, the lead time and
+ * the booking limit are skipped (the checks run as of one day before the start). Audited as
+ * `appointment.create` with the seed's request.
+ */
+export async function insertAppointmentForSeed(
+  actor: AuthUser,
+  input: SeedAppointmentInput,
+  meta: RequestMeta,
+) {
+  const settings = await getSettings();
+  const { timezone } = settings;
+  const doctor = await findDoctor(input.doctorId);
+  const service = await loadService(input.serviceId, doctor);
+  const patient = await loadPatient(input.patientId);
+  const asOf = new Date(input.startAt.getTime() - 86_400_000);
+
+  const created = await bookingTransaction(async (session) => {
+    await lock(session, doctor.user._id, patient._id);
+    const slot = await assertSlotFree(
+      {
+        user: actor,
+        doctor,
+        patientId: patient._id,
+        service,
+        startAt: input.startAt,
+        settings,
+        now: asOf,
+        enforceLimit: false,
+      },
+      session,
+    );
+    const year = Number(toClinicDate(slot.startAt, timezone).slice(0, 4));
+    const seq = await nextSequence(`${SEQUENCES.APPOINTMENT.key}:${year}`, { session });
+    const [doc] = await Appointment.create(
+      [
+        {
+          appointmentNumber: formatNumber(SEQUENCES.APPOINTMENT.prefix, seq, { year }),
+          patient: patient._id,
+          doctor: doctor.user._id,
+          department: doctor.department?._id,
+          service: service._id,
+          serviceSnapshot: {
+            name: service.name,
+            durationMinutes: service.durationMinutes,
+            pricePaise: service.pricePaise,
+          },
+          startAt: slot.startAt,
+          endAt: slot.endAt,
+          type: input.type,
+          source: input.source,
+          reason: input.reason,
+          status: input.status,
+          priority: input.priority ?? 'normal',
+          queue: input.queue ?? {},
+          cancellation: input.cancellation,
+          followUpOf: input.followUpOf,
+          statusHistory: input.statusHistory,
+          bookedBy: actor.id,
+        },
+      ],
+      { session },
+    );
+    return doc!;
+  });
+  await audit.record({
+    action: AUDIT_ACTIONS.APPOINTMENT_CREATE,
+    actor: actorOf(actor),
+    resource: resourceOf(created),
+    patient: patient._id,
+    request: meta,
+    metadata: { status: created.status, startAt: created.startAt },
+  });
+  return created;
 }

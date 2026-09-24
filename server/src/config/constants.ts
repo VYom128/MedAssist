@@ -109,6 +109,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
   APPOINTMENT_RESCHEDULED: 'appointment.rescheduled',
   APPOINTMENT_CANCELLED: 'appointment.cancelled',
   APPOINTMENT_NO_SHOW: 'appointment.no_show',
+  APPOINTMENT_REMINDER: 'appointment.reminder',
   LEAVE_AFFECTS_APPOINTMENTS: 'doctor.leave_affects_appointments',
 } as const);
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
@@ -130,6 +131,17 @@ export const APPOINTMENT_RULES = Object.freeze({
  * last `averageWindowDays`; the kiosk board shows the next `boardNextTokens` tokens.
  */
 export const QUEUE_RULES = Object.freeze({ averageWindowDays: 30, boardNextTokens: 5 });
+
+/**
+ * Background jobs (spec §8.11): reminders and no-show marking run every 15 minutes in the clinic
+ * timezone. A reminder goes to appointments starting `reminderHoursBefore` from now, give or take
+ * `reminderWindowMinutes`; each run handles at most `batchSize` appointments per job.
+ */
+export const JOB_RULES = Object.freeze({
+  every15Minutes: '*/15 * * * *',
+  reminderWindowMinutes: 15,
+  batchSize: 500,
+});
 
 /** Socket.IO events and rooms (spec §7.9). Event payloads carry ids only. */
 export const SOCKET_EVENTS = Object.freeze({
