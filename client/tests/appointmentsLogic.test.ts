@@ -85,23 +85,20 @@ describe('actionsFor (which buttons an appointment shows)', () => {
     expect(actionsFor('receptionist', { status: 'no_show', startAt: later }, now)).toEqual([]);
   });
 
-  it('admin: reschedule, priority and cancel while scheduled; no check-in', () => {
-    expect(actionsFor('admin', { status: 'scheduled', startAt: later }, now)).toEqual([
-      'reschedule',
-      'priority',
-      'cancel',
-    ]);
-    expect(actionsFor('admin', { status: 'completed', startAt: earlier }, now)).toEqual([]);
+  it('admin: view only, no actions', () => {
+    for (const status of ['scheduled', 'checked_in', 'completed'] as const) {
+      expect(actionsFor('admin', { status, startAt: later }, now)).toEqual([]);
+    }
   });
 
-  it('doctor: start when checked in, complete when in consultation', () => {
+  it('doctor: start when checked in, complete when in consultation, nothing else', () => {
     expect(actionsFor('doctor', { status: 'checked_in', startAt: earlier }, now)).toEqual([
       'start',
-      'cancel',
     ]);
     expect(actionsFor('doctor', { status: 'in_consultation', startAt: earlier }, now)).toEqual([
       'complete',
     ]);
+    expect(actionsFor('doctor', { status: 'scheduled', startAt: later }, now)).toEqual([]);
     expect(actionsFor('patient', { status: 'scheduled', startAt: later }, now)).toEqual([]);
   });
 

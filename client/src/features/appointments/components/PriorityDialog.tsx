@@ -28,7 +28,7 @@ export default function PriorityDialog({
   open,
   onClose,
 }: {
-  appointment: Appointment;
+  appointment: Pick<Appointment, 'id' | 'status' | 'priority'>;
   open: boolean;
   onClose: () => void;
 }) {

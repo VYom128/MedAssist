@@ -38,7 +38,14 @@ const TYPE_OPTIONS = optionsOf(APPOINTMENT_TYPES, APPOINTMENT_TYPE_LABELS);
  * from today), doctor, department, status (several), type and a search by appointment number,
  * patient name, MRN or phone.
  */
-export default function AppointmentList({ base }: { base: string }) {
+export default function AppointmentList({
+  base,
+  showDoctorFilters = true,
+}: {
+  base: string;
+  /** Off for a doctor's own list (the server only returns their appointments). */
+  showDoctorFilters?: boolean;
+}) {
   const list = useListParams();
   const today = clinicDate();
   const [search, setSearch] = useState(list.get('q'));
@@ -51,11 +58,14 @@ export default function AppointmentList({ base }: { base: string }) {
   const from = list.get('from') || today;
   const to = list.get('to');
   const statuses = list.get('status').split(',').filter(Boolean) as AppointmentStatus[];
-  const departments = useListDepartmentsQuery({ limit: 100 });
-  const doctors = useListDoctorsQuery({
-    limit: 100,
-    ...(list.get('department') ? { department: list.get('department') } : {}),
-  });
+  const departments = useListDepartmentsQuery({ limit: 100 }, { skip: !showDoctorFilters });
+  const doctors = useListDoctorsQuery(
+    {
+      limit: 100,
+      ...(list.get('department') ? { department: list.get('department') } : {}),
+    },
+    { skip: !showDoctorFilters },
+  );
   const { data, isLoading, isFetching, isError, error, refetch } = useListAppointmentsQuery({
     page: list.page,
     limit: PAGE_SIZE,
@@ -156,20 +166,27 @@ export default function AppointmentList({ base }: { base: string }) {
             value={to}
             onChange={(e) => list.update({ to: e.target.value })}
           />
-          <Select
-            label="Department"
-            placeholder="All departments"
-            options={(departments.data?.items ?? []).map((d) => ({ value: d.id, label: d.name }))}
-            value={list.get('department')}
-            onChange={(e) => list.update({ department: e.target.value, doctor: '' })}
-          />
-          <Select
-            label="Doctor"
-            placeholder="All doctors"
-            options={(doctors.data?.items ?? []).map((d) => ({ value: d.id, label: d.name }))}
-            value={list.get('doctor')}
-            onChange={(e) => list.update({ doctor: e.target.value })}
-          />
+          {showDoctorFilters && (
+            <>
+              <Select
+                label="Department"
+                placeholder="All departments"
+                options={(departments.data?.items ?? []).map((d) => ({
+                  value: d.id,
+                  label: d.name,
+                }))}
+                value={list.get('department')}
+                onChange={(e) => list.update({ department: e.target.value, doctor: '' })}
+              />
+              <Select
+                label="Doctor"
+                placeholder="All doctors"
+                options={(doctors.data?.items ?? []).map((d) => ({ value: d.id, label: d.name }))}
+                value={list.get('doctor')}
+                onChange={(e) => list.update({ doctor: e.target.value })}
+              />
+            </>
+          )}
           <Select
             label="Type"
             placeholder="All types"

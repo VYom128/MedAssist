@@ -25,8 +25,8 @@ export type AppointmentActionKind =
  * server's own checks mirrored so only valid buttons show):
  * - reception: check in (on the day), reschedule, cancel, no-show (once started), undo no-show
  *   (same day), priority;
- * - admin: reschedule, cancel, priority while scheduled;
- * - doctor (own): start, complete, cancel.
+ * - admin: none – admins can view appointments but not act on them (Phase 4 decision);
+ * - doctor (own): start, complete (their calendar is otherwise read-only).
  */
 export function actionsFor(
   role: Role | undefined,
@@ -47,13 +47,31 @@ export function actionsFor(
     } else if (a.status === 'no_show' && onTheDay) {
       out.push('undo-no-show');
     }
-  } else if (role === ROLES.ADMIN) {
-    if (a.status === 'scheduled') out.push('reschedule', 'priority', 'cancel');
-    else if (a.status === 'checked_in') out.push('cancel');
   } else if (role === ROLES.DOCTOR) {
-    if (a.status === 'checked_in') out.push('start', 'cancel');
+    if (a.status === 'checked_in') out.push('start');
     else if (a.status === 'in_consultation') out.push('complete');
-    else if (a.status === 'scheduled') out.push('cancel');
   }
   return out;
+}
+
+/**
+ * What a patient may do online with their own appointment (spec §8.3): cancel and reschedule
+ * only while it is scheduled and more than `minCancelHours` away (rescheduling also needs online
+ * booking to be on). Inside the window: "please call the clinic".
+ */
+export function patientChangeRules(
+  a: Pick<Appointment, 'status' | 'startAt'>,
+  settings: { minCancelHours: number; allowPatientSelfBooking: boolean } | undefined,
+  now = new Date(),
+) {
+  if (a.status !== 'scheduled' || !settings) {
+    return { canCancel: false, canReschedule: false, tooLate: false };
+  }
+  const tooLate =
+    new Date(a.startAt).getTime() - now.getTime() < settings.minCancelHours * 3_600_000;
+  return {
+    canCancel: !tooLate,
+    canReschedule: !tooLate && settings.allowPatientSelfBooking,
+    tooLate,
+  };
 }

@@ -32,6 +32,8 @@ export function toPublicView(s: SettingsLike) {
     appointment: {
       allowPatientSelfBooking: s.appointment!.allowPatientSelfBooking,
       bookingWindowDays: s.appointment!.bookingWindowDays,
+      // Phase 4: the patient portal hides cancel/reschedule inside this window.
+      minCancelHours: s.appointment!.minCancelHours,
     },
     ai: { explanationLanguages: [...s.ai!.explanationLanguages] },
   };

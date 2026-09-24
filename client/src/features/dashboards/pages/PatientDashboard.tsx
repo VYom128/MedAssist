@@ -9,15 +9,13 @@ import SectionCard from '../../../components/ui/SectionCard';
 import Skeleton from '../../../components/ui/Skeleton';
 import { selectCurrentUser } from '../../auth/authSlice';
 import { useGetMyPatientQuery } from '../../patients/api';
+import NextAppointmentCard from '../../appointments/components/NextAppointmentCard';
+import MyTokenCard from '../../queue/components/MyTokenCard';
+import { useGetPublicSettingsQuery } from '../../settings/api';
 import DashboardPlaceholder, { TodayPill } from '../components/DashboardPlaceholder';
 import { linkClass } from '../../../components/ui/linkClass';
 
-const UPCOMING = [
-  'Book and manage appointments',
-  'Prescriptions and lab reports',
-  'Invoices',
-  'Follow-up requests',
-];
+const UPCOMING = ['Prescriptions and lab reports', 'Invoices', 'Follow-up requests'];
 
 /** "My details" card: MRN and a link to the profile. */
 function MyDetailsCard() {
@@ -61,6 +59,7 @@ function MyDetailsCard() {
  */
 export default function PatientDashboard() {
   const user = useAppSelector(selectCurrentUser);
+  const { data: clinic } = useGetPublicSettingsQuery();
   if (user?.patientLinkStatus === 'pending_verification') {
     return (
       <section>
@@ -89,7 +88,15 @@ export default function PatientDashboard() {
       upcoming={UPCOMING}
       hideLinksTo={user?.patientId ? ['/patient/profile'] : []}
     >
-      {user?.patientId && <MyDetailsCard />}
+      {user?.patientId && (
+        <div className="space-y-4">
+          <MyTokenCard />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <NextAppointmentCard canBook={clinic?.appointment.allowPatientSelfBooking !== false} />
+            <MyDetailsCard />
+          </div>
+        </div>
+      )}
     </DashboardPlaceholder>
   );
 }

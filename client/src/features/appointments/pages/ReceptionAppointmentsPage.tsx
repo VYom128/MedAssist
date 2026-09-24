@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { CalendarDays, Plus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
@@ -12,25 +12,16 @@ import Skeleton from '../../../components/ui/Skeleton';
 import { APPOINTMENT_REASON_MIN } from '../../../constants/catalog';
 import { useQueueRooms } from '../../../hooks/useSocketInvalidation';
 import { useMediaQuery } from '../../../layouts/useSidebarCollapsed';
-import {
-  addDaysToDate,
-  clinicDate,
-  formatCalendarDate,
-  formatDateTime,
-} from '../../../utils/dates';
+import { clinicDate, formatDateTime } from '../../../utils/dates';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { useListDoctorsQuery } from '../../doctors/api';
 import { useGetCalendarQuery, useRescheduleAppointmentMutation, type CalendarEvent } from '../api';
 import AppointmentCalendar from '../components/AppointmentCalendar';
+import { calendarRange } from '../calendarRange';
+import CalendarToolbar from '../components/CalendarToolbar';
 import AppointmentDrawer from '../components/AppointmentDrawer';
 import AppointmentList from '../components/AppointmentList';
 import BookingModal, { type BookingPrefill } from '../components/BookingModal';
-
-/** Monday of the week containing `date` ('YYYY-MM-DD'). */
-const mondayOf = (date: string) => {
-  const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
-  return addDaysToDate(date, -((weekday + 6) % 7));
-};
 
 interface PendingMove {
   event: CalendarEvent;
@@ -75,8 +66,7 @@ export default function ReceptionAppointmentsPage() {
   const [move, setMove] = useState<PendingMove | null>(null);
   const [reschedule, rescheduling] = useRescheduleAppointmentMutation();
 
-  const from = mode === 'week' ? mondayOf(date) : date;
-  const to = mode === 'week' ? addDaysToDate(from, 6) : date;
+  const { from, to, days } = calendarRange(mode, date);
   const doctors = useListDoctorsQuery({ limit: 100 });
   const calendar = useGetCalendarQuery(
     { from, to, ...(doctorId ? { doctor: doctorId } : {}) },
@@ -88,20 +78,12 @@ export default function ReceptionAppointmentsPage() {
   );
   const shown = doctorId ? doctorList.filter((d) => d.id === doctorId) : doctorList;
 
-  // Live updates for the doctors and days on screen.
-  const rooms = useMemo(() => {
-    if (view !== 'calendar') return [];
-    const days =
-      mode === 'week' ? Array.from({ length: 7 }, (_, i) => addDaysToDate(from, i)) : [from];
-    return shown.flatMap((d) => days.map((day) => ({ doctorId: d.id, date: day })));
-  }, [view, mode, from, shown]);
+  // Live updates for the doctors and days on screen (useQueueRooms compares by value).
+  const rooms =
+    view === 'calendar'
+      ? shown.flatMap((d) => days.map((day) => ({ doctorId: d.id, date: day })))
+      : [];
   useQueueRooms(rooms);
-
-  const step = mode === 'week' ? 7 : 1;
-  const rangeLabel =
-    mode === 'week'
-      ? `${formatCalendarDate(from)} – ${formatCalendarDate(to)}`
-      : formatCalendarDate(date);
 
   const confirmMove = async (reason: string) => {
     if (!move) return;
@@ -151,56 +133,22 @@ export default function ReceptionAppointmentsPage() {
 
       {view === 'calendar' && (
         <div className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4 shadow-card lg:flex-row lg:items-end lg:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                aria-label={mode === 'week' ? 'Previous week' : 'Previous day'}
-                onClick={() => set({ date: addDaysToDate(date, -step) })}
-              >
-                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-              </Button>
-              <Button variant="secondary" size="sm" onClick={() => set({ date: '' })}>
-                Today
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                aria-label={mode === 'week' ? 'Next week' : 'Next day'}
-                onClick={() => set({ date: addDaysToDate(date, step) })}
-              >
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Button>
-              <h2 className="tabular text-card" aria-live="polite">
-                {rangeLabel}
-              </h2>
-            </div>
-            <div className="flex flex-wrap items-end gap-3">
-              {!isPhone && (
-                <div className="flex gap-2" role="group" aria-label="Calendar range">
-                  <FilterChip
-                    label="Day"
-                    selected={mode === 'day'}
-                    onClick={() => set({ mode: '' })}
-                  />
-                  <FilterChip
-                    label="Week"
-                    selected={mode === 'week'}
-                    onClick={() => set({ mode: 'week' })}
-                  />
-                </div>
-              )}
-              <Select
-                label="Doctor"
-                placeholder="All doctors"
-                className="min-w-56"
-                options={doctorList.map((d) => ({ value: d.id, label: d.name }))}
-                value={doctorId}
-                onChange={(e) => set({ doctor: e.target.value })}
-              />
-            </div>
-          </div>
+          <CalendarToolbar
+            mode={mode}
+            date={date}
+            allowWeek={!isPhone}
+            onDate={(d) => set({ date: d })}
+            onMode={(m) => set({ mode: m === 'week' ? 'week' : '' })}
+          >
+            <Select
+              label="Doctor"
+              placeholder="All doctors"
+              className="min-w-56"
+              options={doctorList.map((d) => ({ value: d.id, label: d.name }))}
+              value={doctorId}
+              onChange={(e) => set({ doctor: e.target.value })}
+            />
+          </CalendarToolbar>
 
           {mode === 'week' && !doctorId && (
             <p className="flex items-center gap-2 text-sm text-muted">

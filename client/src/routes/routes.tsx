@@ -58,5 +58,12 @@ export const routes: RouteObject[] = [
       },
     ],
   },
+  // Waiting-room kiosk: public (kiosk key in the URL), full screen, no app layout (spec §13.1).
+  {
+    path: '/queue-board',
+    lazy: async () => ({
+      Component: (await import('../features/queue/pages/QueueBoardPage')).default,
+    }),
+  },
   { path: '*', element: <NotFoundPage /> },
 ];

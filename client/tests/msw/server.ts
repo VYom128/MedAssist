@@ -47,7 +47,7 @@ export const PUBLIC_SETTINGS = {
   timezone: 'Asia/Kolkata',
   currency: 'INR',
   workingDays: [1, 2, 3, 4, 5, 6],
-  appointment: { allowPatientSelfBooking: true, bookingWindowDays: 30 },
+  appointment: { allowPatientSelfBooking: true, bookingWindowDays: 30, minCancelHours: 2 },
   ai: { explanationLanguages: ['en', 'hi'] },
 };
 

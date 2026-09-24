@@ -21,10 +21,13 @@ export default function RescheduleModal({
   appointment,
   open,
   onClose,
+  forPatient = false,
 }: {
   appointment: Appointment;
   open: boolean;
   onClose: () => void;
+  /** The patient moving their own appointment: same doctor, reason optional. */
+  forPatient?: boolean;
 }) {
   const [departmentId, setDepartmentId] = useState(appointment.department?.id ?? '');
   const [doctorId, setDoctorId] = useState(appointment.doctor.id);
@@ -45,8 +48,10 @@ export default function RescheduleModal({
   const submit = async () => {
     const next: typeof errors = {};
     if (!startAt) next.startAt = 'Choose a new time';
-    const checked = staffReason.safeParse(reason);
-    if (!checked.success) next.reason = checked.error.issues[0]?.message;
+    if (!forPatient) {
+      const checked = staffReason.safeParse(reason);
+      if (!checked.success) next.reason = checked.error.issues[0]?.message;
+    }
     setErrors(next);
     if (Object.keys(next).length > 0) return;
     try {
@@ -54,7 +59,7 @@ export default function RescheduleModal({
         id: appointment.id,
         body: {
           startAt,
-          reason: reason.trim(),
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
           ...(doctorId !== appointment.doctor.id ? { doctorId } : {}),
         },
       }).unwrap();
@@ -73,7 +78,7 @@ export default function RescheduleModal({
   return (
     <Modal
       open={open}
-      title={`Reschedule ${appointment.appointmentNumber}`}
+      title={forPatient ? 'Change appointment time' : `Reschedule ${appointment.appointmentNumber}`}
       size="lg"
       onClose={onClose}
       footer={
@@ -93,15 +98,17 @@ export default function RescheduleModal({
           with {appointment.doctor.name} ({appointment.service.name}).
         </p>
         {errors.root && <Alert tone="error">{errors.root}</Alert>}
-        <DoctorPicker
-          departmentId={departmentId}
-          doctorId={doctorId}
-          onDepartmentChange={setDepartmentId}
-          onDoctorChange={(id) => {
-            setDoctorId(id);
-            setStartAt('');
-          }}
-        />
+        {!forPatient && (
+          <DoctorPicker
+            departmentId={departmentId}
+            doctorId={doctorId}
+            onDepartmentChange={setDepartmentId}
+            onDoctorChange={(id) => {
+              setDoctorId(id);
+              setStartAt('');
+            }}
+          />
+        )}
         {doctorId && (
           <DateAvailabilityPicker
             doctorId={doctorId}
@@ -127,7 +134,7 @@ export default function RescheduleModal({
           />
         )}
         <Textarea
-          label="Reason"
+          label={forPatient ? 'Reason (optional)' : 'Reason'}
           hint="Kept with the appointment's history."
           value={reason}
           error={errors.reason}

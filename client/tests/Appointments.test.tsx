@@ -302,11 +302,12 @@ describe('Appointment details page', () => {
     );
   });
 
-  it('admins see no check-in or no-show', async () => {
+  it('admins can view but not act', async () => {
     renderRoutes(routes, '/admin/appointments/a1', authState(makeUser('admin')));
-    expect(await screen.findByRole('button', { name: 'Reschedule' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Check in' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Mark no-show' })).not.toBeInTheDocument();
+    expect(await screen.findByText('Fever for 3 days')).toBeInTheDocument();
+    for (const name of ['Check in', 'Reschedule', 'Cancel appointment', 'Mark no-show']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
   });
 });
 

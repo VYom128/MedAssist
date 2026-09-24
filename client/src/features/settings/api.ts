@@ -24,7 +24,11 @@ export interface PublicSettings {
   timezone: string;
   currency: string;
   workingDays: number[];
-  appointment: { allowPatientSelfBooking: boolean; bookingWindowDays: number };
+  appointment: {
+    allowPatientSelfBooking: boolean;
+    bookingWindowDays: number;
+    minCancelHours: number;
+  };
   ai: { explanationLanguages: ExplanationLanguage[] };
 }
 

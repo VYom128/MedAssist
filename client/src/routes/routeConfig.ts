@@ -4,6 +4,7 @@ import {
   CalendarDays,
   FlaskConical,
   IdCard,
+  ListOrdered,
   LayoutDashboard,
   Receipt,
   ScrollText,
@@ -78,15 +79,49 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.RECEPTIONIST],
     load: () => import('../features/appointments/pages/AppointmentDetailPage'),
   },
-  // Detail pages for admins and doctors (links from leave impact; doctor calendar later in Phase 4).
   {
-    path: '/admin/appointments/:id',
-    roles: [ROLES.ADMIN],
-    load: () => import('../features/appointments/pages/AppointmentDetailPage'),
+    path: '/reception/queue',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/queue/pages/ReceptionQueuePage'),
+    nav: { label: 'Queue', icon: ListOrdered },
+  },
+  {
+    path: '/doctor/queue',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/queue/pages/DoctorQueuePage'),
+    nav: { label: 'My queue', icon: ListOrdered },
+  },
+  {
+    path: '/doctor/appointments',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/appointments/pages/DoctorAppointmentsPage'),
+    nav: { label: 'Appointments', icon: CalendarDays },
   },
   {
     path: '/doctor/appointments/:id',
     roles: [ROLES.DOCTOR],
+    load: () => import('../features/appointments/pages/AppointmentDetailPage'),
+  },
+  {
+    path: '/patient/appointments',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/appointments/pages/MyAppointmentsPage'),
+    nav: { label: 'Appointments', icon: CalendarDays },
+  },
+  {
+    path: '/patient/appointments/book',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/appointments/pages/BookAppointmentPage'),
+  },
+  {
+    path: '/admin/appointments',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/appointments/pages/AdminAppointmentsPage'),
+    nav: { label: 'Appointments', icon: CalendarDays },
+  },
+  {
+    path: '/admin/appointments/:id',
+    roles: [ROLES.ADMIN],
     load: () => import('../features/appointments/pages/AppointmentDetailPage'),
   },
   {

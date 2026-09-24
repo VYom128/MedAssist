@@ -59,6 +59,7 @@ export default function AppointmentCalendar({
   onSelectSlot,
   onSelectEvent,
   onMove,
+  readOnly = false,
 }: {
   view: 'day' | 'week';
   /** Clinic date shown (day) or inside the week shown. */
@@ -69,9 +70,11 @@ export default function AppointmentCalendar({
   /** An event being moved (drawn at its new place until the server answers). */
   moving: { id: string; startAt: string; doctorId?: string } | null;
   onNavigate: (date: string) => void;
-  onSelectSlot: (slot: { startAt: string; date: string; doctorId?: string }) => void;
+  onSelectSlot?: (slot: { startAt: string; date: string; doctorId?: string }) => void;
   onSelectEvent: (id: string) => void;
-  onMove: (event: CalendarEvent, startAt: string, doctorId?: string) => void;
+  onMove?: (event: CalendarEvent, startAt: string, doctorId?: string) => void;
+  /** No booking by clicking and no dragging (the doctor's own calendar). */
+  readOnly?: boolean;
 }) {
   const items = useMemo<CalendarItem[]>(
     () =>
@@ -110,7 +113,7 @@ export default function AppointmentCalendar({
         step={15}
         timeslots={4}
         getNow={() => toClinicWallDate(new Date())}
-        selectable
+        selectable={!readOnly}
         popup
         resizable={false}
         {...(showResources
@@ -120,7 +123,7 @@ export default function AppointmentCalendar({
               resourceTitleAccessor: (r: Resource) => r.title,
             }
           : {})}
-        draggableAccessor={(e: CalendarItem) => e.source.status === 'scheduled'}
+        draggableAccessor={(e: CalendarItem) => !readOnly && e.source.status === 'scheduled'}
         eventPropGetter={(e: CalendarItem) => ({
           className: `ma-event-${STATUS_STYLES.appointment[e.source.status].tone}${
             e.moving ? ' ma-event-moving' : ''
@@ -131,7 +134,7 @@ export default function AppointmentCalendar({
         }
         onSelectEvent={(e: CalendarItem) => onSelectEvent(e.id)}
         onSelectSlot={(slot: SlotInfo) =>
-          onSelectSlot({
+          onSelectSlot?.({
             startAt: fromClinicWallDate(slot.start).toISOString(),
             date: wallDateString(slot.start),
             ...(slot.resourceId ? { doctorId: String(slot.resourceId) } : {}),
@@ -146,7 +149,11 @@ export default function AppointmentCalendar({
           ) {
             return;
           }
-          onMove(event.source, startAt, doctorId !== event.source.doctorId ? doctorId : undefined);
+          onMove?.(
+            event.source,
+            startAt,
+            doctorId !== event.source.doctorId ? doctorId : undefined,
+          );
         }}
       />
     </div>
