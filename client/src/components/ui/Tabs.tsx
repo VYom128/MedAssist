@@ -17,6 +17,7 @@ export default function Tabs({
   onChange,
   label,
   children,
+  variant = 'underline',
 }: {
   tabs: readonly TabItem[];
   value: string;
@@ -24,6 +25,8 @@ export default function Tabs({
   label: string;
   /** The active tab's content. */
   children: ReactNode;
+  /** `underline` (default) for page sections, `pills` for settings-style tab rows. */
+  variant?: 'underline' | 'pills';
 }) {
   const base = useId();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -52,7 +55,11 @@ export default function Tabs({
         role="tablist"
         aria-label={label}
         onKeyDown={onKeyDown}
-        className="-mx-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-4 sm:mx-0 sm:px-0"
+        className={
+          variant === 'pills'
+            ? '-mx-4 flex gap-1 overflow-x-auto px-4 sm:mx-0 sm:inline-flex sm:max-w-full sm:rounded-control sm:border sm:border-line sm:bg-surface sm:p-1 sm:shadow-card'
+            : '-mx-4 flex gap-1 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0'
+        }
       >
         {tabs.map((t, i) => {
           const selected = i === index;
@@ -69,16 +76,23 @@ export default function Tabs({
               aria-controls={`${base}-panel-${t.id}`}
               tabIndex={selected ? 0 : -1}
               onClick={() => onChange(t.id)}
-              className={`-mb-px flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap focus-visible:outline-2 focus-visible:outline-brand-600 ${
-                selected
-                  ? 'border-brand-600 text-brand-700'
-                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              className={`flex min-h-11 shrink-0 items-center gap-1.5 px-3.5 text-sm font-semibold whitespace-nowrap transition-colors duration-200 ease-standard focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary-600 ${
+                variant === 'pills'
+                  ? selected
+                    ? 'rounded-[0.625rem] bg-primary-600 text-white shadow-card'
+                    : 'rounded-[0.625rem] text-muted hover:bg-neutral-50 hover:text-ink'
+                  : selected
+                    ? '-mb-px border-b-2 border-primary-600 text-primary-700'
+                    : '-mb-px border-b-2 border-transparent text-muted hover:border-line-strong hover:text-ink'
               }`}
             >
               {t.label}
               {t.alert && (
                 <>
-                  <span aria-hidden="true" className="h-2 w-2 rounded-full bg-rose-500" />
+                  <span
+                    aria-hidden="true"
+                    className="h-2 w-2 rounded-full bg-danger-500 ring-2 ring-surface"
+                  />
                   <span className="sr-only">(has errors)</span>
                 </>
               )}
@@ -90,9 +104,13 @@ export default function Tabs({
         role="tabpanel"
         id={`${base}-panel-${tabs[index]?.id}`}
         aria-labelledby={`${base}-tab-${tabs[index]?.id}`}
-        className="pt-5"
+        tabIndex={0}
+        className="mt-5 rounded-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary-600"
       >
-        {children}
+        {/* Keyed by tab so each switch fades in (tab content already remounts on switch). */}
+        <div key={tabs[index]?.id} className="motion-safe:animate-fade-in">
+          {children}
+        </div>
       </div>
     </div>
   );

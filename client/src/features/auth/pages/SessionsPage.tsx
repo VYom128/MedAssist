@@ -1,13 +1,15 @@
-import { LogOut, MonitorSmartphone } from 'lucide-react';
+import { Globe, LogOut, MonitorSmartphone } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import PageHeader from '../../../components/PageHeader';
-import Alert from '../../../components/ui/Alert';
 import Badge from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import EmptyState from '../../../components/ui/EmptyState';
+import ErrorState from '../../../components/ui/ErrorState';
+import IconChip from '../../../components/ui/IconChip';
+import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
 import { formatDateTime } from '../../../utils/dates';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { describeUserAgent } from '../../../utils/userAgent';
@@ -48,68 +50,74 @@ export default function SessionsPage() {
   };
 
   return (
-    <section className="mx-auto w-full max-w-3xl">
-      <PageHeader
-        title="Active sessions"
-        description="Devices where you are signed in."
-        actions={
-          <Button variant="danger" onClick={() => setConfirmAll(true)}>
-            <LogOut className="h-4 w-4" aria-hidden="true" /> Log out of all devices
-          </Button>
-        }
-      />
+    <section className="mx-auto w-full max-w-form">
+      <PageHeader title="Active sessions" description="Devices where you are signed in." />
 
-      {isLoading && (
-        <div className="space-y-3" role="status">
-          <span className="sr-only">Loading sessions…</span>
-          {[1, 2].map((i) => (
-            <div key={i} className="h-20 animate-pulse rounded-xl bg-slate-100" />
-          ))}
-        </div>
-      )}
+      {isLoading && <ListSkeleton label="Loading sessions…" rows={2} />}
 
-      {isError && (
-        <div className="space-y-3">
-          <Alert tone="error">{getQueryErrorMessage(error)}</Alert>
-          <Button variant="secondary" onClick={() => void refetch()}>
-            Try again
-          </Button>
-        </div>
-      )}
+      {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
 
       {sessions?.length === 0 && <EmptyState icon={MonitorSmartphone} title="No active sessions" />}
 
       {sessions && sessions.length > 0 && (
-        <ul className="space-y-3">
+        <ul className="grid gap-3 sm:grid-cols-2">
           {sessions.map((s) => (
             <li
               key={s.id}
-              className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+              className={`flex flex-col gap-4 rounded-card border bg-surface p-5 shadow-card ${
+                s.current ? 'border-primary-200' : 'border-line'
+              }`}
             >
               <div className="flex items-start gap-3">
-                <MonitorSmartphone
-                  className="mt-0.5 h-5 w-5 shrink-0 text-slate-400"
-                  aria-hidden="true"
-                />
-                <div>
-                  <p className="flex flex-wrap items-center gap-2 font-medium">
+                <IconChip icon={MonitorSmartphone} tone={s.current ? 'primary' : 'neutral'} />
+                <div className="min-w-0 flex-1">
+                  <p className="flex flex-wrap items-center gap-2 font-semibold text-ink">
                     {describeUserAgent(s.userAgent)}
                     {s.current && <Badge tone="success">This device</Badge>}
                   </p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {s.ip ?? 'Unknown IP'} · Last used {formatDateTime(s.lastUsedAt)}
-                  </p>
+                  <dl className="mt-2 space-y-1 text-sm text-muted">
+                    <div className="flex items-center gap-1.5">
+                      <dt>
+                        <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="sr-only">IP address</span>
+                      </dt>
+                      <dd className="tabular break-all">{s.ip ?? 'Unknown IP'}</dd>
+                    </div>
+                    <div className="flex flex-wrap gap-x-1.5">
+                      <dt>Last used</dt>
+                      <dd className="tabular text-body">{formatDateTime(s.lastUsedAt)}</dd>
+                    </div>
+                  </dl>
                 </div>
               </div>
               {!s.current && (
-                <Button variant="secondary" onClick={() => setToRevoke(s)}>
-                  Sign out
-                </Button>
+                <div className="mt-auto border-t border-line pt-4">
+                  <Button variant="secondary" size="sm" onClick={() => setToRevoke(s)}>
+                    <LogOut className="h-4 w-4" aria-hidden="true" /> Sign out
+                  </Button>
+                </div>
               )}
             </li>
           ))}
         </ul>
       )}
+
+      <section
+        aria-labelledby="danger-zone-title"
+        className="mt-8 flex flex-col gap-4 rounded-card border border-danger-100 bg-danger-50/40 p-5 sm:flex-row sm:items-center sm:justify-between lg:p-6"
+      >
+        <div>
+          <h2 id="danger-zone-title" className="text-card text-danger-700">
+            Log out everywhere
+          </h2>
+          <p className="mt-0.5 text-sm text-muted">
+            Signs out every device, including this one. You will need to sign in again.
+          </p>
+        </div>
+        <Button variant="danger" onClick={() => setConfirmAll(true)} className="shrink-0">
+          <LogOut className="h-4 w-4" aria-hidden="true" /> Log out of all devices
+        </Button>
+      </section>
 
       <ConfirmDialog
         open={toRevoke !== null}

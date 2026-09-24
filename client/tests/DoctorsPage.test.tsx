@@ -166,6 +166,8 @@ describe('Doctor detail (admin)', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Deactivate Dr Anil Mehta?' });
     await user.click(within(dialog).getByRole('button', { name: 'Deactivate' }));
     await waitFor(() => expect(calls.some((c) => c.path === '/users/dr1/deactivate')).toBe(true));
+    // The page behind stays inert until the dialog's close transition has finished.
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
 
     const room = screen.getByLabelText('Room');
     await user.clear(room);

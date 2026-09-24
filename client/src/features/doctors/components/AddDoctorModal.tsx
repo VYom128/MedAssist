@@ -132,9 +132,17 @@ export default function AddDoctorModal({ open, onClose }: { open: boolean; onClo
     >
       <FormProvider {...form}>
         <form id="add-doctor-form" onSubmit={onSubmit} noValidate className="space-y-4">
-          <p className="text-sm font-medium text-slate-500" aria-live="polite">
-            Step {step} of 2: {step === 1 ? 'Account' : 'Profile'}
-          </p>
+          <div>
+            <p className="text-sm font-semibold text-ink" aria-live="polite">
+              Step {step} of 2: {step === 1 ? 'Account' : 'Profile'}
+            </p>
+            <div aria-hidden="true" className="mt-2 grid grid-cols-2 gap-1.5">
+              <span className="h-1.5 rounded-full bg-primary-600" />
+              <span
+                className={`h-1.5 rounded-full transition-colors duration-250 ease-standard ${step === 2 ? 'bg-primary-600' : 'bg-neutral-100'}`}
+              />
+            </div>
+          </div>
           {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
           {step === 1 ? (
             <div className="space-y-4">
@@ -162,7 +170,7 @@ export default function AddDoctorModal({ open, onClose }: { open: boolean; onClo
                 error={errors.phone?.message}
                 {...register('phone')}
               />
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted">
                 The doctor gets an email with a link to set their password (valid 72 hours).
               </p>
             </div>

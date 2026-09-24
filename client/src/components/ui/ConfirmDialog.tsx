@@ -1,5 +1,7 @@
+import { TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import Button from './Button';
+import IconChip from './IconChip';
 import Modal from './Modal';
 
 /** Asks before a consequential action (deactivate, sign out a device…). */
@@ -38,7 +40,10 @@ export default function ConfirmDialog({
         </>
       }
     >
-      <div className="text-sm text-slate-600">{children}</div>
+      <div className="flex gap-4">
+        {tone === 'danger' && <IconChip icon={TriangleAlert} tone="danger" />}
+        <div className="min-w-0 flex-1 text-sm text-muted">{children}</div>
+      </div>
     </Modal>
   );
 }

@@ -9,6 +9,7 @@ import { applyServerFieldErrors, safeNextPath } from '../../../utils/forms';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { useLoginMutation } from '../api';
 import AuthCard from '../components/AuthCard';
+import { authLinkClass } from '../components/authStyles';
 import PasswordInput from '../../../components/ui/PasswordInput';
 import { loginSchema, type LoginValues } from '../schemas';
 
@@ -47,29 +48,35 @@ export default function LoginPage() {
       footer={
         <>
           New patient?{' '}
-          <Link to="/register" className="font-semibold text-brand-600 hover:underline">
+          <Link to="/register" className={authLinkClass}>
             Create an account
           </Link>
         </>
       }
     >
-      <form onSubmit={onSubmit} noValidate className="space-y-4">
-        {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
+      <form onSubmit={onSubmit} noValidate className="space-y-2">
+        {errors.root && (
+          <div className="pb-3 motion-safe:animate-fade-in">
+            <Alert tone="error">{errors.root.message}</Alert>
+          </div>
+        )}
         <Input
           label="Email"
           type="email"
           autoComplete="email"
+          reserveMessage
           error={errors.email?.message}
           {...register('email')}
         />
         <PasswordInput
           label="Password"
           autoComplete="current-password"
+          reserveMessage
           error={errors.password?.message}
           {...register('password')}
         />
-        <div className="flex justify-end">
-          <Link to="/forgot-password" className="text-sm text-brand-600 hover:underline">
+        <div className="flex justify-end pb-2">
+          <Link to="/forgot-password" className={`text-sm ${authLinkClass}`}>
             Forgot password?
           </Link>
         </div>

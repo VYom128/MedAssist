@@ -1,14 +1,16 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect, type ReactNode } from 'react';
+import { Building2, UserRound } from 'lucide-react';
+import { useEffect } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { useAppSelector } from '../../../app/hooks';
-import PageHeader from '../../../components/PageHeader';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
-import Card from '../../../components/ui/Card';
+import DescriptionList from '../../../components/ui/DescriptionList';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
+import SectionCard from '../../../components/ui/SectionCard';
 import TagInput from '../../../components/ui/TagInput';
 import Textarea from '../../../components/ui/Textarea';
 import { applyServerFieldErrors } from '../../../utils/forms';
@@ -16,15 +18,6 @@ import { getQueryErrorMessage } from '../../../utils/http';
 import { formatINR } from '../../../utils/money';
 import { useGetDoctorQuery, useUpdateDoctorMutation, type Doctor } from '../api';
 import { ownProfileSchema, type OwnProfileValues } from '../schemas';
-
-function Detail({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="mt-0.5 font-medium text-slate-800">{children}</dd>
-    </div>
-  );
-}
 
 const toForm = (d: Doctor): OwnProfileValues => ({ bio: d.bio ?? '', languages: [...d.languages] });
 
@@ -71,7 +64,7 @@ export default function MyDoctorProfilePage() {
   });
 
   return (
-    <section className="mx-auto w-full max-w-3xl">
+    <section className="mx-auto w-full max-w-form">
       <PageHeader
         title="My doctor profile"
         description="What patients see when they book with you."
@@ -80,8 +73,18 @@ export default function MyDoctorProfilePage() {
       {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
       {doctor && (
         <div className="space-y-6">
-          <Card title="About you">
-            <form onSubmit={onSubmit} noValidate className="space-y-4">
+          <form onSubmit={onSubmit} noValidate>
+            <SectionCard
+              title="About you"
+              description="Your bio and the languages you consult in."
+              icon={UserRound}
+              bodyClassName="space-y-4"
+              footer={
+                <Button type="submit" disabled={!isDirty} loading={saving}>
+                  Save
+                </Button>
+              }
+            >
               {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
               <Textarea label="Bio" rows={5} error={errors.bio?.message} {...register('bio')} />
               <Controller
@@ -97,29 +100,32 @@ export default function MyDoctorProfilePage() {
                   />
                 )}
               />
-              <div className="flex justify-end">
-                <Button type="submit" disabled={!isDirty} loading={saving}>
-                  Save
-                </Button>
-              </div>
-            </form>
-          </Card>
-          <Card title="Clinic details">
-            <p className="mb-3 text-sm text-slate-500">Ask the clinic admin to change these.</p>
-            <dl className="grid gap-4 text-sm sm:grid-cols-2">
-              <Detail label="Department">{doctor.department?.name ?? '—'}</Detail>
-              <Detail label="Specialization">{doctor.specialization}</Detail>
-              <Detail label="Qualifications">{doctor.qualifications.join(', ') || '—'}</Detail>
-              <Detail label="Experience">
-                {doctor.experienceYears === null ? '—' : `${doctor.experienceYears} years`}
-              </Detail>
-              <Detail label="Consultation fee">
-                {doctor.consultationFeePaise === null
-                  ? '—'
-                  : formatINR(doctor.consultationFeePaise)}
-              </Detail>
-            </dl>
-          </Card>
+            </SectionCard>
+          </form>
+          <SectionCard
+            title="Clinic details"
+            description="Ask the clinic admin to change these."
+            icon={Building2}
+          >
+            <DescriptionList
+              items={[
+                { label: 'Department', value: doctor.department?.name },
+                { label: 'Specialization', value: doctor.specialization },
+                { label: 'Qualifications', value: doctor.qualifications.join(', ') },
+                {
+                  label: 'Experience',
+                  value: doctor.experienceYears === null ? null : `${doctor.experienceYears} years`,
+                },
+                {
+                  label: 'Consultation fee',
+                  value:
+                    doctor.consultationFeePaise === null ? null : (
+                      <span className="tabular">{formatINR(doctor.consultationFeePaise)}</span>
+                    ),
+                },
+              ]}
+            />
+          </SectionCard>
         </div>
       )}
     </section>

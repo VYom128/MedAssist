@@ -1,8 +1,8 @@
-import Badge from '../../../components/ui/Badge';
+import StatusPill from '../../../components/ui/StatusPill';
 import type { AdminUser } from '../api';
 
 export default function UserStatusBadge({ user }: { user: AdminUser }) {
-  if (!user.isActive) return <Badge tone="neutral">Inactive</Badge>;
-  if (user.isLocked) return <Badge tone="danger">Locked</Badge>;
-  return <Badge tone="success">Active</Badge>;
+  if (!user.isActive) return <StatusPill domain="account" status="inactive" />;
+  if (user.isLocked) return <StatusPill domain="account" status="locked" />;
+  return <StatusPill domain="account" status="active" />;
 }

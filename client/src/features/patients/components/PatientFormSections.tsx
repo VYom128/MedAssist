@@ -1,8 +1,18 @@
-import { Plus, Trash2 } from 'lucide-react';
+import {
+  HeartPulse,
+  Languages,
+  Phone,
+  Plus,
+  ShieldCheck,
+  Siren,
+  Trash2,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Controller, useFieldArray, useWatch, type UseFormReturn } from 'react-hook-form';
 import Button from '../../../components/ui/Button';
-import Card from '../../../components/ui/Card';
+import SectionCard from '../../../components/ui/SectionCard';
 import Input from '../../../components/ui/Input';
 import Select from '../../../components/ui/Select';
 import Switch from '../../../components/ui/Switch';
@@ -25,11 +35,21 @@ const BLOOD_OPTIONS = optionsOf(BLOOD_GROUPS, BLOOD_GROUP_LABELS);
 const LANGUAGE_OPTIONS = optionsOf(PATIENT_LANGUAGES, LANGUAGE_LABELS);
 const SEVERITY_OPTIONS = optionsOf(ALLERGY_SEVERITIES);
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  description,
+  icon,
+  children,
+}: {
+  title: string;
+  description?: string;
+  icon: LucideIcon;
+  children: ReactNode;
+}) {
   return (
-    <Card title={title}>
+    <SectionCard title={title} description={description} icon={icon}>
       <div className="grid gap-4 sm:grid-cols-2">{children}</div>
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -59,8 +79,8 @@ export default function PatientFormSections({
   const age = dob && !dateOfBirthProblem(dob) ? ageOn(dob) : null;
 
   return (
-    <div className="space-y-4">
-      <Section title="Basic details">
+    <div className="space-y-6">
+      <Section title="Demographics" description="Name, date of birth and sex." icon={UserRound}>
         <Input
           label="First name"
           autoComplete="off"
@@ -91,7 +111,11 @@ export default function PatientFormSections({
         <Select label="Blood group" options={BLOOD_OPTIONS} {...register('bloodGroup')} />
       </Section>
 
-      <Section title="Contact">
+      <Section
+        title="Contact"
+        description="The mobile number is also used to find the patient."
+        icon={Phone}
+      >
         <Input
           label="Mobile number"
           type="tel"
@@ -141,7 +165,7 @@ export default function PatientFormSections({
 
       {afterContact}
 
-      <Section title="Emergency contact">
+      <Section title="Emergency contact" icon={Siren}>
         <Input
           label="Contact name"
           error={errors.emergencyContact?.name?.message}
@@ -162,11 +186,15 @@ export default function PatientFormSections({
       </Section>
 
       {showAllergies && (
-        <Card
+        <SectionCard
           title="Allergies"
+          description="Medicines, foods or anything else the patient reacts to."
+          icon={HeartPulse}
+          iconTone="danger"
           actions={
             <Button
-              variant="secondary"
+              variant="soft"
+              size="sm"
               onClick={() =>
                 allergies.append({ substance: '', reaction: '', severity: '' as never })
               }
@@ -176,7 +204,7 @@ export default function PatientFormSections({
           }
         >
           {allergies.fields.length === 0 && (
-            <p className="text-sm text-slate-500">
+            <p className="rounded-control border border-dashed border-line-strong px-3 py-2.5 text-sm text-muted">
               No known allergies. Add any the patient reports (medicines, foods, latex…).
             </p>
           )}
@@ -184,7 +212,7 @@ export default function PatientFormSections({
             {allergies.fields.map((field, i) => (
               <li
                 key={field.id}
-                className="grid gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_1fr_10rem_auto] sm:items-start"
+                className="grid gap-3 rounded-control border border-danger-100 bg-danger-50/40 p-3 sm:grid-cols-[1fr_1fr_10rem_auto] sm:items-start"
               >
                 <Input
                   label={`Substance ${i + 1}`}
@@ -205,7 +233,7 @@ export default function PatientFormSections({
                 />
                 <Button
                   variant="ghost"
-                  className="sm:mt-6"
+                  className="hover:text-danger-700 sm:mt-7"
                   aria-label={`Remove allergy ${i + 1}`}
                   onClick={() => allergies.remove(i)}
                 >
@@ -214,16 +242,20 @@ export default function PatientFormSections({
               </li>
             ))}
           </ul>
-        </Card>
+        </SectionCard>
       )}
 
-      <Section title="Insurance (optional)">
+      <Section title="Insurance" description="Optional." icon={ShieldCheck}>
         <Input label="Insurer" {...register('insurance.provider')} />
         <Input label="Policy number" {...register('insurance.policyNumber')} />
         <Input label="Valid till" type="date" {...register('insurance.validTill')} />
       </Section>
 
-      <Card title="Preferences and consent">
+      <SectionCard
+        title="Language & consent"
+        description="How the patient wants to hear from the clinic."
+        icon={Languages}
+      >
         <div className="space-y-4">
           <Select
             label="Preferred language"
@@ -239,7 +271,7 @@ export default function PatientFormSections({
             {...register('adminNotes')}
           />
           {showConsent && (
-            <div className="space-y-4 border-t border-slate-100 pt-4">
+            <div className="space-y-5 border-t border-line pt-5">
               <Controller
                 control={control}
                 name="consent.dataProcessing"
@@ -252,7 +284,7 @@ export default function PatientFormSections({
                       onChange={field.onChange}
                     />
                     {errors.consent?.dataProcessing && (
-                      <p className="mt-1 text-sm text-rose-600" role="alert">
+                      <p className="mt-1.5 text-sm text-danger-700" role="alert">
                         {errors.consent.dataProcessing.message}
                       </p>
                     )}
@@ -288,7 +320,7 @@ export default function PatientFormSections({
             </div>
           )}
         </div>
-      </Card>
+      </SectionCard>
     </div>
   );
 }

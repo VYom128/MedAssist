@@ -1,17 +1,22 @@
+import { BellRing, HeartPulse, Phone } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { VERIFY_IDENTITY_PATH } from '../../../routes/home';
-import PageHeader from '../../../components/PageHeader';
 import Alert from '../../../components/ui/Alert';
+import Avatar from '../../../components/ui/Avatar';
 import Button from '../../../components/ui/Button';
-import Card from '../../../components/ui/Card';
+import Code from '../../../components/ui/Code';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
+import DescriptionList from '../../../components/ui/DescriptionList';
 import ErrorState from '../../../components/ui/ErrorState';
+import FormSection from '../../../components/ui/FormSection';
 import Input from '../../../components/ui/Input';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
+import SectionCard from '../../../components/ui/SectionCard';
 import Select from '../../../components/ui/Select';
 import Switch from '../../../components/ui/Switch';
 import {
@@ -41,30 +46,38 @@ import {
 
 const LANGUAGE_OPTIONS = optionsOf(PATIENT_LANGUAGES, LANGUAGE_LABELS);
 
-function ReadOnly({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="mt-0.5 font-medium">{value}</dd>
-    </div>
-  );
-}
-
-/** Identity fields only reception may change. */
+/** Identity fields only reception may change, as a header card. */
 function IdentityCard({ patient: p }: { patient: Patient }) {
   return (
-    <Card title="My record">
-      <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-        <ReadOnly label="Patient number (MRN)" value={p.mrn} />
-        <ReadOnly label="Name" value={p.fullName} />
-        <ReadOnly label="Date of birth" value={formatCalendarDate(p.dateOfBirth)} />
-        <ReadOnly label="Gender" value={GENDER_LABELS[p.gender]} />
-        <ReadOnly label="Blood group" value={BLOOD_GROUP_LABELS[p.bloodGroup]} />
-      </dl>
-      <p className="mt-4 text-xs text-slate-500">
+    <section
+      aria-labelledby="my-record-title"
+      className="rounded-card border border-line bg-surface p-5 shadow-card lg:p-6"
+    >
+      <h2 id="my-record-title" className="sr-only">
+        My record
+      </h2>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <Avatar name={p.fullName} size="xl" />
+        <div className="min-w-0 flex-1">
+          <p className="text-section break-words">{p.fullName}</p>
+          <div className="mt-2">
+            <DescriptionList
+              columns={3}
+              items={[
+                { label: 'Patient number (MRN)', value: <Code>{p.mrn}</Code> },
+                { label: 'Name', value: p.fullName },
+                { label: 'Date of birth', value: formatCalendarDate(p.dateOfBirth) },
+                { label: 'Gender', value: GENDER_LABELS[p.gender] },
+                { label: 'Blood group', value: BLOOD_GROUP_LABELS[p.bloodGroup] },
+              ]}
+            />
+          </div>
+        </div>
+      </div>
+      <p className="mt-4 border-t border-line pt-3 text-xs text-muted">
         Contact reception to change your name, date of birth, gender or blood group.
       </p>
-    </Card>
+    </section>
   );
 }
 
@@ -96,74 +109,83 @@ function ContactForm({ patient }: { patient: Patient }) {
   });
 
   return (
-    <Card title="Contact details">
-      <form noValidate onSubmit={onSubmit} className="space-y-4">
-        {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input
-            label="Mobile number"
-            type="tel"
-            autoComplete="tel"
-            error={errors.phone?.message}
-            {...register('phone')}
-          />
-          <Input
-            label="Email"
-            type="email"
-            autoComplete="email"
-            hint="For appointment reminders. Your login email does not change."
-            error={errors.email?.message}
-            {...register('email')}
-          />
-          <Input
-            label="Address line 1"
-            className="sm:col-span-2"
-            autoComplete="address-line1"
-            error={errors.address?.line1?.message}
-            {...register('address.line1')}
-          />
-          <Input
-            label="Address line 2"
-            className="sm:col-span-2"
-            autoComplete="address-line2"
-            error={errors.address?.line2?.message}
-            {...register('address.line2')}
-          />
-          <Input label="City" autoComplete="address-level2" {...register('address.city')} />
-          <Input label="State" autoComplete="address-level1" {...register('address.state')} />
-          <Input
-            label="PIN code"
-            inputMode="numeric"
-            autoComplete="postal-code"
-            {...register('address.postalCode')}
-          />
-          <Input label="Country" autoComplete="country-name" {...register('address.country')} />
-        </div>
-        <fieldset className="grid gap-4 border-t border-slate-100 pt-4 sm:grid-cols-3">
-          <legend className="mb-2 text-sm font-semibold text-slate-700">Emergency contact</legend>
-          <Input label="Contact name" {...register('emergencyContact.name')} />
-          <Input label="Relation" {...register('emergencyContact.relation')} />
-          <Input
-            label="Contact phone"
-            type="tel"
-            error={errors.emergencyContact?.phone?.message}
-            {...register('emergencyContact.phone')}
-          />
-        </fieldset>
-        <Select
-          label="Preferred language"
-          options={LANGUAGE_OPTIONS}
-          className="sm:max-w-xs"
-          {...register('preferredLanguage')}
-        />
-        <div className="flex justify-end">
+    <form noValidate onSubmit={onSubmit}>
+      <SectionCard
+        title="Contact details"
+        description="How the clinic reaches you, and who to call in an emergency."
+        icon={Phone}
+        footer={
           <Button type="submit" loading={saving} disabled={!isDirty}>
             Save details
           </Button>
+        }
+      >
+        <div className="space-y-6">
+          {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="Mobile number"
+              type="tel"
+              autoComplete="tel"
+              error={errors.phone?.message}
+              {...register('phone')}
+            />
+            <Input
+              label="Email"
+              type="email"
+              autoComplete="email"
+              hint="For appointment reminders. Your login email does not change."
+              error={errors.email?.message}
+              {...register('email')}
+            />
+            <Input
+              label="Address line 1"
+              className="sm:col-span-2"
+              autoComplete="address-line1"
+              error={errors.address?.line1?.message}
+              {...register('address.line1')}
+            />
+            <Input
+              label="Address line 2"
+              className="sm:col-span-2"
+              autoComplete="address-line2"
+              error={errors.address?.line2?.message}
+              {...register('address.line2')}
+            />
+            <Input label="City" autoComplete="address-level2" {...register('address.city')} />
+            <Input label="State" autoComplete="address-level1" {...register('address.state')} />
+            <Input
+              label="PIN code"
+              inputMode="numeric"
+              autoComplete="postal-code"
+              {...register('address.postalCode')}
+            />
+            <Input label="Country" autoComplete="country-name" {...register('address.country')} />
+          </div>
+          <FormSection title="Emergency contact" className="border-t border-line pt-5">
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Input label="Contact name" {...register('emergencyContact.name')} />
+              <Input label="Relation" {...register('emergencyContact.relation')} />
+              <Input
+                label="Contact phone"
+                type="tel"
+                error={errors.emergencyContact?.phone?.message}
+                {...register('emergencyContact.phone')}
+              />
+            </div>
+          </FormSection>
+          <FormSection title="Language" className="border-t border-line pt-5">
+            <Select
+              label="Preferred language"
+              options={LANGUAGE_OPTIONS}
+              className="sm:max-w-xs"
+              {...register('preferredLanguage')}
+            />
+          </FormSection>
         </div>
-      </form>
+      </SectionCard>
       {leaveGuard}
-    </Card>
+    </form>
   );
 }
 
@@ -183,8 +205,12 @@ function ConsentCard({ patient }: { patient: Patient }) {
   };
 
   return (
-    <Card title="Consent and communication">
-      <div className="space-y-4">
+    <SectionCard
+      title="Consent and communication"
+      description="Each change is saved straight away."
+      icon={BellRing}
+    >
+      <div className="space-y-5 divide-line [&>*+*]:border-t [&>*+*]:pt-5">
         <Switch
           label="AI explanations"
           description="Plain-language explanations of your prescriptions and lab reports, written by AI and checked for safety. They never replace your doctor's advice."
@@ -209,7 +235,7 @@ function ConsentCard({ patient }: { patient: Patient }) {
           disabled={isLoading}
           onChange={(on) => void save({ communications: { sms: on } }, 'Preference saved')}
         />
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted">
           You agreed to the clinic processing your data to provide care
           {consent.dataProcessing.at ? ` on ${formatDate(consent.dataProcessing.at)}` : ''}. To
           withdraw it, please contact the clinic.
@@ -230,35 +256,40 @@ function ConsentCard({ patient }: { patient: Patient }) {
         reports. Your doctor's notes and reports stay available as they are, and you can turn this
         back on at any time.
       </ConfirmDialog>
-    </Card>
+    </SectionCard>
   );
 }
 
 /** Allergies and chronic conditions, read-only. */
 function HealthCard({ patient: p }: { patient: Patient }) {
   return (
-    <Card title="Allergies and conditions">
-      <p className="mb-3 text-xs text-slate-500">
-        Recorded by your clinic. Tell your doctor or reception if anything is missing or wrong.
-      </p>
-      <h3 className="mb-2 text-sm font-semibold text-slate-700">Allergies</h3>
+    <SectionCard
+      title="Allergies and conditions"
+      description="Recorded by your clinic. Tell your doctor or reception if anything is missing or wrong."
+      icon={HeartPulse}
+      iconTone="danger"
+    >
+      <h3 className="mb-2 text-caption text-muted uppercase">Allergies</h3>
       <AllergyChips allergies={p.allergies ?? []} />
-      <h3 className="mt-4 mb-2 text-sm font-semibold text-slate-700">Long-term conditions</h3>
+      <h3 className="mt-5 mb-2 text-caption text-muted uppercase">Long-term conditions</h3>
       {(p.chronicConditions ?? []).length === 0 ? (
-        <p className="text-sm text-slate-500">None recorded.</p>
+        <p className="text-sm text-muted">None recorded.</p>
       ) : (
-        <ul className="space-y-1 text-sm">
+        <ul aria-label="Long-term conditions" className="flex flex-wrap gap-1.5">
           {p.chronicConditions!.map((c) => (
-            <li key={c.id}>
-              <span className="font-medium">{c.name}</span>
+            <li
+              key={c.id}
+              className="inline-flex items-center gap-1 rounded-full bg-neutral-50 px-2.5 py-1 text-xs font-semibold text-neutral-700 ring-1 ring-neutral-100 ring-inset"
+            >
+              {c.name}
               {c.since && (
-                <span className="text-slate-500"> · since {formatCalendarDate(c.since)}</span>
+                <span className="font-normal"> · since {formatCalendarDate(c.since)}</span>
               )}
             </li>
           ))}
         </ul>
       )}
-    </Card>
+    </SectionCard>
   );
 }
 
@@ -268,7 +299,7 @@ export default function MyPatientProfilePage() {
 
   if (isLoading) {
     return (
-      <section className="mx-auto w-full max-w-4xl">
+      <section className="mx-auto w-full max-w-5xl">
         <ListSkeleton label="Loading your details…" rows={3} />
       </section>
     );
@@ -276,12 +307,12 @@ export default function MyPatientProfilePage() {
   if (isError || !patient) {
     const pending = isApiQueryError(error) && error.code === 'PATIENT_LINK_PENDING';
     return (
-      <section className="mx-auto w-full max-w-4xl space-y-4">
+      <section className="mx-auto w-full max-w-5xl">
         <PageHeader title="My details" />
         {pending ? (
           <Alert tone="warning" title="Waiting for the clinic to confirm your identity">
             {getQueryErrorMessage(error)}{' '}
-            <Link to={VERIFY_IDENTITY_PATH} className="font-medium underline">
+            <Link to={VERIFY_IDENTITY_PATH} className="rounded font-semibold underline">
               What to bring
             </Link>
           </Alert>
@@ -293,12 +324,14 @@ export default function MyPatientProfilePage() {
   }
 
   return (
-    <section className="mx-auto w-full max-w-4xl space-y-4">
+    <section className="mx-auto w-full max-w-5xl">
       <PageHeader title="My details" description="Your patient record at the clinic." />
-      <IdentityCard patient={patient} />
-      <ContactForm patient={patient} />
-      <ConsentCard patient={patient} />
-      <HealthCard patient={patient} />
+      <div className="space-y-6">
+        <IdentityCard patient={patient} />
+        <HealthCard patient={patient} />
+        <ContactForm patient={patient} />
+        <ConsentCard patient={patient} />
+      </div>
     </section>
   );
 }

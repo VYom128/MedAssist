@@ -45,7 +45,7 @@ const MoneyInput = forwardRef<
         <div className="relative">
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-slate-500"
+            className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-sm font-medium text-muted"
           >
             ₹
           </span>
@@ -57,7 +57,7 @@ const MoneyInput = forwardRef<
             autoComplete="off"
             aria-invalid={invalid}
             aria-describedby={describedBy}
-            className={controlClass(error, 'pl-7')}
+            className={controlClass(error, 'tabular pl-8!')}
             value={text}
             onChange={(e) => {
               setText(e.target.value);

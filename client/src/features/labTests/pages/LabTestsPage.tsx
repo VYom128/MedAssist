@@ -1,13 +1,16 @@
 import { FlaskConical, Plus, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import PageHeader from '../../../components/PageHeader';
 import Button from '../../../components/ui/Button';
+import { buttonClass } from '../../../components/ui/buttonClass';
+import Code from '../../../components/ui/Code';
 import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
 import FilterBar from '../../../components/ui/FilterBar';
 import Input from '../../../components/ui/Input';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
+import IconChip from '../../../components/ui/IconChip';
+import PageHeader from '../../../components/ui/PageHeader';
 import Pagination from '../../../components/ui/Pagination';
 import Select from '../../../components/ui/Select';
 import StatusBadge from '../../../components/ui/StatusBadge';
@@ -25,26 +28,38 @@ import { useListLabTestsQuery, type LabTest } from '../api';
 
 const PAGE_SIZE = 20;
 
-const columns: Column<LabTest>[] = [
-  { key: 'code', header: 'Code', cell: (t) => <span className="font-mono">{t.code}</span> },
-  {
-    key: 'name',
-    header: 'Name',
-    cell: (t) => (
-      <Link to={`/admin/lab-tests/${t.id}`} className="font-medium text-brand-700 hover:underline">
+const testCell = (t: LabTest) => (
+  <div className="flex min-w-0 items-center gap-3">
+    <IconChip icon={FlaskConical} tone="consult" size="sm" />
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+      <Link
+        to={`/admin/lab-tests/${t.id}`}
+        className="rounded font-semibold text-primary-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
+      >
         {t.name}
       </Link>
-    ),
-  },
+      <Code>{t.code}</Code>
+    </div>
+  </div>
+);
+
+const columns: Column<LabTest>[] = [
+  { key: 'name', header: 'Test', hideOnCard: true, cell: testCell },
   { key: 'category', header: 'Category', cell: (t) => capitalise(t.category) },
   { key: 'sample', header: 'Sample', cell: (t) => capitalise(t.sampleType) },
   {
     key: 'price',
     header: 'Price',
     className: 'whitespace-nowrap',
-    cell: (t) => formatINR(t.pricePaise),
+    cell: (t) => <span className="tabular font-semibold text-ink">{formatINR(t.pricePaise)}</span>,
   },
-  { key: 'tat', header: 'TAT', cell: (t) => (t.turnaroundHours ? `${t.turnaroundHours} h` : '—') },
+  {
+    key: 'tat',
+    header: 'TAT',
+    cell: (t) => (
+      <span className="tabular">{t.turnaroundHours ? `${t.turnaroundHours} h` : '—'}</span>
+    ),
+  },
   { key: 'status', header: 'Status', cell: (t) => <StatusBadge active={t.isActive !== false} /> },
 ];
 
@@ -74,15 +89,12 @@ export default function LabTestsPage() {
   };
 
   return (
-    <section className="mx-auto w-full max-w-6xl">
+    <section>
       <PageHeader
         title="Lab tests"
         description="The tests doctors can order, with parameters and reference ranges."
         actions={
-          <Link
-            to="/admin/lab-tests/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-          >
+          <Link to="/admin/lab-tests/new" className={buttonClass()}>
             <Plus className="h-4 w-4" aria-hidden="true" /> Add lab test
           </Link>
         }
@@ -94,7 +106,7 @@ export default function LabTestsPage() {
           placeholder="Name or code"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          trailing={<Search className="mr-1 h-4 w-4 text-slate-400" aria-hidden="true" />}
+          trailing={<Search className="mr-2 h-4 w-4 text-subtle" aria-hidden="true" />}
         />
         <Select
           label="Category"
@@ -117,7 +129,7 @@ export default function LabTestsPage() {
                 Clear filters
               </Button>
             ) : (
-              <Link to="/admin/lab-tests/new" className="font-semibold text-brand-700 underline">
+              <Link to="/admin/lab-tests/new" className={buttonClass()}>
                 Add the first lab test
               </Link>
             )
@@ -126,7 +138,13 @@ export default function LabTestsPage() {
       )}
       {data && data.items.length > 0 && (
         <div aria-busy={isFetching || undefined}>
-          <Table caption="Lab tests" columns={columns} rows={data.items} rowKey={(t) => t.id} />
+          <Table
+            caption="Lab tests"
+            columns={columns}
+            rows={data.items}
+            rowKey={(t) => t.id}
+            cardHeader={testCell}
+          />
           <Pagination meta={data.meta} onPageChange={(p) => list.update({ page: String(p) })} />
         </div>
       )}

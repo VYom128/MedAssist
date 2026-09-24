@@ -97,6 +97,15 @@ Read the relevant spec sections for the current phase before planning. Do not re
 - Every list/page has loading, empty and error states. Mobile-friendly from 360 px.
 - Show dates in the clinic timezone and money as ₹ formatted from paise.
 
+## UI conventions (design system – every new screen follows it)
+- Full reference: `docs/DESIGN_SYSTEM.md`. Tokens live in `client/src/index.css` (`@theme`, Tailwind v4 – no `tailwind.config.js`); use them (`bg-canvas`, `text-ink`, `text-muted`, `border-line`, `primary-*`, `rounded-card`, `rounded-control`, `shadow-card`, `text-page`/`text-section`/`text-card`/`text-stat`, `tabular`), never raw `slate-*`/hex colours, new radii or heavy shadows. `brand-*` is a legacy alias – don't use it in new code.
+- Every page starts with `PageHeader` (`components/ui/PageHeader`) and groups content in `SectionCard`/`Card`; forms wrap the `SectionCard` so the submit button sits in its `footer`.
+- Build from `components/ui` (Button, inputs, Table, Modal/ConfirmDialog, Tabs, Switch, FilterBar/FilterChip, StatCard, ChartCard, QuickLinkCard, Avatar, IconChip, DescriptionList, Skeleton/ListSkeleton, EmptyState, ErrorState); extend the kit instead of hand-rolling controls. Headless UI (`@headlessui/react`) for dialogs, menus and switches; icons from `lucide-react`.
+- Statuses: add each new status to `STATUS_STYLES` in `components/ui/statusStyles.ts` (tone + label + icon) and render with `StatusPill` – never inline colours, never colour alone. Appointment statuses are already defined there (spec §13.3 colours; in consultation = violet).
+- Motion: 150–250 ms with `ease-standard`, always behind `motion-safe:`; no loops except loading.
+- Layout: shell is `layouts/` (Sidebar from routeConfig, TopBar, icon rail from 768 px, MobileNav bottom sheet below that); content from 360 px with no horizontal scroll; grids 1 → 2 (`sm`) → 3 (`lg`) → 4 (`2xl`).
+- No fake data: dashboards and cards show real API values only; charts (Phase 10) use `ChartCard` + `chartTheme.ts` with a text `summary`.
+
 ## Security rules (this app handles medical data)
 - Never log request bodies, passwords, tokens or patient data.
 - Every patient-data route checks role AND ownership / care relationship (`canAccessPatient`, spec §2.3).

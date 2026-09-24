@@ -1,12 +1,13 @@
-import { ArrowLeft } from 'lucide-react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
-import PageHeader from '../../../components/PageHeader';
-import Badge from '../../../components/ui/Badge';
+import { DoorOpen, Mail } from 'lucide-react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import BackLink from '../../../components/ui/BackLink';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
+import RecordHeader from '../../../components/ui/RecordHeader';
 import StatusBadge from '../../../components/ui/StatusBadge';
+import StatusPill from '../../../components/ui/StatusPill';
 import Tabs from '../../../components/ui/Tabs';
-import { useGetDoctorQuery } from '../api';
+import { useGetDoctorQuery, type Doctor } from '../api';
 import AdminProfileTab from '../components/AdminProfileTab';
 import LeaveTab from '../components/LeaveTab';
 import ScheduleTab from '../components/ScheduleTab';
@@ -17,6 +18,39 @@ const TABS = [
   { id: 'leave', label: 'Leave' },
 ];
 
+/** Name, practice and status of the doctor at the top of the page. */
+function DoctorHeader({ doctor }: { doctor: Doctor }) {
+  const practice = [doctor.specialization, doctor.department?.name].filter(Boolean).join(' · ');
+  return (
+    <RecordHeader
+      name={doctor.name}
+      title={`Dr ${doctor.name}`}
+      meta={practice ? <span>{practice}</span> : undefined}
+      pills={
+        <>
+          <StatusBadge active={doctor.isActive !== false} />
+          <StatusPill
+            domain="booking"
+            status={doctor.isAcceptingAppointments ? 'accepting' : 'paused'}
+          >
+            {doctor.isAcceptingAppointments ? 'Accepting bookings' : 'Bookings paused'}
+          </StatusPill>
+          {doctor.roomNumber && (
+            <span className="inline-flex items-center gap-1 text-sm text-muted">
+              <DoorOpen className="h-4 w-4" aria-hidden="true" /> Room {doctor.roomNumber}
+            </span>
+          )}
+          {doctor.email && (
+            <span className="inline-flex min-w-0 items-center gap-1 text-sm break-all text-muted">
+              <Mail className="h-4 w-4 shrink-0" aria-hidden="true" /> {doctor.email}
+            </span>
+          )}
+        </>
+      }
+    />
+  );
+}
+
 /** /admin/doctors/:id – profile, weekly schedule and leave (the tab is in the URL). */
 export default function DoctorDetailPage() {
   const { id = '' } = useParams();
@@ -26,28 +60,12 @@ export default function DoctorDetailPage() {
 
   return (
     <section className="mx-auto w-full max-w-5xl">
-      <Link
-        to="/admin/doctors"
-        className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Doctors
-      </Link>
+      <BackLink to="/admin/doctors" label="Doctors" />
       {isLoading && <ListSkeleton label="Loading doctor…" rows={3} />}
       {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
       {doctor && (
         <>
-          <PageHeader
-            title={`Dr ${doctor.name}`}
-            description={[doctor.specialization, doctor.department?.name]
-              .filter(Boolean)
-              .join(' · ')}
-            actions={
-              <div className="flex items-center gap-2">
-                <StatusBadge active={doctor.isActive !== false} />
-                {!doctor.isAcceptingAppointments && <Badge tone="warning">Bookings paused</Badge>}
-              </div>
-            }
-          />
+          <DoctorHeader doctor={doctor} />
           <Tabs
             label="Doctor sections"
             tabs={TABS}

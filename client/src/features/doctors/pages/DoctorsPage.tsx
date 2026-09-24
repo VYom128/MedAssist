@@ -1,17 +1,18 @@
 import { Plus, Search, Stethoscope } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import PageHeader from '../../../components/PageHeader';
-import Badge from '../../../components/ui/Badge';
+import Avatar from '../../../components/ui/Avatar';
 import Button from '../../../components/ui/Button';
 import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
 import FilterBar from '../../../components/ui/FilterBar';
 import Input from '../../../components/ui/Input';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
 import Pagination from '../../../components/ui/Pagination';
 import Select from '../../../components/ui/Select';
 import StatusBadge from '../../../components/ui/StatusBadge';
+import StatusPill from '../../../components/ui/StatusPill';
 import Table, { type Column } from '../../../components/ui/Table';
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import { useListParams } from '../../../hooks/useListParams';
@@ -26,35 +27,40 @@ const ACCEPTING_OPTIONS = [
   { value: 'no', label: 'Not accepting' },
 ];
 
+const doctorCell = (d: Doctor) => (
+  <div className="flex min-w-0 items-center gap-3">
+    <Avatar name={d.name} size="md" />
+    <div className="min-w-0">
+      <Link
+        to={`/admin/doctors/${d.id}`}
+        className="rounded font-semibold text-primary-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
+      >
+        Dr {d.name}
+      </Link>
+      <p className="text-muted">{d.specialization}</p>
+    </div>
+  </div>
+);
+
 const columns: Column<Doctor>[] = [
-  {
-    key: 'name',
-    header: 'Doctor',
-    cell: (d) => (
-      <div className="min-w-0">
-        <Link to={`/admin/doctors/${d.id}`} className="font-medium text-brand-700 hover:underline">
-          Dr {d.name}
-        </Link>
-        <p className="text-slate-500">{d.specialization}</p>
-      </div>
-    ),
-  },
+  { key: 'name', header: 'Doctor', hideOnCard: true, cell: doctorCell },
   { key: 'department', header: 'Department', cell: (d) => d.department?.name ?? '—' },
   {
     key: 'fee',
     header: 'Fee',
     className: 'whitespace-nowrap',
-    cell: (d) => (d.consultationFeePaise === null ? '—' : formatINR(d.consultationFeePaise)),
+    cell: (d) => (
+      <span className="tabular">
+        {d.consultationFeePaise === null ? '—' : formatINR(d.consultationFeePaise)}
+      </span>
+    ),
   },
   {
     key: 'accepting',
     header: 'Bookings',
-    cell: (d) =>
-      d.isAcceptingAppointments ? (
-        <Badge tone="info">Accepting</Badge>
-      ) : (
-        <Badge tone="warning">Paused</Badge>
-      ),
+    cell: (d) => (
+      <StatusPill domain="booking" status={d.isAcceptingAppointments ? 'accepting' : 'paused'} />
+    ),
   },
   { key: 'status', header: 'Account', cell: (d) => <StatusBadge active={d.isActive !== false} /> },
 ];
@@ -89,7 +95,7 @@ export default function DoctorsPage() {
   };
 
   return (
-    <section className="mx-auto w-full max-w-6xl">
+    <section>
       <PageHeader
         title="Doctors"
         description="Doctor profiles, weekly schedules and leave."
@@ -106,7 +112,7 @@ export default function DoctorsPage() {
           placeholder="Doctor name"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          trailing={<Search className="mr-1 h-4 w-4 text-slate-400" aria-hidden="true" />}
+          trailing={<Search className="mr-2 h-4 w-4 text-subtle" aria-hidden="true" />}
         />
         <Select
           label="Department"
@@ -143,7 +149,13 @@ export default function DoctorsPage() {
       )}
       {data && data.items.length > 0 && (
         <div aria-busy={isFetching || undefined}>
-          <Table caption="Doctors" columns={columns} rows={data.items} rowKey={(d) => d.id} />
+          <Table
+            caption="Doctors"
+            columns={columns}
+            rows={data.items}
+            rowKey={(d) => d.id}
+            cardHeader={doctorCell}
+          />
           <Pagination meta={data.meta} onPageChange={(p) => list.update({ page: String(p) })} />
         </div>
       )}

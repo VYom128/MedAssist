@@ -24,3 +24,5 @@ uploads/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+docs/design-reference/
+docs/design-reference/

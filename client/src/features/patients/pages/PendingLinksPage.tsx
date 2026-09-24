@@ -1,14 +1,15 @@
-import { IdCard, ShieldCheck, UserX } from 'lucide-react';
+import { IdCard, ShieldCheck, TriangleAlert, UserX } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import PageHeader from '../../../components/PageHeader';
 import Button from '../../../components/ui/Button';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
 import Pagination from '../../../components/ui/Pagination';
+import { linkClass } from '../../../components/ui/linkClass';
 import { useListParams } from '../../../hooks/useListParams';
 import { formatCalendarDate, formatDateTime } from '../../../utils/dates';
 import { getQueryErrorMessage } from '../../../utils/http';
@@ -26,8 +27,11 @@ const PAGE_SIZE = 20;
 function Row({ label, value, differs }: { label: string; value: string; differs?: boolean }) {
   return (
     <div className="flex justify-between gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className={`text-right font-medium break-all ${differs ? 'text-amber-700' : ''}`}>
+      <dt className="text-muted">{label}</dt>
+      <dd
+        className={`inline-flex items-start justify-end gap-1 text-right font-medium break-all ${differs ? 'text-warning-700' : 'text-ink'}`}
+      >
+        {differs && <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />}
         {value}
         {differs && <span className="sr-only"> (differs)</span>}
       </dd>
@@ -48,11 +52,11 @@ function PendingCard({
   const { signup, patient } = link;
   const name = `${signup.firstName} ${signup.lastName}`;
   return (
-    <li className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+    <li className="rounded-card border border-line bg-surface p-5 shadow-card lg:p-6">
       <div className="grid gap-4 md:grid-cols-2">
         <section aria-label={`Sign-up by ${name}`}>
-          <h2 className="mb-2 text-sm font-semibold text-slate-700">Online sign-up</h2>
-          <dl className="space-y-1 text-sm">
+          <h2 className="mb-2 text-caption text-muted uppercase">Online sign-up</h2>
+          <dl className="space-y-1.5 text-sm">
             <Row label="Name" value={name} differs={patient ? patient.fullName !== name : false} />
             <Row label="Date of birth" value={formatCalendarDate(signup.dateOfBirth)} />
             <Row label="Phone" value={formatPhone(signup.phone)} />
@@ -61,29 +65,26 @@ function PendingCard({
           </dl>
         </section>
         <section aria-label="Matched patient record">
-          <h2 className="mb-2 text-sm font-semibold text-slate-700">Matched patient record</h2>
+          <h2 className="mb-2 text-caption text-muted uppercase">Matched patient record</h2>
           {patient ? (
-            <dl className="space-y-1 text-sm">
+            <dl className="space-y-1.5 text-sm">
               <Row label="Name" value={patient.fullName} />
               <Row label="MRN" value={patient.mrn} />
               <Row label="Date of birth" value={formatCalendarDate(patient.dateOfBirth)} />
               <Row label="Phone" value={formatPhone(patient.phone)} />
               <div className="pt-1 text-right">
-                <Link
-                  to={`/reception/patients/${patient.id}`}
-                  className="font-medium text-brand-700 hover:underline"
-                >
+                <Link to={`/reception/patients/${patient.id}`} className={linkClass}>
                   Open record
                 </Link>
               </div>
             </dl>
           ) : (
-            <p className="text-sm text-slate-500">The matched record no longer exists.</p>
+            <p className="text-sm text-muted">The matched record no longer exists.</p>
           )}
         </section>
       </div>
       {patient && (
-        <div className="mt-4 flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+        <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
           <Button variant="secondary" onClick={onReject}>
             <UserX className="h-4 w-4" aria-hidden="true" /> Not this person
           </Button>

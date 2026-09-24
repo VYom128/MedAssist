@@ -1,16 +1,18 @@
-import { Building2, Plus, Search } from 'lucide-react';
+import { Building2, Pencil, Plus, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import PageHeader from '../../../components/PageHeader';
 import StatusToggleButton from '../../../components/StatusToggleButton';
 import Button from '../../../components/ui/Button';
+import Code from '../../../components/ui/Code';
 import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
 import FilterBar from '../../../components/ui/FilterBar';
+import FilterChip from '../../../components/ui/FilterChip';
+import IconChip from '../../../components/ui/IconChip';
 import Input from '../../../components/ui/Input';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
 import Pagination from '../../../components/ui/Pagination';
 import StatusBadge from '../../../components/ui/StatusBadge';
-import Switch from '../../../components/ui/Switch';
 import Table, { type Column } from '../../../components/ui/Table';
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import { useListParams } from '../../../hooks/useListParams';
@@ -41,33 +43,39 @@ export default function DepartmentsPage() {
   });
   const filtered = list.hasAny('q');
 
+  const nameCell = (d: AdminDepartment) => (
+    <div className="flex min-w-0 items-start gap-3">
+      <IconChip icon={Building2} size="sm" />
+      <div className="min-w-0">
+        <p className="font-semibold text-ink">{d.name}</p>
+        {d.description && <p className="text-muted">{d.description}</p>}
+      </div>
+    </div>
+  );
+
   const columns: Column<AdminDepartment>[] = [
+    { key: 'name', header: 'Name', hideOnCard: true, cell: nameCell },
+    { key: 'code', header: 'Code', cell: (d) => <Code>{d.code}</Code> },
     {
-      key: 'name',
-      header: 'Name',
-      cell: (d) => (
-        <div className="min-w-0">
-          <p className="font-medium text-slate-900">{d.name}</p>
-          {d.description && <p className="text-slate-500">{d.description}</p>}
-        </div>
-      ),
+      key: 'doctors',
+      header: 'Doctors',
+      cell: (d) => <span className="tabular">{d.activeDoctors}</span>,
     },
-    { key: 'code', header: 'Code', cell: (d) => <span className="font-mono">{d.code}</span> },
-    { key: 'doctors', header: 'Doctors', cell: (d) => d.activeDoctors },
     { key: 'status', header: 'Status', cell: (d) => <StatusBadge active={d.isActive} /> },
     {
       key: 'actions',
+      cardFooter: true,
       header: 'Actions',
       className: 'text-right',
       cell: (d) => (
         <div className="flex justify-end gap-1">
           <Button
             variant="ghost"
-            className="!px-2 !py-1"
+            size="sm"
             onClick={() => setEditing(d)}
             aria-label={`Edit ${d.name}`}
           >
-            Edit
+            <Pencil className="h-4 w-4" aria-hidden="true" /> Edit
           </Button>
           <StatusToggleButton
             size="small"
@@ -82,7 +90,7 @@ export default function DepartmentsPage() {
   ];
 
   return (
-    <section className="mx-auto w-full max-w-5xl">
+    <section>
       <PageHeader
         title="Departments"
         description="Clinic departments that doctors and services belong to."
@@ -109,13 +117,13 @@ export default function DepartmentsPage() {
           placeholder="Name or code"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          trailing={<Search className="mr-1 h-4 w-4 text-slate-400" aria-hidden="true" />}
+          trailing={<Search className="mr-2 h-4 w-4 text-subtle" aria-hidden="true" />}
         />
-        <div className="flex items-end pb-2">
-          <Switch
+        <div className="flex items-end pb-1 sm:!flex-none">
+          <FilterChip
             label="Show inactive"
-            checked={showInactive}
-            onChange={(on) => list.update({ inactive: on ? '1' : '' })}
+            selected={showInactive}
+            onClick={() => list.update({ inactive: showInactive ? '' : '1' })}
           />
         </div>
       </FilterBar>
@@ -138,7 +146,13 @@ export default function DepartmentsPage() {
       )}
       {data && data.items.length > 0 && (
         <div aria-busy={isFetching || undefined}>
-          <Table caption="Departments" columns={columns} rows={data.items} rowKey={(d) => d.id} />
+          <Table
+            caption="Departments"
+            columns={columns}
+            rows={data.items}
+            rowKey={(d) => d.id}
+            cardHeader={nameCell}
+          />
           <Pagination meta={data.meta} onPageChange={(p) => list.update({ page: String(p) })} />
         </div>
       )}

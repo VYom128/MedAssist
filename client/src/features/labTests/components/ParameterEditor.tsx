@@ -29,17 +29,22 @@ function RangeRows({ index }: { index: number }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm font-medium text-slate-700">Reference ranges</p>
+      <p className="text-caption text-muted uppercase">Reference ranges</p>
       {fields.length === 0 && (
-        <p className="text-sm text-slate-500">No range: values are shown without a flag.</p>
+        <p className="rounded-control border border-dashed border-line-strong px-3 py-2.5 text-sm text-muted">
+          No range: values are shown without a flag.
+        </p>
       )}
       {fields.map((field, j) => (
         <fieldset
           key={field.id}
           aria-label={`Parameter ${index + 1}, range ${j + 1}`}
-          className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+          className="rounded-control border border-line bg-surface p-3"
         >
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
+          <p aria-hidden="true" className="mb-2 text-xs font-semibold text-muted">
+            Range {j + 1}
+          </p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Select
               label="Gender"
               options={optionsOf(RANGE_GENDERS, GENDER_LABELS)}
@@ -85,7 +90,7 @@ function RangeRows({ index }: { index: number }) {
             <div className="flex items-end">
               <Button
                 variant="ghost"
-                className="!px-2"
+                className="px-2.5 hover:text-danger-700"
                 onClick={() => remove(j)}
                 aria-label={`Remove range ${j + 1} of parameter ${index + 1}`}
               >
@@ -104,8 +109,8 @@ function RangeRows({ index }: { index: number }) {
       ))}
       {fields.length < 20 && (
         <Button
-          variant="secondary"
-          className="!px-3 !py-1"
+          variant="soft"
+          size="sm"
           onClick={() => append(emptyRange())}
           aria-label={`Add range to parameter ${index + 1}`}
         >
@@ -134,14 +139,23 @@ export default function ParameterEditor({
   return (
     <fieldset
       aria-label={`Parameter ${index + 1}`}
-      className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+      className="space-y-4 rounded-card border border-line bg-surface-muted p-4 sm:p-5"
     >
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-900">Parameter {index + 1}</h3>
+        <h3 className="flex items-center gap-2 text-card">
+          <span
+            aria-hidden="true"
+            className="tabular inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary-50 text-sm font-bold text-primary-700"
+          >
+            {index + 1}
+          </span>
+          Parameter {index + 1}
+        </h3>
         {canRemove && (
           <Button
             variant="ghost"
-            className="!px-2 !py-1"
+            size="sm"
+            className="hover:text-danger-700"
             onClick={onRemove}
             aria-label={`Remove parameter ${index + 1}`}
           >

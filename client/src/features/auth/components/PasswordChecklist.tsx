@@ -13,13 +13,16 @@ export default function PasswordChecklist({
 }) {
   const checks = passwordChecks(password, { email, firstName });
   return (
-    <ul className="space-y-0.5" aria-label="Password requirements">
+    <ul className="grid gap-x-4 gap-y-1 pt-0.5 sm:grid-cols-2" aria-label="Password requirements">
       {checks.map((c) => (
-        <li key={c.label} className={`flex items-center gap-1.5 ${c.ok ? 'text-emerald-700' : ''}`}>
+        <li
+          key={c.label}
+          className={`flex items-start gap-1.5 transition-colors duration-150 ${c.ok ? 'text-success-700' : 'text-muted'}`}
+        >
           {c.ok ? (
-            <Check className="h-3.5 w-3.5" aria-hidden="true" />
+            <Check className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           ) : (
-            <Circle className="h-3.5 w-3.5" aria-hidden="true" />
+            <Circle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           )}
           <span>
             {c.label}

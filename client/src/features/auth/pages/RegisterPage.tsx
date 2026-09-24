@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useWatch } from 'react-hook-form';
+import { UserPlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '../../../app/hooks';
 import Alert from '../../../components/ui/Alert';
@@ -13,6 +14,7 @@ import { useGetPublicSettingsQuery } from '../../settings/api';
 import { useRegisterMutation } from '../api';
 import { credentialsReceived } from '../authSlice';
 import AuthCard from '../components/AuthCard';
+import { authLinkClass } from '../components/authStyles';
 import PasswordChecklist from '../components/PasswordChecklist';
 import PasswordInput from '../../../components/ui/PasswordInput';
 import { registerSchema, type RegisterValues } from '../schemas';
@@ -40,10 +42,10 @@ function Consent({
 }) {
   return (
     <div>
-      <label className="flex items-start gap-2 text-sm text-slate-700">
+      <label className="flex cursor-pointer items-start gap-3 rounded-control py-1 text-sm text-body">
         <input
           type="checkbox"
-          className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600"
+          className="mt-px h-5 w-5 shrink-0 cursor-pointer rounded accent-primary-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
           {...field}
@@ -51,7 +53,7 @@ function Consent({
         <span>{children}</span>
       </label>
       {error && (
-        <p id={`${id}-error`} className="mt-1 text-sm text-rose-600">
+        <p id={`${id}-error`} className="mt-1 pl-8 text-sm text-danger-700">
           {error}
         </p>
       )}
@@ -108,18 +110,24 @@ export default function RegisterPage() {
   return (
     <AuthCard
       title="Create your patient account"
+      icon={UserPlus}
+      wide
       subtitle="Book appointments and see your prescriptions, lab reports and bills."
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/login" className="font-semibold text-brand-600 hover:underline">
+          <Link to="/login" className={authLinkClass}>
             Sign in
           </Link>
         </>
       }
     >
       <form onSubmit={onSubmit} noValidate className="space-y-4">
-        {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
+        {errors.root && (
+          <div className="motion-safe:animate-fade-in">
+            <Alert tone="error">{errors.root.message}</Alert>
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Input
             label="First name"
@@ -170,20 +178,22 @@ export default function RegisterPage() {
           error={errors.confirmPassword?.message}
           {...register('confirmPassword')}
         />
-        <Consent
-          id="accept-terms"
-          error={errors.acceptTerms?.message}
-          field={register('acceptTerms')}
-        >
-          I agree to the terms of use.
-        </Consent>
-        <Consent
-          id="consent-data"
-          error={errors.consentDataProcessing?.message}
-          field={register('consentDataProcessing')}
-        >
-          I consent to MedAssist storing and processing my health information to provide my care.
-        </Consent>
+        <div className="space-y-2 rounded-control border border-line bg-surface-muted p-4">
+          <Consent
+            id="accept-terms"
+            error={errors.acceptTerms?.message}
+            field={register('acceptTerms')}
+          >
+            I agree to the terms of use.
+          </Consent>
+          <Consent
+            id="consent-data"
+            error={errors.consentDataProcessing?.message}
+            field={register('consentDataProcessing')}
+          >
+            I consent to MedAssist storing and processing my health information to provide my care.
+          </Consent>
+        </div>
         <Button type="submit" fullWidth loading={isLoading}>
           Create account
         </Button>

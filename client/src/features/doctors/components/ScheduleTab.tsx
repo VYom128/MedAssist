@@ -1,7 +1,8 @@
+import { CalendarClock, CalendarPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import Alert from '../../../components/ui/Alert';
-import Card from '../../../components/ui/Card';
+import SectionCard from '../../../components/ui/SectionCard';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
 import { WEEK_ORDER, WEEKDAY_SHORT } from '../../../constants/catalog';
@@ -18,33 +19,53 @@ import ScheduleEditor from './ScheduleEditor';
 function VersionSummary({ title, version }: { title: string; version: ScheduleVersion }) {
   const byDay = new Map(version.days.map((d) => [d.weekday, d.sessions]));
   return (
-    <div className="rounded-lg border border-slate-200 p-3">
-      <p className="text-sm font-semibold text-slate-800">{title}</p>
-      <p className="text-xs text-slate-500">
-        From {formatDate(`${version.effectiveFrom}T12:00:00Z`)}
-        {version.effectiveTo
-          ? ` until ${formatDate(`${version.effectiveTo}T12:00:00Z`)}`
-          : ' (no end date)'}{' '}
-        · {weeklyHours(version)} h a week
-      </p>
-      <dl className="mt-2 grid grid-cols-[3rem_1fr] gap-x-2 gap-y-1 text-sm">
+    <SectionCard
+      title={title}
+      icon={CalendarClock}
+      description={
+        <>
+          From {formatDate(`${version.effectiveFrom}T12:00:00Z`)}
+          {version.effectiveTo
+            ? ` until ${formatDate(`${version.effectiveTo}T12:00:00Z`)}`
+            : ' (no end date)'}{' '}
+          · <span className="tabular">{weeklyHours(version)}</span> h a week
+        </>
+      }
+    >
+      <dl className="grid gap-2 text-sm lg:grid-cols-7">
         {WEEK_ORDER.map((w) => {
           const sessions = byDay.get(w) ?? [];
           return (
-            <div key={w} className="contents">
-              <dt className="text-slate-500">{WEEKDAY_SHORT[w]}</dt>
-              <dd>
-                {sessions.length === 0
-                  ? 'Off'
-                  : sessions
-                      .map((s) => `${formatClockTime(s.start)}–${formatClockTime(s.end)}`)
-                      .join(', ')}
+            <div
+              key={w}
+              className={`flex items-start gap-3 rounded-control border p-2.5 lg:flex-col lg:gap-2 ${
+                sessions.length === 0
+                  ? 'border-dashed border-line-strong'
+                  : 'border-line bg-surface-muted'
+              }`}
+            >
+              <dt className="w-10 shrink-0 pt-0.5 font-semibold text-ink lg:w-auto">
+                {WEEKDAY_SHORT[w]}
+              </dt>
+              <dd className="flex min-w-0 flex-wrap gap-1.5 lg:flex-col">
+                {sessions.length === 0 ? (
+                  <span className="pt-0.5 text-muted">Off</span>
+                ) : (
+                  sessions.map((s) => (
+                    <span
+                      key={`${s.start}-${s.end}`}
+                      className="tabular rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-primary-700 ring-1 ring-primary-100 ring-inset"
+                    >
+                      {formatClockTime(s.start)}–{formatClockTime(s.end)}
+                    </span>
+                  ))
+                )}
               </dd>
             </div>
           );
         })}
       </dl>
-    </div>
+    </SectionCard>
   );
 }
 
@@ -69,7 +90,7 @@ export default function ScheduleTab({ doctorId }: { doctorId: string }) {
   return (
     <div className="space-y-6">
       {data && (data.current || data.upcoming) ? (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-4">
           {data.current && <VersionSummary title="Current schedule" version={data.current} />}
           {data.upcoming && <VersionSummary title="Upcoming schedule" version={data.upcoming} />}
         </div>
@@ -87,10 +108,11 @@ export default function ScheduleTab({ doctorId }: { doctorId: string }) {
         </Alert>
       )}
 
-      <Card title="New weekly schedule">
-        <p className="mb-4 text-sm text-slate-600">
-          Saving replaces the schedule from the chosen date; the current one ends the day before.
-        </p>
+      <SectionCard
+        title="New weekly schedule"
+        description="Saving replaces the schedule from the chosen date; the current one ends the day before."
+        icon={CalendarPlus}
+      >
         <ScheduleEditor
           initial={initial}
           saving={saving}
@@ -102,7 +124,7 @@ export default function ScheduleTab({ doctorId }: { doctorId: string }) {
             );
           }}
         />
-      </Card>
+      </SectionCard>
     </div>
   );
 }

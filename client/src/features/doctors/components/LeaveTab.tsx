@@ -1,14 +1,13 @@
-import { CalendarOff, Plus } from 'lucide-react';
+import { CalendarOff, History, Plus, X } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import Badge from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
-import Card from '../../../components/ui/Card';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
-import { LEAVE_TYPE_LABELS } from '../../../constants/catalog';
+import SectionCard from '../../../components/ui/SectionCard';
+import StatusPill from '../../../components/ui/StatusPill';
 import { addDaysToDate, clinicDate } from '../../../utils/dates';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { useCancelLeaveMutation, useListLeavesQuery, type Leave } from '../api';
@@ -17,31 +16,39 @@ import AddLeaveModal from './AddLeaveModal';
 
 function LeaveList({ items, onCancel }: { items: Leave[]; onCancel?: (l: Leave) => void }) {
   return (
-    <ul className="divide-y divide-slate-100">
+    <ul className="grid gap-3 md:grid-cols-2">
       {items.map((l) => (
-        <li key={l.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+        <li
+          key={l.id}
+          className={`flex flex-col gap-3 rounded-control border p-4 ${
+            l.isCancelled ? 'border-dashed border-line-strong' : 'border-line bg-surface-muted'
+          }`}
+        >
           <div className="min-w-0">
-            <p className={`font-medium ${l.isCancelled ? 'text-slate-400 line-through' : ''}`}>
+            <p
+              className={`tabular font-semibold ${l.isCancelled ? 'text-muted line-through' : 'text-ink'}`}
+            >
               {formatLeave(l)}
             </p>
-            <p className="text-sm text-slate-500">
-              <Badge tone={l.type === 'emergency' ? 'danger' : 'info'}>
-                {LEAVE_TYPE_LABELS[l.type]}
-              </Badge>{' '}
-              {l.reason}
-              {l.isCancelled && <Badge tone="neutral">Cancelled</Badge>}
-            </p>
+            {l.reason && <p className="mt-0.5 text-sm text-muted">{l.reason}</p>}
           </div>
-          {onCancel && !l.isCancelled && new Date(l.endAt) > new Date() && (
-            <Button
-              variant="ghost"
-              className="!px-2 !py-1"
-              onClick={() => onCancel(l)}
-              aria-label={`Cancel leave ${formatLeave(l)}`}
-            >
-              Cancel leave
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-1.5">
+              <StatusPill domain="leave" status={l.type} />
+              {l.isCancelled && <StatusPill domain="leave" status="cancelled" />}
+            </div>
+            {onCancel && !l.isCancelled && new Date(l.endAt) > new Date() && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hover:text-danger-700"
+                onClick={() => onCancel(l)}
+                aria-label={`Cancel leave ${formatLeave(l)}`}
+              >
+                <X className="h-4 w-4" aria-hidden="true" /> Cancel leave
+              </Button>
+            )}
+          </div>
         </li>
       ))}
     </ul>
@@ -90,8 +97,10 @@ export default function LeaveTab({ doctorId }: { doctorId: string }) {
 
   return (
     <div className="space-y-6">
-      <Card
+      <SectionCard
         title="Upcoming leave"
+        description="Includes leave that is happening now."
+        icon={CalendarOff}
         actions={
           <Button onClick={() => setAdding(true)}>
             <Plus className="h-4 w-4" aria-hidden="true" /> Add leave
@@ -116,16 +125,16 @@ export default function LeaveTab({ doctorId }: { doctorId: string }) {
         {upcoming.data && upcoming.data.items.length > 0 && (
           <LeaveList items={upcoming.data.items} onCancel={setCancelling} />
         )}
-      </Card>
+      </SectionCard>
 
-      <Card title="Past leave (last 12 months)">
+      <SectionCard title="Past leave (last 12 months)" icon={History} iconTone="neutral">
         {past.isLoading && <ListSkeleton label="Loading past leave…" rows={2} />}
         {past.isError && <ErrorState error={past.error} onRetry={() => void past.refetch()} />}
         {past.data && pastItems.length === 0 && (
-          <p className="text-sm text-slate-500">No past leave.</p>
+          <p className="text-sm text-muted">No past leave.</p>
         )}
         {pastItems.length > 0 && <LeaveList items={pastItems} />}
-      </Card>
+      </SectionCard>
 
       <AddLeaveModal doctorId={doctorId} open={adding} onClose={() => setAdding(false)} />
       <ConfirmDialog
@@ -140,7 +149,7 @@ export default function LeaveTab({ doctorId }: { doctorId: string }) {
           setCancelError(null);
         }}
       >
-        {cancelError && <p className="mb-2 text-rose-700">{cancelError}</p>}
+        {cancelError && <p className="mb-2 text-danger-700">{cancelError}</p>}
         {cancelling && (
           <p>
             {formatLeave(cancelling)} will be available for appointments again. This cannot be

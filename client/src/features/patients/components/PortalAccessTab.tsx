@@ -1,10 +1,13 @@
 import { Link } from 'react-router-dom';
-import Card from '../../../components/ui/Card';
+import { Globe } from 'lucide-react';
+import DescriptionList from '../../../components/ui/DescriptionList';
+import SectionCard from '../../../components/ui/SectionCard';
 import { formatDateTime } from '../../../utils/dates';
 import type { Patient } from '../api';
 import { portalState, type PortalState } from '../portal';
 import InviteButton from './InviteButton';
 import PortalBadge from './PortalBadge';
+import { linkClass } from '../../../components/ui/linkClass';
 
 const EXPLAIN: Record<PortalState, string> = {
   none: 'This patient has no portal account.',
@@ -25,32 +28,22 @@ export default function PortalAccessTab({
 }) {
   const state = portalState(patient.portal, patient.hasPortal);
   return (
-    <Card title="Patient portal">
-      <div className="space-y-4 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          <PortalBadge state={state} />
-        </div>
-        <p className="text-slate-600">{EXPLAIN[state]}</p>
-        <dl className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <dt className="text-slate-500">Login email</dt>
-            <dd className="mt-0.5 font-medium break-all">{patient.portal?.email ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Last login</dt>
-            <dd className="mt-0.5 font-medium">{formatDateTime(patient.portal?.lastLoginAt)}</dd>
-          </div>
-        </dl>
+    <SectionCard title="Patient portal" icon={Globe} actions={<PortalBadge state={state} />}>
+      <div className="space-y-5 text-sm">
+        <p className="text-muted">{EXPLAIN[state]}</p>
+        <DescriptionList
+          items={[
+            { label: 'Login email', value: patient.portal?.email },
+            { label: 'Last login', value: formatDateTime(patient.portal?.lastLoginAt) },
+          ]}
+        />
         {state === 'none' && canInvite && <InviteButton patient={patient} />}
         {state === 'pending' && canInvite && (
-          <Link
-            to="/reception/pending-links"
-            className="font-medium text-brand-700 hover:underline"
-          >
+          <Link to="/reception/pending-links" className={linkClass}>
             Go to pending verifications
           </Link>
         )}
       </div>
-    </Card>
+    </SectionCard>
   );
 }

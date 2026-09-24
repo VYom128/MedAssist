@@ -1,6 +1,10 @@
-import { useId, type ReactNode } from 'react';
+import { Description, Field, Label, Switch as HeadlessSwitch } from '@headlessui/react';
+import type { ReactNode } from 'react';
 
-/** On/off toggle (`role="switch"`), with a label and optional description. */
+/**
+ * On/off toggle (Headless UI Switch, `role="switch"`) with a label and optional description.
+ * Only the switch itself toggles; the label text does not.
+ */
 export default function Switch({
   label,
   description,
@@ -14,39 +18,28 @@ export default function Switch({
   onChange: (checked: boolean) => void;
   disabled?: boolean;
 }) {
-  const labelId = useId();
-  const descId = useId();
   return (
-    <div className="flex items-start justify-between gap-4">
+    <Field disabled={disabled} className="flex items-start justify-between gap-4">
       <div className="min-w-0">
-        <p id={labelId} className="text-sm font-medium text-slate-700">
+        <Label passive className="text-sm font-medium text-ink">
           {label}
-        </p>
+        </Label>
         {description && (
-          <div id={descId} className="mt-0.5 text-xs text-slate-500">
+          <Description as="div" className="mt-0.5 text-xs text-muted">
             {description}
-          </div>
+          </Description>
         )}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-labelledby={labelId}
-        aria-describedby={description ? descId : undefined}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:opacity-50 ${
-          checked ? 'bg-brand-600' : 'bg-slate-300'
-        }`}
+      <HeadlessSwitch
+        checked={checked}
+        onChange={onChange}
+        className="group relative inline-flex h-6 w-11 shrink-0 after:absolute after:inset-x-0 after:-inset-y-2.5 cursor-pointer items-center rounded-full bg-line-control transition-colors duration-200 ease-standard focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 data-checked:bg-primary-600 data-disabled:cursor-not-allowed data-disabled:opacity-50"
       >
         <span
           aria-hidden="true"
-          className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
-            checked ? 'translate-x-5' : 'translate-x-0.5'
-          }`}
+          className="inline-block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow-card transition-transform duration-200 ease-standard group-data-checked:translate-x-5.5"
         />
-      </button>
-    </div>
+      </HeadlessSwitch>
+    </Field>
   );
 }

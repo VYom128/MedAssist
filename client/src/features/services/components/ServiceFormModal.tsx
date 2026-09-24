@@ -4,6 +4,7 @@ import { Controller, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
+import FormSection from '../../../components/ui/FormSection';
 import Input from '../../../components/ui/Input';
 import Modal from '../../../components/ui/Modal';
 import MoneyInput from '../../../components/ui/MoneyInput';
@@ -121,73 +122,76 @@ export default function ServiceFormModal({
         </>
       }
     >
-      <form id="service-form" onSubmit={onSubmit} noValidate className="space-y-4">
+      <form id="service-form" onSubmit={onSubmit} noValidate className="space-y-6">
         {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Input
-            label="Code"
-            hint="e.g. CONS-GEN"
-            autoCapitalize="characters"
-            error={errors.code?.message}
-            {...register('code')}
-          />
-          <Input
-            label="Name"
-            className="sm:col-span-2"
-            error={errors.name?.message}
-            {...register('name')}
-          />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Select
-            label="Department"
-            options={departmentOptions}
-            error={errors.department?.message}
-            {...register('department')}
-          />
-          <Select
-            label="Type"
-            options={optionsOf(SERVICE_TYPES, SERVICE_TYPE_LABELS)}
-            error={errors.type?.message}
-            {...register('type')}
-          />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Controller
-            control={control}
-            name="pricePaise"
-            render={({ field }) => (
-              <MoneyInput
-                label="Price"
-                value={field.value}
-                onChange={field.onChange}
-                onBlur={field.onBlur}
-                name={field.name}
-                ref={field.ref}
-                error={errors.pricePaise?.message}
-              />
-            )}
-          />
-          <Input
-            label="Duration (minutes)"
-            type="number"
-            inputMode="numeric"
-            error={errors.durationMinutes?.message}
-            {...register('durationMinutes', { valueAsNumber: true })}
-          />
-          <Input
-            label="Tax (%)"
-            inputMode="decimal"
-            placeholder="Clinic default"
-            hint="Leave empty to use the clinic default"
-            error={errors.taxPercent?.message}
-            {...register('taxPercent')}
-          />
-        </div>
-        <p className="text-xs text-slate-500">
-          Price changes apply to new invoices only; existing invoices keep the price they were
-          issued with.
-        </p>
+        <FormSection title="Service">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Input
+              label="Code"
+              hint="e.g. CONS-GEN"
+              autoCapitalize="characters"
+              error={errors.code?.message}
+              {...register('code')}
+            />
+            <Input
+              label="Name"
+              className="sm:col-span-2"
+              error={errors.name?.message}
+              {...register('name')}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select
+              label="Department"
+              options={departmentOptions}
+              error={errors.department?.message}
+              {...register('department')}
+            />
+            <Select
+              label="Type"
+              options={optionsOf(SERVICE_TYPES, SERVICE_TYPE_LABELS)}
+              error={errors.type?.message}
+              {...register('type')}
+            />
+          </div>
+        </FormSection>
+        <FormSection
+          title="Price and time"
+          description="Price changes apply to new invoices only; existing invoices keep the price they were issued with."
+        >
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Controller
+              control={control}
+              name="pricePaise"
+              render={({ field }) => (
+                <MoneyInput
+                  label="Price"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  ref={field.ref}
+                  error={errors.pricePaise?.message}
+                />
+              )}
+            />
+            <Input
+              label="Duration (minutes)"
+              type="number"
+              inputMode="numeric"
+              error={errors.durationMinutes?.message}
+              {...register('durationMinutes', { valueAsNumber: true })}
+            />
+            <Input
+              label="Tax (%)"
+              inputMode="decimal"
+              placeholder="Clinic default"
+              hint="Leave empty to use the clinic default"
+              error={errors.taxPercent?.message}
+              {...register('taxPercent')}
+            />
+          </div>
+        </FormSection>
       </form>
     </Modal>
   );

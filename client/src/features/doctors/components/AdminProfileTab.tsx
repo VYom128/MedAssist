@@ -1,3 +1,4 @@
+import { CalendarCheck, IdCard } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
 import { FormProvider, useForm } from 'react-hook-form';
@@ -6,7 +7,7 @@ import { Link } from 'react-router-dom';
 import StatusToggleButton from '../../../components/StatusToggleButton';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
-import Card from '../../../components/ui/Card';
+import SectionCard from '../../../components/ui/SectionCard';
 import Switch from '../../../components/ui/Switch';
 import { applyServerFieldErrors } from '../../../utils/forms';
 import { getQueryErrorMessage, isApiQueryError } from '../../../utils/http';
@@ -78,7 +79,11 @@ export default function AdminProfileTab({ doctor }: { doctor: Doctor }) {
 
   return (
     <div className="space-y-6">
-      <Card title="Availability and account">
+      <SectionCard
+        title="Availability and account"
+        description="Bookings and the doctor's login."
+        icon={CalendarCheck}
+      >
         <div className="space-y-5">
           <Switch
             label="Accepting appointments"
@@ -86,12 +91,15 @@ export default function AdminProfileTab({ doctor }: { doctor: Doctor }) {
             checked={doctor.isAcceptingAppointments}
             onChange={(on) => void setAccepting(on)}
           />
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-5">
             <div className="text-sm">
-              <p className="font-medium text-slate-700">Login account</p>
-              <p className="text-slate-500">
+              <p className="font-medium text-ink">Login account</p>
+              <p className="text-muted">
                 {doctor.email} · {doctor.phone ?? 'no phone'} ·{' '}
-                <Link className="text-brand-700 underline" to={`/admin/users/${doctor.id}`}>
+                <Link
+                  className="rounded font-semibold text-primary-700 underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600"
+                  to={`/admin/users/${doctor.id}`}
+                >
                   Edit name, email or phone
                 </Link>
               </p>
@@ -104,28 +112,36 @@ export default function AdminProfileTab({ doctor }: { doctor: Doctor }) {
             />
           </div>
         </div>
-      </Card>
+      </SectionCard>
 
-      <Card title="Profile">
-        <FormProvider {...form}>
-          <form onSubmit={onSubmit} noValidate className="space-y-4">
-            {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
-            <DoctorProfileFields currentDepartment={doctor.department} />
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-              <Button
-                variant="secondary"
-                disabled={!isDirty || saving}
-                onClick={() => reset(toForm(doctor))}
-              >
-                Discard changes
-              </Button>
-              <Button type="submit" disabled={!isDirty} loading={saving}>
-                Save profile
-              </Button>
+      <FormProvider {...form}>
+        <form onSubmit={onSubmit} noValidate>
+          <SectionCard
+            title="Profile"
+            description="What patients see when they book, and how bookings work."
+            icon={IdCard}
+            footer={
+              <>
+                <Button
+                  variant="secondary"
+                  disabled={!isDirty || saving}
+                  onClick={() => reset(toForm(doctor))}
+                >
+                  Discard changes
+                </Button>
+                <Button type="submit" disabled={!isDirty} loading={saving}>
+                  Save profile
+                </Button>
+              </>
+            }
+          >
+            <div className="space-y-4">
+              {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
+              <DoctorProfileFields currentDepartment={doctor.department} />
             </div>
-          </form>
-        </FormProvider>
-      </Card>
+          </SectionCard>
+        </form>
+      </FormProvider>
     </div>
   );
 }
