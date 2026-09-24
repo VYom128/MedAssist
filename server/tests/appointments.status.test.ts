@@ -279,6 +279,15 @@ describe('appointment status actions', () => {
       );
     });
 
+    it("a patient cannot cancel someone else's appointment (404, audited, unchanged)", async () => {
+      const me = await loginAsPatient();
+      const theirs = await book(setup.patient.id, '09:00');
+      const res = await cancel(theirs.body.data.id, {}, me.auth);
+      expect(res.status).toBe(404);
+      expect(await auditEntries('access.denied')).toHaveLength(1);
+      expect((await Appointment.findById(theirs.body.data.id).lean())!.status).toBe('scheduled');
+    });
+
     it('the window follows settings.appointment.minCancelHours', async () => {
       await setSettings({ 'appointment.minCancelHours': 24 });
       const me = await loginAsPatient();

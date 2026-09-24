@@ -15,8 +15,8 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | 1 | Authentication, RBAC and audit logging | ✅ Done |
 | 2 | Admin setup data | ✅ Done |
 | 3 | Patients | ✅ Done |
-| 4 | Appointments and queue | 🟡 In progress |
-| 5 | Visit notes and prescriptions | ⬜ Not started |
+| 4 | Appointments and queue | ✅ Done |
+| 5 | Visit notes and prescriptions | 🟡 In progress |
 | 6 | Lab workflow and documents | ⬜ Not started |
 | 7 | Billing | ⬜ Not started |
 | 8 | Patient timeline, portal and follow-ups | ⬜ Not started |
@@ -215,20 +215,67 @@ Patient:
 **Goal:** conflict-free booking and a live queue.
 **Spec:** §4.5–4.6, §4.13, §5.1, §6.12, §7.8–7.9, §8.1–8.4, §8.11
 
-- [ ] Slot generation (schedules, leave, existing bookings, timezone)
-- [ ] Booking with transaction + partial unique index (doctor clash, patient clash, limits)
-- [ ] Reschedule, cancel (with policy), walk-ins with overbook allowance
-- [ ] Appointment state machine + action endpoints
-- [ ] Check-in, tokens, queue ordering, call next
-- [ ] Socket.IO for queue updates; queue board (no names)
-- [ ] Jobs: reminders, no-show marking
-- [ ] Doctor leave → affected appointments
-- [ ] UI: reception calendar (drag to reschedule), booking modal, patient booking wizard, queue screens
-- [ ] Tests: slot generation, concurrent booking race, invalid transitions, cancellation window
+- [x] Slot generation (schedules, leave, existing bookings, timezone)
+- [x] Booking with transaction + partial unique index (doctor clash, patient clash, limits)
+- [x] Reschedule, cancel (with policy), walk-ins with overbook allowance
+- [x] Appointment state machine + action endpoints
+- [x] Check-in, tokens, queue ordering, call next
+- [x] Socket.IO for queue updates; queue board (no names)
+- [x] Jobs: reminders, no-show marking
+- [x] Doctor leave → affected appointments
+- [x] UI: reception calendar (drag to reschedule), booking modal, patient booking wizard, queue screens
+- [x] Tests: slot generation, concurrent booking race, invalid transitions, cancellation window
 
 **Done when:** two people cannot book the same slot, and the queue updates live on the doctor's and reception's screens.
+Verified 2026-09-24: race tests (10 parallel bookings of one slot → one 201; a 30-min and an overlapping 15-min service; one patient with two doctors; two reschedules into one slot; booking vs cancel) run 5 × in a row, all green. `npm run seed -- --reset` then `npm run seed` (second run creates nothing: 309 appointments unchanged). `npm run smoke` against the running dev API: 40+ checks incl. two real parallel bookings of one slot (one 201, one 409 `SLOT_UNAVAILABLE`), a real `queue.updated` Socket.IO event with ids only, the kiosk board (no patient data, wrong key 401), patient1 404 on someone else's appointment. Live queue updates are covered by server socket tests (events after commit, room rules) and a client test (a socket event refreshes the queue columns). **Not yet checked in a real browser** – see the manual test script below.
 
-**Notes / decisions:**
+**Notes / decisions:** (recorded as D79–D96 in spec §20 "Decisions made")
+- **Booking lock (D79–D80):** every booking/reschedule/walk-in/undo runs in `withTransaction` and bumps `bookingVersion` on the doctor and the patient first; overlapping transactions conflict and the driver's retry sees the first booking. The partial unique index `{ doctor, startAt }` stays as the last guard. Leave and schedule writes take the same lock. Patient clashes count open appointments only; the 15-min lead time applies to everyone; clinic working days apply on top of schedules.
+- **State machine (D81):** `STATE_MACHINES` in constants, `assertTransition()` in `utils/stateMachine.ts`; every status change goes through `applyTransition()` (conditional update, `statusHistory`, `isSlotActive` – the model refuses status updates without it). New audit actions `appointment.update`, `appointment.undo_no_show`, `appointment.priority_change`.
+- **Error codes (D82):** `SELF_BOOKING_DISABLED` 403, `OUTSIDE_BOOKING_WINDOW` 422, `OVERBOOK_LIMIT_REACHED` 422.
+- **Scope (D83):** start only changes the status (`TODO(Phase 5)` encounter draft); cancel does not touch billing (`TODO(Phase 7)`). One consultation per doctor per clinic day.
+- **Walk-ins, no-shows, priority, tokens (D84–D86):** next free slot of the running session, else an overbook place (settings limit); manual no-show only after the start; undo same day, flagged `noShowUndoneAt` for the job; queue priority with a reason in `priorityHistory`; tokens from `token:<doctorId>:<date>` inside the transaction (audit key `queueNumber`).
+- **Queue, board, sockets (D87–D88):** ordering and estimated wait per §8.4; board with `KIOSK_KEY` (unset = off), tokens/doctors/rooms only, rate-limited; Socket.IO handshake with the access token (`resolveAccessToken`) or the kiosk key, rooms per doctor/date, ids-only events after commit.
+- **Notifications and jobs (D89–D90):** `notify()` sends email only until Phase 10 (number + time + clinic, no clinical details); reception is emailed about leave impact; reminders ± 15 min, never twice; node-cron jobs only with `JOBS_ENABLED=true`, exported as `runReminderJob(now)` / `runNoShowJob(now)`.
+- **Access (D91–D92):** reception acts on all appointments; admins view only (UI); doctors see their own with a minimal patient view and may start/complete; patients their own (others → 404), cancelling/rescheduling online only outside `minCancelHours` (now in the public settings).
+- **Leave impact (D93):** leave and schedule responses list affected appointments; leave over appointments in consultation or completed → 409; reception emailed.
+- **Seed (D94):** ~310 appointments (history, today's live queue, upcoming incl. patient1), prints the kiosk URL; `--reset` clears appointments and token counters.
+- **Client (D95):** reception calendar (react-big-calendar with clinic "wall dates", drag to reschedule, resource columns) and list; booking modal; appointment details/drawer with status-aware actions; reception and doctor queue screens; walk-ins; patient appointments, booking wizard and token card; public kiosk board; admin read-only list; leave-impact panel. Found and fixed: a wrong kiosk key made the app loop refresh → logout → refetch (the board is now excluded from the 401 refresh).
+- **Rate limits (D96):** patient bookings/reschedules 20/h per user; board 60/min per IP.
+- New packages: `socket.io`, `node-cron` (server), `socket.io-client` (client; server dev for tests), `react-big-calendar` + `@types/react-big-calendar` (client).
+- **You must set in `server/.env`:** `KIOSK_KEY` (≥ 24 random characters; the board is off without it) and `JOBS_ENABLED=true` on the one API instance that should run the reminder/no-show jobs. Restart the API after changing `.env`.
+- `npm audit`: 2 moderate advisories in React Router (open redirect in `<Link>`/`navigate` with backslashes; SSR hydration) – fixed only in v7 (breaking); not addressed yet.
+- Tests: 1301 server (was 948) + 148 client (was 106). Phase 4 complete 2026-09-24.
+
+<details>
+<summary>Phase 4 manual test script (seeded DB, password <code>Password@123</code>; restart <code>npm run dev</code> after editing <code>.env</code>)</summary>
+
+Live queue – two windows side by side (use a private window for the second login):
+1. Window A: `reception1@medassist.dev` → Queue → the doctor tab of `dr.mehta@medassist.dev`. Window B: `dr.mehta@medassist.dev` → My queue.
+2. B: if someone is "With you now", click Complete → confirm. A: within a second the card moves to Done (short entrance animation), without reloading.
+3. B: Call next. A: the emergency token (the seed puts one in the queue) moves to In consultation. B: Call next is now disabled ("with you now" shows the patient).
+4. A: on a waiting card, Change priority → Emergency with a reason; B: the waiting list reorders at once.
+5. A: Walk-in → search a patient (e.g. "amit") → General Medicine → Anil Mehta → priority Normal → Check in walk-in. The toast shows the token; B shows the new patient at the end of the waiting list.
+6. A: under "Today's appointments", Check in a scheduled patient → a token appears in both windows.
+
+Same slot from two windows at once:
+7. Both windows as receptionists (`reception1` and `reception2`): Appointments → Book appointment, the same doctor, the same date and the same time, different patients. Click "Book appointment" in both as close together as you can: one succeeds; the other shows "This slot was just taken…", the times reload without that slot, and the patient/doctor/date stay filled in.
+8. Appointments → Calendar (day view, all doctors): drag a scheduled appointment to another time → give a reason → it moves. Drag one onto a time that is taken → it snaps back with the error.
+
+Patient:
+9. `patient1@medassist.dev` → Dashboard: "Your token" (the seed puts patient1 in the queue of the first doctor working today – dr.mehta on Mon–Sat) with patients ahead and the estimated wait; Next appointment.
+10. Appointments → Book appointment: General Medicine → a doctor card (fee, languages) → a date with free times → a time → a reason → Confirm. It appears under Upcoming.
+11. On that appointment: Change time → another date/time → saved; then Cancel → confirm → it moves to Past as Cancelled. An appointment less than 2 hours away shows "please call the clinic" instead of the buttons.
+12. Admin → Settings → Appointments: turn off patient self-booking → as patient1, Book appointment shows "Online booking is turned off" (turn it back on).
+
+Kiosk board:
+13. Open the URL the seed prints (`http://localhost:5173/queue-board?key=…`): full screen, clinic clock, one tile per doctor with room, "Now" and the next tokens – no names. Repeat step 3 in window B: the board updates within a second (or 15 s if the socket is blocked). Change one character of the key → "The kiosk key is not valid."
+
+Other roles and sizes:
+14. Doctor → Appointments: own calendar (read-only; no dragging); open an appointment – only Start/Complete buttons. Admin → Appointments: list and details with no action buttons.
+15. At 360 px (dev tools): Appointments opens as a list, the queue columns stack, the booking wizard and the board fit without sideways scrolling.
+</details>
+
 
 ---
 
