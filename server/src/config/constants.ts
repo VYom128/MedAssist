@@ -73,6 +73,10 @@ export const SEQUENCES = Object.freeze({
   ENCOUNTER: { key: 'encounter', prefix: 'ENC' },
   /** Yearly: `prescription:<clinic year>` → 'RX-2026-000001' (assigned on issue). */
   PRESCRIPTION: { key: 'prescription', prefix: 'RX' },
+  /** Yearly: `lab_order:<clinic year>` → 'LAB-2026-000001' (assigned when the order is placed). */
+  LAB_ORDER: { key: 'lab_order', prefix: 'LAB' },
+  /** Yearly: `sample:<clinic year>` → 'S26-000001' (two-digit year in the prefix). */
+  SAMPLE: { key: 'sample', prefix: 'S' },
 } as const);
 
 /** Appointment enums (spec §6.12). */
@@ -253,6 +257,10 @@ export const NOTIFICATION_TYPES = Object.freeze({
   APPOINTMENT_REMINDER: 'appointment.reminder',
   LEAVE_AFFECTS_APPOINTMENTS: 'doctor.leave_affects_appointments',
   PRESCRIPTION_ISSUED: 'prescription.issued',
+  LAB_SAMPLE_REJECTED: 'lab.sample_rejected',
+  LAB_CRITICAL_VALUE: 'lab.critical_value',
+  LAB_RESULT_RELEASED: 'lab.result_released',
+  LAB_RESULT_REVISED: 'lab.result_revised',
 } as const);
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -291,6 +299,12 @@ export const JOB_RULES = Object.freeze({
 export const SOCKET_EVENTS = Object.freeze({
   QUEUE_UPDATED: 'queue.updated',
   APPOINTMENT_CHANGED: 'appointment.changed',
+  /** Lab orders were placed or changed: lab staff refetch the worklist (`{ orderIds }`). */
+  LAB_WORKLIST_UPDATED: 'lab.worklist.updated',
+  /** A lab order changed: its doctor (and, once released, its patient) refetch (`{ orderId }`). */
+  LAB_ORDER_CHANGED: 'lab.order.changed',
+  /** A critical result was entered: the ordering doctor's alert (`{ orderId }`). */
+  LAB_CRITICAL: 'lab.critical',
   /** Client → server: join / leave a doctor's queue room for a date. */
   QUEUE_SUBSCRIBE: 'queue:subscribe',
   QUEUE_UNSUBSCRIBE: 'queue:unsubscribe',
@@ -299,6 +313,8 @@ export const SOCKET_ROOMS = Object.freeze({
   user: (userId: string) => `user:${userId}`,
   queue: (doctorId: string, date: string) => `queue:${doctorId}:${date}`,
   board: 'board',
+  /** Every connected lab technician (worklist updates). */
+  lab: 'lab',
 });
 
 /** Token counter key per doctor per clinic day (spec §8.4): 'token:<doctorId>:<YYYY-MM-DD>'. */
@@ -335,6 +351,24 @@ export const STATE_MACHINES = Object.freeze({
     completed: [],
     cancelled: [],
   } satisfies Record<PrescriptionStatus, readonly PrescriptionStatus[]>),
+  /**
+   * Spec §5.4 plus Phase 6 decisions: `draft` (ordered during a consultation, placed when the
+   * note is signed; `draft → cancelled` = discarded); an order whose items are all cancelled
+   * becomes `cancelled` from any status before results (the doctor cancels a whole order only
+   * before a sample is held: ordered or sample_rejected – checked in the service);
+   * `released → released` is a revision.
+   */
+  labOrder: Object.freeze({
+    draft: ['ordered', 'cancelled'],
+    ordered: ['sample_collected', 'cancelled'],
+    sample_collected: ['sample_rejected', 'processing', 'cancelled'],
+    sample_rejected: ['ordered', 'cancelled'],
+    processing: ['result_entered', 'cancelled'],
+    result_entered: ['processing', 'verified'],
+    verified: ['released'],
+    released: ['released'],
+    cancelled: [],
+  } satisfies Record<LabOrderStatus, readonly LabOrderStatus[]>),
 });
 export type StateMachine = keyof typeof STATE_MACHINES;
 
@@ -449,6 +483,13 @@ export const AUDIT_ACTIONS = Object.freeze({
   PRESCRIPTION_REISSUE: 'prescription.reissue',
   PRESCRIPTION_COMPLETE: 'prescription.complete',
   PRESCRIPTION_VIEW: 'prescription.view',
+  LAB_ORDER_CREATE: 'lab_order.create',
+  LAB_ORDER_UPDATE: 'lab_order.update',
+  LAB_ORDER_DISCARD: 'lab_order.discard',
+  LAB_ORDER_SUBMIT: 'lab_order.submit',
+  LAB_ORDER_CANCEL: 'lab_order.cancel',
+  LAB_ORDER_ITEM_CANCEL: 'lab_order.item_cancel',
+  LAB_ORDER_VIEW: 'lab_order.view',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /**
@@ -515,6 +556,78 @@ export const LAB_SAMPLE_TYPES = Object.freeze([
 export const LAB_VALUE_TYPES = Object.freeze(['number', 'text', 'option'] as const);
 export const RANGE_GENDERS = Object.freeze(['male', 'female', 'any'] as const);
 
+/** Lab order enums (spec §6.20, §5.4 + 'draft'). */
+export const LAB_ORDER_STATUSES = Object.freeze([
+  'draft',
+  'ordered',
+  'sample_collected',
+  'sample_rejected',
+  'processing',
+  'result_entered',
+  'verified',
+  'released',
+  'cancelled',
+] as const);
+export type LabOrderStatus = (typeof LAB_ORDER_STATUSES)[number];
+export const LAB_ITEM_STATUSES = Object.freeze([
+  'pending',
+  'result_entered',
+  'verified',
+  'cancelled',
+] as const);
+export type LabItemStatus = (typeof LAB_ITEM_STATUSES)[number];
+/** Result flags (spec §8.7); `na` = nothing to compare against. */
+export const LAB_FLAGS = Object.freeze([
+  'normal',
+  'low',
+  'high',
+  'critical_low',
+  'critical_high',
+  'abnormal',
+  'na',
+] as const);
+export type LabFlag = (typeof LAB_FLAGS)[number];
+export const LAB_CRITICAL_FLAGS = Object.freeze([
+  'critical_low',
+  'critical_high',
+] as const satisfies readonly LabFlag[]);
+/** Lab priorities; sorting descending puts 'urgent' first (the worklist index relies on it). */
+export const LAB_PRIORITIES = Object.freeze(['routine', 'urgent'] as const);
+export type LabPriority = (typeof LAB_PRIORITIES)[number];
+
+/**
+ * Lab order rules (spec §6.20, §8.7): tests per order, text limits, the shortest reasons, and
+ * the bounds for numeric results (anything beyond is a typing error, not a result).
+ */
+export const LAB_ORDER_RULES = Object.freeze({
+  maxTests: 20,
+  clinicalNotesMax: 500,
+  reasonMinLength: 3,
+  reasonMaxLength: 500,
+  revisionReasonMinLength: 10,
+  textValueMax: 500,
+  remarksMax: 1000,
+  numericValueMax: 1e7,
+});
+/** Statuses in which the ordering doctor may cancel the whole order (no sample held). */
+export const LAB_ORDER_DOCTOR_CANCELLABLE = Object.freeze([
+  'ordered',
+  'sample_rejected',
+] as const satisfies readonly LabOrderStatus[]);
+/** Statuses in which a pending item may be cancelled (placed, results not yet complete). */
+export const LAB_ITEM_CANCELLABLE_IN = Object.freeze([
+  'ordered',
+  'sample_collected',
+  'sample_rejected',
+  'processing',
+] as const satisfies readonly LabOrderStatus[]);
+/** Statuses from which a doctor sees results (spec §8.7: from result_entered, "unverified"). */
+export const LAB_RESULTS_VISIBLE_TO_DOCTOR = Object.freeze([
+  'result_entered',
+  'verified',
+  'released',
+] as const satisfies readonly LabOrderStatus[]);
+
 /**
  * Scopes for canAccessPatient (spec §2.3). `allergies` is separate from `clinical` because
  * receptionists may view and record allergies (safety information) but nothing else clinical.
@@ -567,6 +680,8 @@ export const ERROR_CODES = Object.freeze({
   // Not in §16 (Phase 5): the note is missing what signing needs; `details` lists it (§8.5).
   SIGN_VALIDATION_FAILED: 'SIGN_VALIDATION_FAILED',
   SELF_VERIFICATION_NOT_ALLOWED: 'SELF_VERIFICATION_NOT_ALLOWED',
+  // Not in §16 (Phase 6): lab results are missing values the action needs; `details` lists them.
+  RESULTS_INCOMPLETE: 'RESULTS_INCOMPLETE',
   PAYMENT_EXCEEDS_BALANCE: 'PAYMENT_EXCEEDS_BALANCE',
   DISCOUNT_REQUIRES_ADMIN: 'DISCOUNT_REQUIRES_ADMIN',
   // Not in §16: oversized JSON body (see ROADMAP Phase 0 notes). FILE_TOO_LARGE is for uploads.
@@ -613,6 +728,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = Object.fre
   ALLERGY_ACK_REQUIRED: 422,
   SIGN_VALIDATION_FAILED: 422,
   SELF_VERIFICATION_NOT_ALLOWED: 422,
+  RESULTS_INCOMPLETE: 422,
   PAYMENT_EXCEEDS_BALANCE: 422,
   DISCOUNT_REQUIRES_ADMIN: 422,
   PAYLOAD_TOO_LARGE: 413,

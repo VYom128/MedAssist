@@ -7,6 +7,7 @@ import {
   type Role,
 } from '../config/constants.js';
 import { Appointment } from '../modules/appointments/model.js';
+import { LabOrder } from '../modules/labOrders/model.js';
 import * as audit from '../services/audit.service.js';
 import type { AuthUser } from '../types/express.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -21,8 +22,8 @@ export const SCOPES = PATIENT_ACCESS_SCOPES;
  * Scopes each staff role has for any patient (spec §2.4, §2.5 and the Phase 3 decisions).
  * Admins and receptionists never get `clinical`; receptionists get `allergies` (safety
  * information for the front desk). Doctors are absent: their access depends on a care
- * relationship. Lab technicians get nothing until Phase 6, when they see patients only through
- * lab orders.
+ * relationship. Lab technicians are absent too: they see patients only through lab orders
+ * (LAB_TECH_SCOPES).
  */
 const ROLE_SCOPES: Partial<Record<Role, ReadonlySet<PatientAccessScope>>> = {
   [ROLES.ADMIN]: new Set(['demographics', 'billing']),
@@ -40,6 +41,20 @@ const CARE_RELATIONSHIP_SCOPES: ReadonlySet<PatientAccessScope> = new Set([
   'lab',
   'allergies',
 ]);
+
+/**
+ * What a lab technician may access for a patient with a placed lab order (spec §2.5, D-Phase 6):
+ * name, MRN, age and sex (demographics – the lab serializer shows no contact details), allergies
+ * and lab data. Never through /patients: the lab module serialises what they see.
+ */
+const LAB_TECH_SCOPES: ReadonlySet<PatientAccessScope> = new Set([
+  'demographics',
+  'lab',
+  'allergies',
+]);
+
+/** Lab orders that were placed (drafts – even discarded ones – were never placed). */
+export const PLACED_LAB_ORDER = { orderedAt: { $type: 'date' } } as const;
 
 // ---- Care relationship (spec §2.3) ----------------------------------------------------------
 
@@ -70,11 +85,26 @@ export async function hasAppointmentRelationship(
 }
 
 /**
- * The care relationship checks, tried in order until one says yes. Later phases append theirs:
- * Phase 6 "ordered a lab test for the patient", Phase 8 "an assigned follow-up request".
- * Break-glass access (§2.3 stretch goal) is not built.
+ * The doctor ordered a lab test for the patient (spec §2.3): any placed order, whatever its
+ * status now (a cancelled order still had a clinical reason); unplaced drafts do not count.
  */
-export const CARE_RELATIONSHIP_CHECKS: readonly RelationshipCheck[] = [hasAppointmentRelationship];
+export async function hasLabOrderRelationship(
+  doctorId: Types.ObjectId,
+  patientId: Types.ObjectId,
+): Promise<boolean> {
+  return Boolean(
+    await LabOrder.exists({ patient: patientId, orderedBy: doctorId, ...PLACED_LAB_ORDER }),
+  );
+}
+
+/**
+ * The care relationship checks, tried in order until one says yes. Phase 8 appends "an assigned
+ * follow-up request". Break-glass access (§2.3 stretch goal) is not built.
+ */
+export const CARE_RELATIONSHIP_CHECKS: readonly RelationshipCheck[] = [
+  hasAppointmentRelationship,
+  hasLabOrderRelationship,
+];
 
 /**
  * Per-request cache of relationship answers. It is keyed by the `AuthUser` object, which
@@ -86,32 +116,49 @@ const relationshipCache = new WeakMap<object, Map<string, Promise<boolean>>>();
 
 const asObjectId = (id: PatientId) => (typeof id === 'string' ? new Types.ObjectId(id) : id);
 
+/** `lookup()` once per request, user and patient; a failed lookup is not remembered. */
+function cached(
+  user: object,
+  patientId: PatientId,
+  lookup: (patientId: Types.ObjectId) => Promise<boolean>,
+): Promise<boolean> {
+  const key = patientId.toString();
+  if (!Types.ObjectId.isValid(key)) return Promise.resolve(false);
+  let cache = relationshipCache.get(user);
+  if (!cache) {
+    cache = new Map();
+    relationshipCache.set(user, cache);
+  }
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const answer = lookup(asObjectId(patientId));
+  cache.set(key, answer);
+  answer.catch(() => cache.delete(key));
+  return answer;
+}
+
 /** Whether `doctor` has a care relationship with `patientId` (cached for the request). */
 export function hasCareRelationship(
   doctor: Pick<AuthUser, 'id'>,
   patientId: PatientId,
 ): Promise<boolean> {
-  const key = patientId.toString();
-  if (!Types.ObjectId.isValid(key)) return Promise.resolve(false);
-  let cache = relationshipCache.get(doctor);
-  if (!cache) {
-    cache = new Map();
-    relationshipCache.set(doctor, cache);
-  }
-  const hit = cache.get(key);
-  if (hit) return hit;
-
   const doctorId = new Types.ObjectId(doctor.id);
-  const answer = (async () => {
+  return cached(doctor, patientId, async (id) => {
     for (const check of CARE_RELATIONSHIP_CHECKS) {
-      if (await check(doctorId, asObjectId(patientId))) return true;
+      if (await check(doctorId, id)) return true;
     }
     return false;
-  })();
-  cache.set(key, answer);
-  // A failed lookup must not be remembered as an answer.
-  answer.catch(() => cache.delete(key));
-  return answer;
+  });
+}
+
+/** Whether the patient has a placed lab order – a lab technician's only way in (cached). */
+export function hasPlacedLabOrder(
+  labTech: Pick<AuthUser, 'id'>,
+  patientId: PatientId,
+): Promise<boolean> {
+  return cached(labTech, patientId, async (id) =>
+    Boolean(await LabOrder.exists({ patient: id, ...PLACED_LAB_ORDER })),
+  );
 }
 
 /**
@@ -122,7 +169,7 @@ export function hasCareRelationship(
  *   every scope
  * - admin → demographics and billing
  * - receptionist → demographics, billing and allergies
- * - labtech → nothing yet (Phase 6: through lab orders)
+ * - labtech → demographics, lab and allergies of patients with a placed lab order
  * - doctor → demographics, clinical, lab and allergies while a care relationship exists
  *   (database lookups, cached per request); nothing otherwise
  */
@@ -138,6 +185,11 @@ export async function canAccessPatient(
   if (user.role === ROLES.DOCTOR) {
     if (!CARE_RELATIONSHIP_SCOPES.has(scope)) return false;
     return hasCareRelationship(user, id);
+  }
+
+  if (user.role === ROLES.LABTECH) {
+    if (!LAB_TECH_SCOPES.has(scope)) return false;
+    return hasPlacedLabOrder(user, id);
   }
 
   return ROLE_SCOPES[user.role]?.has(scope) ?? false;
@@ -178,13 +230,17 @@ export function roleHasPatientScope(
 
 /**
  * The ids of the patients a doctor has a care relationship with, for list filters. Must mirror
- * CARE_RELATIONSHIP_CHECKS (Phase 6 and 8 add their sources here too).
+ * CARE_RELATIONSHIP_CHECKS (Phase 8 adds its source here too).
  */
 export async function relatedPatientIds(doctorId: string): Promise<Types.ObjectId[]> {
-  return Appointment.distinct('patient', {
-    doctor: new Types.ObjectId(doctorId),
-    status: { $nin: NO_RELATIONSHIP_STATUSES },
-  });
+  const doctor = new Types.ObjectId(doctorId);
+  const [byAppointment, byLabOrder] = await Promise.all([
+    Appointment.distinct('patient', { doctor, status: { $nin: NO_RELATIONSHIP_STATUSES } }),
+    LabOrder.distinct('patient', { orderedBy: doctor, ...PLACED_LAB_ORDER }),
+  ]);
+  const unique = new Map<string, Types.ObjectId>();
+  for (const id of [...byAppointment, ...byLabOrder]) unique.set(id.toString(), id);
+  return [...unique.values()];
 }
 
 /**

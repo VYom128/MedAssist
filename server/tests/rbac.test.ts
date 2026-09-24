@@ -1,6 +1,7 @@
 import type { Role } from '../src/config/constants.js';
 import { AuditLog } from '../src/modules/audit/model.js';
 import { Department } from '../src/modules/departments/model.js';
+import { LabOrder } from '../src/modules/labOrders/model.js';
 import { LabTest } from '../src/modules/labTests/model.js';
 import { DoctorLeave } from '../src/modules/leaves/model.js';
 import { Patient } from '../src/modules/patients/model.js';
@@ -17,6 +18,7 @@ import {
   createPatient,
   createSchedule,
   insertAppointment,
+  insertLabOrder,
   nextWeekday,
 } from './helpers/fixtures.js';
 import { addDaysToDate, clinicToday, startOfClinicDay } from '../src/utils/dates.js';
@@ -197,6 +199,39 @@ async function buildContext(role: Role): Promise<Ctx> {
     appointment: otherAppt._id,
     replaces: cancelledRx!._id,
   });
+  // Phase 6: lab orders of doctorId – a draft on the draft note, a placed one and a released one
+  // for `patient`.
+  const labTests = [{ _id: lab!._id, code: lab!.code, name: lab!.name, pricePaise: 100 }];
+  const draftLabOrder = await insertLabOrder({
+    patient: inConsultation.patient,
+    doctor: doctorId,
+    status: 'draft',
+    encounter: encounter.id,
+    appointment: inConsultation._id,
+    tests: labTests,
+  });
+  const labOrder = await insertLabOrder({
+    patient: patient.id,
+    doctor: doctorId,
+    encounter: signedEncounter,
+    appointment: signedAppt._id,
+    tests: [...labTests, ...labTests],
+  });
+  const releasedLabOrder = await insertLabOrder({
+    patient: patient.id,
+    doctor: doctorId,
+    status: 'released',
+    encounter: signedEncounter,
+    appointment: signedAppt._id,
+    items: [
+      {
+        test: lab!._id,
+        testSnapshot: { code: lab!.code, name: lab!.name, pricePaise: 100 },
+        status: 'verified',
+      },
+    ],
+    releasedAt: new Date(),
+  });
   return {
     me,
     targetId: target._id.toString(),
@@ -232,6 +267,10 @@ async function buildContext(role: Role): Promise<Ctx> {
     signedEncounterId: signedEncounter.toString(),
     prescriptionId: prescription._id.toString(),
     reissuedDraftId: reissued._id.toString(),
+    draftLabOrderId: draftLabOrder._id.toString(),
+    labOrderId: labOrder._id.toString(),
+    labItemId: labOrder.items[0]!._id.toString(),
+    releasedLabOrderId: releasedLabOrder._id.toString(),
     n,
   };
 }
@@ -274,6 +313,10 @@ const send = (row: Row, c: Ctx | null) => {
       signedEncounterId: zero,
       prescriptionId: zero,
       reissuedDraftId: zero,
+      draftLabOrderId: zero,
+      labOrderId: zero,
+      labItemId: zero,
+      releasedLabOrderId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -305,7 +348,7 @@ async function auditCount() {
 describe('RBAC matrix', () => {
   let emails: ReturnType<typeof captureEmails>;
   beforeAll(async () => {
-    await Promise.all([Appointment.init(), Encounter.init(), Prescription.init()]);
+    await Promise.all([Appointment.init(), Encounter.init(), Prescription.init(), LabOrder.init()]);
     await resetDb();
     emails = captureEmails(); // welcome and reset emails are sent in the background
   });

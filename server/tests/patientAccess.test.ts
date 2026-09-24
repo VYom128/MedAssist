@@ -6,13 +6,14 @@ import {
   canAccessPatient,
   CARE_RELATIONSHIP_CHECKS,
   hasAppointmentRelationship,
+  hasLabOrderRelationship,
   patientListFilter,
   roleHasPatientScope,
   SCOPES,
 } from '../src/policies/patientAccess.js';
 import type { AuthUser } from '../src/types/express.js';
 import { auditEntries, resetDb } from './helpers/auth.js';
-import { insertAppointment } from './helpers/fixtures.js';
+import { insertAppointment, insertLabOrder } from './helpers/fixtures.js';
 
 const patientId = new Types.ObjectId().toString();
 
@@ -32,7 +33,7 @@ const userOf = (role: Role, patient: string | null = null): AuthUser => ({
 const EXPECTED: Record<Exclude<Role, 'patient' | 'doctor'>, PatientAccessScope[]> = {
   admin: ['demographics', 'billing'],
   receptionist: ['demographics', 'billing', 'allergies'], // allergies: front-desk safety info
-  labtech: [], // through lab orders from Phase 6
+  labtech: [], // only through lab orders (see below)
 };
 
 /** What a doctor with a care relationship gets (spec §2.3, §2.5): no billing. */
@@ -94,8 +95,27 @@ describe('canAccessPatient – role scopes', () => {
 describe('canAccessPatient – doctor care relationship (spec §2.3)', () => {
   beforeEach(resetDb);
 
-  it('the checks are pluggable, starting with the appointment relationship', () => {
-    expect(CARE_RELATIONSHIP_CHECKS).toEqual([hasAppointmentRelationship]);
+  it('the checks are pluggable: an appointment, then a lab order', () => {
+    expect(CARE_RELATIONSHIP_CHECKS).toEqual([hasAppointmentRelationship, hasLabOrderRelationship]);
+  });
+
+  it('a lab order the doctor placed (any status, even cancelled) is a relationship; drafts are not', async () => {
+    for (const [status, placed, expected] of [
+      ['ordered', true, true],
+      ['released', true, true],
+      ['cancelled', true, true],
+      ['draft', false, false],
+      ['cancelled', false, false], // a discarded draft
+    ] as const) {
+      const doctor = userOf('doctor');
+      const patient = new Types.ObjectId().toString();
+      await insertLabOrder({ patient, doctor: doctor.id, status, placed });
+      for (const scope of SCOPES) {
+        expect(await canAccessPatient(doctor, patient, scope), `${status} ${scope}`).toBe(
+          expected && DOCTOR_WITH_RELATIONSHIP.includes(scope),
+        );
+      }
+    }
   });
 
   it('without any appointment: nothing', async () => {
@@ -163,6 +183,29 @@ describe('canAccessPatient – doctor care relationship (spec §2.3)', () => {
   });
 });
 
+describe('canAccessPatient – lab technicians (through lab orders)', () => {
+  beforeEach(resetDb);
+
+  it('with a placed lab order: demographics, lab and allergies – never clinical or billing', async () => {
+    const lab = userOf('labtech');
+    const patient = new Types.ObjectId().toString();
+    await insertLabOrder({ patient, doctor: new Types.ObjectId(), status: 'processing' });
+    for (const scope of SCOPES) {
+      expect(await canAccessPatient(lab, patient, scope), scope).toBe(
+        ['demographics', 'lab', 'allergies'].includes(scope),
+      );
+    }
+  });
+
+  it('drafts (never placed) give nothing', async () => {
+    const patient = new Types.ObjectId().toString();
+    await insertLabOrder({ patient, doctor: new Types.ObjectId(), status: 'draft' });
+    for (const scope of SCOPES) {
+      expect(await canAccessPatient(userOf('labtech'), patient, scope)).toBe(false);
+    }
+  });
+});
+
 describe('patientListFilter', () => {
   beforeEach(resetDb);
 
@@ -174,16 +217,21 @@ describe('patientListFilter', () => {
     }
   });
 
-  it('a doctor lists the patients of their non-cancelled appointments', async () => {
+  it('a doctor lists the patients of their non-cancelled appointments and placed lab orders', async () => {
     const doctor = userOf('doctor');
     const seen = new Types.ObjectId().toString();
     const cancelled = new Types.ObjectId().toString();
+    const tested = new Types.ObjectId().toString();
+    const drafted = new Types.ObjectId().toString();
     await appointmentWith(doctor, seen);
     await appointmentWith(doctor, seen, 'scheduled');
     await appointmentWith(doctor, cancelled, 'cancelled');
     await appointmentWith(userOf('doctor'), new Types.ObjectId().toString());
+    await insertLabOrder({ patient: seen, doctor: doctor.id });
+    await insertLabOrder({ patient: tested, doctor: doctor.id });
+    await insertLabOrder({ patient: drafted, doctor: doctor.id, status: 'draft' });
     const filter = (await patientListFilter(doctor)) as { _id: { $in: Types.ObjectId[] } };
-    expect(filter._id.$in.map(String)).toEqual([seen]);
+    expect(filter._id.$in.map(String).sort()).toEqual([seen, tested].sort());
   });
 });
 

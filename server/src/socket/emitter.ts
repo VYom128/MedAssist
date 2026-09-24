@@ -29,3 +29,21 @@ export function emitAppointmentChanged(appointmentId: string, userIds: readonly 
   if (!io || userIds.length === 0) return;
   io.to(userIds.map(SOCKET_ROOMS.user)).emit(SOCKET_EVENTS.APPOINTMENT_CHANGED, { appointmentId });
 }
+
+/** Lab orders were placed or changed: every lab technician's worklist refetches. */
+export function emitLabWorklistUpdated(orderIds: readonly string[]): void {
+  if (!io || orderIds.length === 0) return;
+  io.to(SOCKET_ROOMS.lab).emit(SOCKET_EVENTS.LAB_WORKLIST_UPDATED, { orderIds: [...orderIds] });
+}
+
+/** A lab order changed: tells the given users (ordering doctor, patient account) to refetch it. */
+export function emitLabOrderChanged(orderId: string, userIds: readonly string[]): void {
+  if (!io || userIds.length === 0) return;
+  io.to(userIds.map(SOCKET_ROOMS.user)).emit(SOCKET_EVENTS.LAB_ORDER_CHANGED, { orderId });
+}
+
+/** A critical value was entered: the ordering doctor's alert (ids only, spec §8.7). */
+export function emitLabCritical(orderId: string, doctorId: string): void {
+  if (!io) return;
+  io.to(SOCKET_ROOMS.user(doctorId)).emit(SOCKET_EVENTS.LAB_CRITICAL, { orderId });
+}

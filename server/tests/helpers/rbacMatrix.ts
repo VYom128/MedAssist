@@ -84,6 +84,13 @@ export interface Ctx {
   prescriptionId: string;
   /** A reissued draft prescription (replaces a cancelled one) on another signed note. */
   reissuedDraftId: string;
+  /** A draft lab order of doctorId on `encounterId` (its note is a draft, window open). */
+  draftLabOrderId: string;
+  /** A placed ('ordered') lab order of doctorId for patientId with two pending items. */
+  labOrderId: string;
+  labItemId: string;
+  /** A released lab order of doctorId for patientId (the patient's own). */
+  releasedLabOrderId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -113,6 +120,8 @@ const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'pa
 const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
 const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionist'];
+const LAB_ORDER_READERS: readonly Role[] = ['doctor', 'labtech', 'receptionist', 'patient'];
+const DOCTOR_LABTECH: readonly Role[] = ['doctor', 'labtech'];
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
 const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
@@ -652,6 +661,54 @@ ENDPOINTS.push(
     roles: DOCTOR,
     status: 200,
   },
+  // Lab orders (spec §7.14): doctors order; lab techs, doctors, reception (status) and patients
+  // (own released) read; admins never.
+  {
+    method: 'get',
+    path: (c) => `/lab-orders?patient=${c.patientId}`,
+    roles: LAB_ORDER_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/lab-orders/${c.releasedLabOrderId}`,
+    roles: LAB_ORDER_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: () => '/lab-orders',
+    body: (c) => ({ encounterId: c.encounterId, testIds: [c.labTestId] }),
+    roles: DOCTOR,
+    status: 201,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/lab-orders/${c.draftLabOrderId}`,
+    body: () => ({ priority: 'urgent' }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.draftLabOrderId}/discard`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.labOrderId}/cancel`,
+    body: () => ({ reason: 'Matrix cancel' }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.labOrderId}/items/${c.labItemId}/cancel`,
+    body: () => ({ reason: 'Reagent unavailable' }),
+    roles: DOCTOR_LABTECH,
+    status: 200,
+  },
   // Slots and availability (spec §7.6): any logged-in user
   {
     method: 'get',
@@ -724,6 +781,10 @@ export const PATTERN_CTX = {
   signedEncounterId: ':id',
   prescriptionId: ':id',
   reissuedDraftId: ':id',
+  draftLabOrderId: ':id',
+  labOrderId: ':id',
+  labItemId: ':itemId',
+  releasedLabOrderId: ':id',
   n: 0,
 } as unknown as Ctx;
 

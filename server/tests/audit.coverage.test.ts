@@ -20,7 +20,7 @@ import {
   TEST_PASSWORD,
 } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
-import { insertAppointment, loginAsDoctor } from './helpers/fixtures.js';
+import { createLabTest, insertAppointment, loginAsDoctor } from './helpers/fixtures.js';
 import { api } from './helpers/testApp.js';
 
 /**
@@ -356,7 +356,36 @@ describe('audit coverage', () => {
       .send({
         items: [{ drugName: 'Paracetamol', dose: '1 tablet', frequency: 'SOS', durationDays: 3 }],
       });
+    // lab_order.create (a draft on the unsigned note), .update, .discard
+    const labTest = (await createLabTest())._id.toString();
+    const labDraft = await post('/lab-orders', drToday.auth, {
+      encounterId: noteId,
+      testIds: [labTest],
+    });
+    await api()
+      .patch(`/api/v1/lab-orders/${labDraft.body.data.id}`)
+      .set(drToday.auth)
+      .send({ priority: 'urgent' });
+    const dropped = await post('/lab-orders', drToday.auth, {
+      encounterId: noteId,
+      testIds: [labTest],
+    });
+    await post(`/lab-orders/${dropped.body.data.id}/discard`, drToday.auth);
     await post(`/encounters/${noteId}/sign`, drToday.auth, { expectedVersion: 1 });
+    // lab_order.submit (with the signing), .view, .item_cancel, .cancel (placed on the signed note)
+    await api().get(`/api/v1/lab-orders/${labDraft.body.data.id}`).set(drToday.auth);
+    const placed = await post('/lab-orders', drToday.auth, {
+      encounterId: noteId,
+      testIds: [labTest, (await createLabTest())._id.toString()],
+    });
+    await post(
+      `/lab-orders/${placed.body.data.id}/items/${placed.body.data.items[0].id}/cancel`,
+      drToday.auth,
+      { reason: 'Reagent unavailable' },
+    );
+    await post(`/lab-orders/${placed.body.data.id}/cancel`, drToday.auth, {
+      reason: 'Patient declined',
+    });
     // prescription.view, encounter.amend, prescription.cancel + prescription.reissue, then the
     // reissued draft is issued and completed by the job (prescription.complete)
     await api().get(`/api/v1/prescriptions/${rx.body.data.id}`).set(drToday.auth);

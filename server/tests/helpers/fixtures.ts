@@ -1,6 +1,8 @@
-import type { Types } from 'mongoose';
+import mongoose, { type Types } from 'mongoose';
 import { Appointment } from '../../src/modules/appointments/model.js';
 import { Department } from '../../src/modules/departments/model.js';
+import { LabOrder } from '../../src/modules/labOrders/model.js';
+import { LabTest } from '../../src/modules/labTests/model.js';
 import { DoctorProfile } from '../../src/modules/doctors/model.js';
 import { Patient } from '../../src/modules/patients/model.js';
 import { insertPatient } from '../../src/modules/patients/service.js';
@@ -344,4 +346,95 @@ export async function signNote(doctor: LoggedIn, encounterId: string) {
     .send({ expectedVersion: current.body.data.revision });
   if (res.status !== 200) throw new Error(`sign failed: ${res.status} ${JSON.stringify(res.body)}`);
   return res.body.data;
+}
+
+// ---- Lab (Phase 6) ---------------------------------------------------------------------------
+
+let lt = 0;
+
+/**
+ * An active lab test with a numeric parameter (haemoglobin: sex-specific adult ranges with
+ * critical limits) and an option parameter with an abnormal option – override anything.
+ */
+export async function createLabTest(overrides: Record<string, unknown> = {}) {
+  lt += 1;
+  return LabTest.create({
+    code: `LT${lt}`,
+    name: `Lab test ${lt}`,
+    category: 'haematology',
+    sampleType: 'blood',
+    pricePaise: 25_000,
+    turnaroundHours: 24,
+    parameters: [
+      {
+        key: 'hb',
+        name: 'Haemoglobin',
+        unit: 'g/dL',
+        valueType: 'number',
+        ranges: [
+          { gender: 'male', ageMinYears: 18, low: 13, high: 17, criticalLow: 7, criticalHigh: 20 },
+          {
+            gender: 'female',
+            ageMinYears: 18,
+            low: 12,
+            high: 15.5,
+            criticalLow: 7,
+            criticalHigh: 20,
+          },
+          { gender: 'any', low: 11, high: 16 },
+        ],
+      },
+      {
+        key: 'smear',
+        name: 'Malaria smear',
+        valueType: 'option',
+        options: ['Negative', 'Positive'],
+        abnormalOptions: ['Positive'],
+      },
+    ],
+    ...overrides,
+  });
+}
+
+/**
+ * Inserts a lab order directly (any status, bypassing the rules). Items default to one pending
+ * item per test in `tests`.
+ */
+export async function insertLabOrder({
+  patient,
+  doctor,
+  status = 'ordered',
+  tests = [],
+  items,
+  placed = status !== 'draft',
+  ...rest
+}: {
+  patient: string | Types.ObjectId;
+  doctor: string | Types.ObjectId;
+  status?: string;
+  /** Placed orders (default: anything but draft) get a number and `orderedAt`. */
+  placed?: boolean;
+  tests?: { _id: Types.ObjectId; code: string; name: string; pricePaise: number }[];
+  items?: Record<string, unknown>[];
+  [key: string]: unknown;
+}) {
+  lt += 1;
+  return LabOrder.create({
+    patient,
+    orderedBy: doctor,
+    encounter: new mongoose.Types.ObjectId(),
+    appointment: new mongoose.Types.ObjectId(),
+    status,
+    ...(placed
+      ? { orderNumber: `LAB-1999-${String(lt).padStart(6, '0')}`, orderedAt: new Date() }
+      : {}),
+    items:
+      items ??
+      tests.map((t) => ({
+        test: t._id,
+        testSnapshot: { code: t.code, name: t.name, pricePaise: t.pricePaise, sampleType: 'blood' },
+      })),
+    statusHistory: [{ status, at: new Date() }],
+    ...rest,
+  });
 }
