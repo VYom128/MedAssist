@@ -2,7 +2,13 @@ import { AUDIT_ACTIONS } from '../src/config/constants.js';
 import { AuditLog } from '../src/modules/audit/model.js';
 import { Session } from '../src/modules/sessions/model.js';
 import { flushAudit } from '../src/services/audit.service.js';
-import { addDaysToDate, clinicToday, weekdayOf, zonedDateTimeToUtc } from '../src/utils/dates.js';
+import {
+  addDaysToDate,
+  clinicToday,
+  startOfClinicDay,
+  weekdayOf,
+  zonedDateTimeToUtc,
+} from '../src/utils/dates.js';
 import { hashToken, verifyAccessToken } from '../src/utils/tokens.js';
 import {
   createUser,
@@ -13,6 +19,7 @@ import {
   TEST_PASSWORD,
 } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
+import { insertAppointment, loginAsDoctor } from './helpers/fixtures.js';
 import { api } from './helpers/testApp.js';
 
 /**
@@ -306,6 +313,37 @@ describe('audit coverage', () => {
       .post(`/api/v1/appointments/${apptId}/cancel`)
       .set(reception.auth)
       .send({ reason: 'Patient called' });
+
+    // appointment.check_in, .priority_change, .start, .complete, .no_show, .undo_no_show:
+    // today's appointments (one minute each, just after clinic midnight, so already started).
+    const drToday = await loginAsDoctor();
+    keep(drToday.token, drToday.refreshToken);
+    const today = clinicToday('Asia/Kolkata');
+    const minute = (m: number) =>
+      new Date(startOfClinicDay(today, 'Asia/Kolkata').getTime() + m * 60_000);
+    const visit = await insertAppointment({
+      patient: patientId,
+      doctor: drToday.id,
+      startAt: minute(1),
+      minutes: 1,
+    });
+    const post = (path: string, auth: { Authorization: string }, body: object = {}) =>
+      api().post(`/api/v1${path}`).set(auth).send(body);
+    await post(`/appointments/${visit._id}/check-in`, reception.auth);
+    await post(`/queue/${visit._id}/priority`, reception.auth, {
+      priority: 'priority',
+      reason: 'Elderly patient',
+    });
+    await post(`/appointments/${visit._id}/start`, drToday.auth);
+    await post(`/appointments/${visit._id}/complete`, drToday.auth);
+    const missed = await insertAppointment({
+      patient: twin.body.data.id as string,
+      doctor: drToday.id,
+      startAt: minute(2),
+      minutes: 1,
+    });
+    await post(`/appointments/${missed._id}/no-show`, reception.auth);
+    await post(`/appointments/${missed._id}/undo-no-show`, reception.auth);
     emails.restore();
 
     await flushAudit();

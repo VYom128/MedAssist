@@ -9,12 +9,14 @@ import {
   calendarDate,
   calendarDateString,
   clinicToday,
+  startOfClinicDay,
   timeToMinutes,
   WEEKDAY_NAMES,
   weekdayOf,
 } from '../../utils/dates.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { withTransaction } from '../../utils/transaction.js';
+import { scheduleImpact, toAffectedItem } from '../appointments/impact.js';
 import { DoctorProfile } from '../doctors/model.js';
 import { findDoctor } from '../doctors/service.js';
 import { getSettings } from '../settings/service.js';
@@ -174,9 +176,14 @@ export async function replaceSchedule(
   }));
 
   const before = await versionOn(doctorId, input.effectiveFrom);
-  await withTransaction(async (session) => {
-    // Serialises schedule writes for this doctor (concurrent ones conflict and retry).
-    await DoctorProfile.updateOne({ _id: profile._id }, { $inc: { lockVersion: 1 } }, { session });
+  const affected = await withTransaction(async (session) => {
+    // Serialises schedule writes for this doctor (concurrent ones conflict and retry), and takes
+    // the booking lock so the affected-appointments list cannot miss a booking made meanwhile.
+    await DoctorProfile.updateOne(
+      { _id: profile._id },
+      { $inc: { lockVersion: 1, bookingVersion: 1 } },
+      { session },
+    );
     await DoctorSchedule.deleteMany(
       { doctor: doctorId, effectiveFrom: { $gte: from } },
       { session },
@@ -191,6 +198,14 @@ export async function replaceSchedule(
       { session },
     );
     await DoctorSchedule.insertMany(docs, { session });
+    const firstDay = startOfClinicDay(input.effectiveFrom, settings.timezone);
+    return scheduleImpact(
+      doctorId,
+      new Date(Math.max(firstDay.getTime(), Date.now())),
+      sessionsByDay,
+      settings.timezone,
+      session,
+    );
   });
 
   const after = toVersionView(docs);
@@ -218,7 +233,7 @@ export async function replaceSchedule(
   return {
     ...(await scheduleView(doctorId, today)),
     warnings,
-    // TODO(Phase 4): future appointments that fall outside the new hours (spec §7.6).
-    affectedAppointments: [] as unknown[],
+    // Upcoming scheduled / checked-in appointments outside the new hours (spec §7.6).
+    affectedAppointments: affected.map(toAffectedItem),
   };
 }

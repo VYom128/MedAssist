@@ -108,6 +108,8 @@ export const NOTIFICATION_TYPES = Object.freeze({
   APPOINTMENT_BOOKED: 'appointment.booked',
   APPOINTMENT_RESCHEDULED: 'appointment.rescheduled',
   APPOINTMENT_CANCELLED: 'appointment.cancelled',
+  APPOINTMENT_NO_SHOW: 'appointment.no_show',
+  LEAVE_AFFECTS_APPOINTMENTS: 'doctor.leave_affects_appointments',
 } as const);
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -122,6 +124,29 @@ export const APPOINTMENT_RULES = Object.freeze({
   reasonMaxLength: 500,
   reasonMinLength: 3,
 });
+
+/**
+ * Queue rules (spec §8.4): the estimated wait uses the doctor's average consultation over the
+ * last `averageWindowDays`; the kiosk board shows the next `boardNextTokens` tokens.
+ */
+export const QUEUE_RULES = Object.freeze({ averageWindowDays: 30, boardNextTokens: 5 });
+
+/** Socket.IO events and rooms (spec §7.9). Event payloads carry ids only. */
+export const SOCKET_EVENTS = Object.freeze({
+  QUEUE_UPDATED: 'queue.updated',
+  APPOINTMENT_CHANGED: 'appointment.changed',
+  /** Client → server: join / leave a doctor's queue room for a date. */
+  QUEUE_SUBSCRIBE: 'queue:subscribe',
+  QUEUE_UNSUBSCRIBE: 'queue:unsubscribe',
+});
+export const SOCKET_ROOMS = Object.freeze({
+  user: (userId: string) => `user:${userId}`,
+  queue: (doctorId: string, date: string) => `queue:${doctorId}:${date}`,
+  board: 'board',
+});
+
+/** Token counter key per doctor per clinic day (spec §8.4): 'token:<doctorId>:<YYYY-MM-DD>'. */
+export const tokenCounterKey = (doctorId: string, date: string) => `token:${doctorId}:${date}`;
 
 /**
  * State machines (spec §5): for each status, the statuses it may move to. Checked with
@@ -235,6 +260,12 @@ export const AUDIT_ACTIONS = Object.freeze({
   APPOINTMENT_UPDATE: 'appointment.update',
   APPOINTMENT_RESCHEDULE: 'appointment.reschedule',
   APPOINTMENT_CANCEL: 'appointment.cancel',
+  APPOINTMENT_CHECK_IN: 'appointment.check_in',
+  APPOINTMENT_START: 'appointment.start',
+  APPOINTMENT_COMPLETE: 'appointment.complete',
+  APPOINTMENT_NO_SHOW: 'appointment.no_show',
+  APPOINTMENT_UNDO_NO_SHOW: 'appointment.undo_no_show',
+  APPOINTMENT_PRIORITY_CHANGE: 'appointment.priority_change',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /** The same user reading the same record within this window produces one audit entry (§10.4). */

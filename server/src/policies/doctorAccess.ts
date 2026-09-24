@@ -59,3 +59,14 @@ export function assertCanViewDoctorSchedule(user: AuthUser, doctorId: string, me
     'You can only see your own schedule and leave',
   );
 }
+
+/** A doctor's queue (spec §7.9): admins, receptionists and the doctor themselves. */
+export function assertCanViewDoctorQueue(user: AuthUser, doctorId: string, meta: RequestMeta) {
+  return assertAllowed(
+    canViewDoctorSchedule(user, doctorId),
+    user,
+    doctorId,
+    meta,
+    'You can only see your own queue',
+  );
+}

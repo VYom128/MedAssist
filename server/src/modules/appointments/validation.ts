@@ -59,6 +59,17 @@ export const bookAppointmentSchema = {
     }),
 };
 
+/** POST /appointments/walk-in (reception): created checked in, now. */
+export const walkInSchema = {
+  body: z.strictObject({
+    patientId: objectId,
+    doctorId: objectId,
+    serviceId: objectId,
+    reason,
+    priority: z.enum(APPOINTMENT_PRIORITIES).default('normal'),
+  }),
+};
+
 /** POST /appointments/:id/reschedule */
 export const rescheduleSchema = {
   params: idParams,
@@ -129,6 +140,7 @@ export const availabilitySchema = {
 };
 
 export type BookAppointmentInput = z.infer<typeof bookAppointmentSchema.body>;
+export type WalkInInput = z.infer<typeof walkInSchema.body>;
 export type RescheduleInput = z.infer<typeof rescheduleSchema.body>;
 export type CancelInput = z.infer<typeof cancelSchema.body>;
 export type UpdateAppointmentInput = z.infer<typeof updateAppointmentSchema.body>;

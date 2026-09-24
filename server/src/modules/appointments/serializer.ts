@@ -19,6 +19,8 @@ export interface PatientRef {
   dateOfBirth: Date;
   gender: string;
   phone?: string;
+  /** Linked portal account (for real-time events; never serialised). */
+  user?: Types.ObjectId | null;
 }
 interface UserRef {
   _id: Types.ObjectId;
@@ -42,7 +44,7 @@ export type AppointmentLike = Omit<AppointmentDoc, 'patient' | 'doctor' | 'depar
 
 /** What `populate()` loads for the views. */
 export const POPULATE = [
-  { path: 'patient', select: 'mrn firstName lastName dateOfBirth gender phone' },
+  { path: 'patient', select: 'mrn firstName lastName dateOfBirth gender phone user' },
   { path: 'doctor', select: 'firstName lastName' },
   { path: 'department', select: 'name' },
 ] as const;
@@ -113,6 +115,13 @@ const history = (a: AppointmentLike) => ({
     byRole: r.byRole ?? null,
     at: r.at,
     reason: r.reason ?? null,
+  })),
+  priorityHistory: (a.priorityHistory ?? []).map((p) => ({
+    from: p.from,
+    to: p.to,
+    by: idOf(p.by),
+    at: p.at,
+    reason: p.reason ?? null,
   })),
   statusHistory: (a.statusHistory ?? []).map((h) => ({
     status: h.status,

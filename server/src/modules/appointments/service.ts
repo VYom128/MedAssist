@@ -5,7 +5,6 @@ import {
   ERROR_CODES,
   NOTIFICATION_TYPES,
   ROLES,
-  type NotificationType,
 } from '../../config/constants.js';
 import {
   appointmentListFilter,
@@ -26,6 +25,7 @@ import { logger, serializeError } from '../../utils/logger.js';
 import { buildMeta, type Pagination } from '../../utils/pagination.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { buildPatientSearchQuery } from '../../utils/search.js';
+import { emitAppointmentChanged, emitQueueUpdated } from '../../socket/emitter.js';
 import { Patient } from '../patients/model.js';
 import { resolveMyPatientId } from '../patients/portal.service.js';
 import { getSettings } from '../settings/service.js';
@@ -83,8 +83,15 @@ export function assertPatientMayChange(startAt: Date, settings: Settings, now = 
 
 // ---- Notifications -------------------------------------------------------------------------
 
+/** Notifications about one appointment. */
+type AppointmentNotification =
+  | typeof NOTIFICATION_TYPES.APPOINTMENT_BOOKED
+  | typeof NOTIFICATION_TYPES.APPOINTMENT_RESCHEDULED
+  | typeof NOTIFICATION_TYPES.APPOINTMENT_CANCELLED
+  | typeof NOTIFICATION_TYPES.APPOINTMENT_NO_SHOW;
+
 const PATIENT_MESSAGES: Record<
-  NotificationType,
+  AppointmentNotification,
   { title: string; body: (n: string, when: string) => string }
 > = {
   [NOTIFICATION_TYPES.APPOINTMENT_BOOKED]: {
@@ -99,12 +106,18 @@ const PATIENT_MESSAGES: Record<
     title: 'Appointment cancelled',
     body: (n, when) => `Your appointment ${n} on ${when} has been cancelled.`,
   },
+  [NOTIFICATION_TYPES.APPOINTMENT_NO_SHOW]: {
+    title: 'Missed appointment',
+    body: (n, when) =>
+      `We missed you at your appointment ${n} on ${when}. Please contact the clinic to book again.`,
+  },
 };
 
-const DOCTOR_VERBS: Record<NotificationType, string> = {
+const DOCTOR_VERBS: Record<AppointmentNotification, string> = {
   [NOTIFICATION_TYPES.APPOINTMENT_BOOKED]: 'booked',
   [NOTIFICATION_TYPES.APPOINTMENT_RESCHEDULED]: 'moved',
   [NOTIFICATION_TYPES.APPOINTMENT_CANCELLED]: 'cancelled',
+  [NOTIFICATION_TYPES.APPOINTMENT_NO_SHOW]: 'marked as a no-show',
 };
 
 /** The patient as a recipient: portal user, and an email unless they opted out of emails. */
@@ -125,7 +138,7 @@ async function patientRecipient(patientId: Types.ObjectId): Promise<Recipient> {
  * and time – no doctor, department or reason (§10.3).
  */
 export async function notifyAppointment(
-  type: NotificationType,
+  type: AppointmentNotification,
   a: AppointmentLike,
   { notifyDoctorSameDay = false }: { notifyDoctorSameDay?: boolean } = {},
 ): Promise<void> {
@@ -154,6 +167,45 @@ export async function notifyAppointment(
     }
   } catch (err) {
     logger.error({ err: serializeError(err), type }, 'Appointment notification failed');
+  }
+}
+
+// ---- Real-time events ---------------------------------------------------------------------
+
+type Ref = Types.ObjectId | { _id: Types.ObjectId; user?: Types.ObjectId | null };
+const refId = (ref: Ref) => ('_id' in ref ? ref._id : ref).toString();
+
+/**
+ * Socket.IO events for a changed appointment, sent after the commit (spec §7.9): `queue.updated`
+ * for the doctor's queue on the appointment's clinic day – and for the old doctor/day after a
+ * reschedule – and `appointment.changed` to the patient's portal account and the doctor(s).
+ * Payloads are ids only. Never throws.
+ */
+export async function announceAppointment(
+  a: { _id: Types.ObjectId; doctor: Ref; patient: Ref; startAt: Date },
+  previous?: { doctor: Ref; startAt: Date },
+): Promise<void> {
+  try {
+    const { timezone } = await getSettings();
+    const doctors = new Set([refId(a.doctor)]);
+    emitQueueUpdated(refId(a.doctor), toClinicDate(a.startAt, timezone));
+    if (previous) {
+      doctors.add(refId(previous.doctor));
+      const before = [refId(previous.doctor), toClinicDate(previous.startAt, timezone)] as const;
+      if (before[0] !== refId(a.doctor) || before[1] !== toClinicDate(a.startAt, timezone)) {
+        emitQueueUpdated(...before);
+      }
+    }
+    const patientUser =
+      '_id' in a.patient && 'user' in a.patient
+        ? a.patient.user
+        : (await Patient.findById(refId(a.patient)).select('user').lean())?.user;
+    emitAppointmentChanged(a._id.toString(), [
+      ...doctors,
+      ...(patientUser ? [patientUser.toString()] : []),
+    ]);
+  } catch (err) {
+    logger.error({ err: serializeError(err) }, 'Appointment real-time event failed');
   }
 }
 
@@ -306,6 +358,7 @@ export async function updateAppointment(
       request: meta,
       changes,
     });
+    void announceAppointment(after);
   }
   return viewForRole(user.role, after);
 }

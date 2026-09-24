@@ -62,6 +62,17 @@ const rescheduleSchema = new Schema(
   { _id: false },
 );
 
+const priorityChangeSchema = new Schema(
+  {
+    from: { type: String, enum: APPOINTMENT_PRIORITIES, required: true },
+    to: { type: String, enum: APPOINTMENT_PRIORITIES, required: true },
+    by: { type: ObjectId, ref: 'User' },
+    at: { type: Date, required: true },
+    reason: { type: String, trim: true, maxlength: APPOINTMENT_RULES.reasonMaxLength },
+  },
+  { _id: false },
+);
+
 const statusHistorySchema = new Schema(
   {
     status: { type: String, enum: APPOINTMENT_STATUSES, required: true },
@@ -98,6 +109,10 @@ const appointmentSchema = new Schema(
     rescheduleHistory: { type: [rescheduleSchema], default: [] },
     followUpOf: { type: ObjectId, ref: 'Appointment' },
     isOverbook: { type: Boolean, default: false },
+    /** Queue priority changes with the reason (POST /queue/:id/priority). Not in §6.12. */
+    priorityHistory: { type: [priorityChangeSchema], default: [] },
+    /** Set by undo-no-show; the no-show job leaves such appointments alone. Not in §6.12. */
+    noShowUndoneAt: Date,
     reminderSentAt: Date,
     statusHistory: { type: [statusHistorySchema], default: [] },
     bookedBy: { type: ObjectId, ref: 'User' },

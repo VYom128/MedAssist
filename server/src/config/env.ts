@@ -73,6 +73,10 @@ const envSchema = z
     SMTP_USER: z.string().trim().min(1).optional(),
     SMTP_PASS: z.string().min(1).optional(),
     MAIL_FROM: z.string().trim().min(1).optional(),
+
+    // Queue board kiosk (spec §7.9): the key in /queue-board?key=… and the kiosk socket. Unset
+    // = the board is switched off.
+    KIOSK_KEY: z.string().trim().min(24, 'Must be at least 24 characters').optional(),
   })
   .superRefine((env, ctx) => {
     if (env.COOKIE_SAMESITE === 'none' && !env.COOKIE_SECURE) {
@@ -154,6 +158,7 @@ export const config = Object.freeze({
       pass: env.SMTP_PASS,
     }),
   }),
+  kiosk: Object.freeze({ key: env.KIOSK_KEY }),
 });
 
 export type Config = typeof config;

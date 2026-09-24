@@ -107,3 +107,35 @@ export async function cancelAppointment(req: Request, res: Response) {
   );
   return sendSuccess(res, { message: 'Appointment cancelled', data });
 }
+
+export async function walkIn(req: Request, res: Response) {
+  const data = await bookingService.walkIn(currentUser(req), req.body, buildRequestMeta(req));
+  return sendSuccess(res, { statusCode: 201, message: 'Walk-in checked in', data });
+}
+
+/** Status actions: POST /appointments/:id/<action>. */
+const statusAction =
+  (
+    run: (
+      user: ReturnType<typeof currentUser>,
+      id: string,
+      meta: ReturnType<typeof buildRequestMeta>,
+    ) => Promise<unknown>,
+    message: string,
+  ) =>
+  async (req: Request, res: Response) => {
+    const data = await run(currentUser(req), idOf(req), buildRequestMeta(req));
+    return sendSuccess(res, { message, data });
+  };
+
+export const checkIn = statusAction(statusService.checkIn, 'Checked in');
+export const startConsultation = statusAction(
+  statusService.startConsultation,
+  'Consultation started',
+);
+export const completeConsultation = statusAction(
+  statusService.completeConsultation,
+  'Consultation completed',
+);
+export const markNoShow = statusAction(statusService.markNoShow, 'Marked as no-show');
+export const undoNoShow = statusAction(statusService.undoNoShow, 'No-show undone');

@@ -4,6 +4,7 @@ import { API_PREFIX } from './config/constants.js';
 import { config } from './config/env.js';
 import { createApp } from './app.js';
 import { flushAudit } from './services/audit.service.js';
+import { closeSocket, initSocket } from './socket/index.js';
 import { listen, PortInUseError } from './utils/listen.js';
 import { logger, serializeError } from './utils/logger.js';
 
@@ -20,6 +21,7 @@ async function start() {
     await disconnectDB();
     throw err;
   }
+  const io = initSocket(server);
   logger.info(`API listening on http://localhost:${config.port}${API_PREFIX} (${config.nodeEnv})`);
 
   let shuttingDown = false;
@@ -34,6 +36,7 @@ async function start() {
     }, SHUTDOWN_TIMEOUT_MS);
     force.unref();
 
+    closeSocket(io); // disconnect real-time clients so server.close() can finish
     server.close(async () => {
       try {
         await flushAudit(); // finish queued audit writes before the connection closes

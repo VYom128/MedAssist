@@ -201,3 +201,15 @@ export async function setSettings(values: Record<string, unknown>) {
   await ClinicSettings.updateOne({}, { $set: values });
   clearSettingsCache();
 }
+
+/**
+ * Sets the clinic timezone to a fixed-offset zone where it is about midday right now (12:00–
+ * 12:59), so tests that need "today" or "a session running now" do not depend on when they run.
+ * @returns the zone, e.g. 'Etc/GMT-5' (= UTC+5).
+ */
+export async function useMiddayClinicZone(): Promise<string> {
+  const offset = 12 - new Date().getUTCHours(); // -11 … +12
+  const tz = offset === 0 ? 'Etc/GMT' : `Etc/GMT${offset > 0 ? '-' : '+'}${Math.abs(offset)}`;
+  await setSettings({ timezone: tz });
+  return tz;
+}

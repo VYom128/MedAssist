@@ -19,7 +19,7 @@ import {
   insertAppointment,
   nextWeekday,
 } from './helpers/fixtures.js';
-import { addDaysToDate } from '../src/utils/dates.js';
+import { addDaysToDate, clinicToday, startOfClinicDay } from '../src/utils/dates.js';
 import { Appointment } from '../src/modules/appointments/model.js';
 import {
   ALL,
@@ -93,7 +93,8 @@ async function buildContext(role: Role): Promise<Ctx> {
     await Patient.updateOne({ _id: patient.id }, { $set: { user: me.user._id } });
   }
   // A bookable doctor (09:00–13:00 daily) and a scheduled appointment of `patient` with them.
-  await createSchedule(doctorId);
+  // Works all day, so a walk-in always finds a running session (except 23:55–24:00 IST).
+  await createSchedule(doctorId, [{ start: '00:00', end: '23:55' }]);
   const appointmentDate = nextWeekday(2, 3); // a Tuesday
   const appointment = await insertAppointment({
     patient: patient.id,
@@ -101,6 +102,27 @@ async function buildContext(role: Role): Promise<Ctx> {
     startAt: at(appointmentDate, '09:00'),
     service: service!._id,
   });
+  // Today's queue: minutes after clinic midnight, so each has already started.
+  const today = clinicToday('Asia/Kolkata');
+  const todayAt = (minutes: number, date = today) =>
+    new Date(startOfClinicDay(date, 'Asia/Kolkata').getTime() + minutes * 60_000);
+  const todays = async (minutes: number, status: string, extra: Record<string, unknown> = {}) =>
+    insertAppointment({
+      patient: (extra.patient as string | undefined) ?? (await createPatient()).id,
+      doctor: doctorId,
+      startAt: todayAt(minutes, (extra.date as string | undefined) ?? today),
+      status,
+      minutes: 1, // one minute each, so they do not overlap
+      service: service!._id,
+      queue: status === 'scheduled' ? {} : { tokenNumber: minutes, checkedInAt: todayAt(minutes) },
+    });
+  const todayScheduled = await todays(1, 'scheduled');
+  const checkedIn = await todays(2, 'checked_in', { patient: patient.id });
+  const noShow = await todays(3, 'no_show');
+  const inConsultation = await todays(4, 'in_consultation', {
+    date: addDaysToDate(today, -1),
+  });
+  const walkInPatient = await createPatient();
   return {
     me,
     targetId: target._id.toString(),
@@ -125,6 +147,12 @@ async function buildContext(role: Role): Promise<Ctx> {
     appointmentDate,
     bookStartAt: at(addDaysToDate(appointmentDate, 1), '10:00').toISOString(),
     rescheduleStartAt: at(appointmentDate, '11:00').toISOString(),
+    todayScheduledId: todayScheduled._id.toString(),
+    checkedInId: checkedIn._id.toString(),
+    queueAppointmentId: checkedIn._id.toString(),
+    noShowId: noShow._id.toString(),
+    inConsultationId: inConsultation._id.toString(),
+    walkInPatientId: walkInPatient.id,
     n,
   };
 }
@@ -156,6 +184,12 @@ const send = (row: Row, c: Ctx | null) => {
       appointmentDate: '2030-01-01',
       bookStartAt: '2030-01-01T04:30:00.000Z',
       rescheduleStartAt: '2030-01-01T05:30:00.000Z',
+      todayScheduledId: zero,
+      checkedInId: zero,
+      queueAppointmentId: zero,
+      noShowId: zero,
+      inConsultationId: zero,
+      walkInPatientId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -167,6 +201,12 @@ const send = (row: Row, c: Ctx | null) => {
 /** Keys a public (no token) response must never contain. */
 const PRIVATE_KEYS =
   /"(email|phone|registrationNumber|roomNumber|slotMinutes|gstin|invoicePrefix|isActive|activeDoctors|lockVersion|bookingVersion|createdBy|updatedBy|passwordHash)"/;
+
+/**
+ * The kiosk board shows doctor names and rooms (spec §4.6) but nothing about patients and no ids.
+ */
+const PRIVATE_BOARD_KEYS =
+  /"(id|_id|\w*Id|email|phone|mrn|patient\w*|firstName|lastName|appointment\w*|registrationNumber|isActive|createdBy|updatedBy)"/;
 
 /** Public clinic settings include the clinic's own contact email/phone (spec §7.4), nothing else. */
 const PRIVATE_SETTINGS_KEYS =
@@ -216,7 +256,11 @@ describe('RBAC matrix', () => {
         if (role === 'anonymous') {
           // Public responses never carry contact details, registration numbers or admin fields.
           const privateKeys =
-            routeKey(row) === 'GET /settings/public' ? PRIVATE_SETTINGS_KEYS : PRIVATE_KEYS;
+            routeKey(row) === 'GET /settings/public'
+              ? PRIVATE_SETTINGS_KEYS
+              : routeKey(row) === 'GET /queue/board'
+                ? PRIVATE_BOARD_KEYS
+                : PRIVATE_KEYS;
           expect(JSON.stringify(res.body)).not.toMatch(privateKeys);
         }
       });

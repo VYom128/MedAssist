@@ -1,4 +1,5 @@
 import { ROLE_VALUES, type Role } from '../../src/config/constants.js';
+import { config } from '../../src/config/env.js';
 import { addDaysToDate, clinicToday } from '../../src/utils/dates.js';
 import type { LoggedIn } from './auth.js';
 import { TEST_PASSWORD } from './auth.js';
@@ -58,6 +59,19 @@ export interface Ctx {
   appointmentDate: string;
   bookStartAt: string;
   rescheduleStartAt: string;
+  /**
+   * Today's appointments of `doctorId` (clinic time): scheduled and already started (check-in,
+   * no-show), checked in (start, priority, call-next; the patient is `patientId`), no-show (undo),
+   * and yesterday's still in consultation (complete). `queueAppointmentId` = `checkedInId` for
+   * the /queue/:appointmentId routes.
+   */
+  todayScheduledId: string;
+  checkedInId: string;
+  queueAppointmentId: string;
+  noShowId: string;
+  inConsultationId: string;
+  /** A patient with no appointments (walk-in). */
+  walkInPatientId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -85,6 +99,7 @@ const PATIENT: readonly Role[] = ['patient'];
 const RECEPTION: readonly Role[] = ['receptionist'];
 const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'patient'];
 const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
+const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
 const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
@@ -473,6 +488,59 @@ ENDPOINTS.push(
     roles: PATIENT_READERS,
     status: 200,
   },
+  {
+    method: 'post',
+    path: () => '/appointments/walk-in',
+    body: (c) => ({ patientId: c.walkInPatientId, doctorId: c.doctorId, serviceId: c.serviceId }),
+    roles: RECEPTION_ONLY,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.todayScheduledId}/check-in`,
+    roles: RECEPTION_ONLY,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.checkedInId}/start`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.inConsultationId}/complete`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.todayScheduledId}/no-show`,
+    roles: RECEPTION_ONLY,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.noShowId}/undo-no-show`,
+    roles: RECEPTION_ONLY,
+    status: 200,
+  },
+  // Queue (spec §7.9); GET /queue/board is in PUBLIC_ENDPOINTS
+  {
+    method: 'get',
+    path: (c) => `/queue?doctor=${c.doctorId}`,
+    roles: ADMIN_DOCTOR_RECEPTION,
+    status: 200,
+  },
+  { method: 'post', path: () => '/queue/call-next', roles: DOCTOR, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/queue/${c.queueAppointmentId}/priority`,
+    body: () => ({ priority: 'emergency', reason: 'Matrix priority' }),
+    roles: RECEPTION_ONLY,
+    status: 200,
+  },
+  { method: 'get', path: () => '/queue/my-position', roles: PATIENT, status: 200 },
   // Slots and availability (spec §7.6): any logged-in user
   {
     method: 'get',
@@ -501,6 +569,13 @@ export const PUBLIC_ENDPOINTS: Row[] = [
   { method: 'get', path: (c) => `/services/${c.serviceId}`, roles: ALL, status: 200 },
   { method: 'get', path: () => '/doctors', roles: ALL, status: 200 },
   { method: 'get', path: (c) => `/doctors/${c.doctorId}`, roles: ALL, status: 200 },
+  // Queue board: public with the kiosk key (spec §7.9)
+  {
+    method: 'get',
+    path: () => `/queue/board?key=${encodeURIComponent(config.kiosk.key ?? '')}`,
+    roles: ALL,
+    status: 200,
+  },
 ];
 
 /** Placeholder context: turns a row's `path` into the Express pattern (`/users/:id`). */
@@ -527,6 +602,12 @@ export const PATTERN_CTX = {
   appointmentDate: '',
   bookStartAt: '',
   rescheduleStartAt: '',
+  todayScheduledId: ':id',
+  checkedInId: ':id',
+  queueAppointmentId: ':appointmentId',
+  noShowId: ':id',
+  inConsultationId: ':id',
+  walkInPatientId: ':id',
   n: 0,
 } as unknown as Ctx;
 
