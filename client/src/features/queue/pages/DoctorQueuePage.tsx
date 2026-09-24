@@ -1,7 +1,15 @@
-import { BellRing, CircleCheck, Clock, Hourglass, Stethoscope, Users } from 'lucide-react';
+import {
+  BellRing,
+  CircleCheck,
+  Clock,
+  FileText,
+  Hourglass,
+  Stethoscope,
+  Users,
+} from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
@@ -13,6 +21,7 @@ import ListSkeleton from '../../../components/ui/ListSkeleton';
 import PageHeader from '../../../components/ui/PageHeader';
 import SectionCard from '../../../components/ui/SectionCard';
 import StatCard from '../../../components/ui/StatCard';
+import { buttonClass } from '../../../components/ui/buttonClass';
 import { linkClass } from '../../../components/ui/linkClass';
 import { useQueueRooms } from '../../../hooks/useSocketInvalidation';
 import { clinicDate, formatCalendarDate, formatTime } from '../../../utils/dates';
@@ -24,11 +33,13 @@ import { useCallNextMutation, useGetQueueQuery, type QueueItem } from '../api';
 import QueueCard from '../components/QueueCard';
 
 /**
- * /doctor/queue (spec §4.6 step 3, §13.4 #3): the patient with the doctor now (Complete), a
- * prominent "Call next", the waiting list in queue order and today's numbers. Updates live.
+ * /doctor/queue (spec §4.6 step 3, §13.4 #3): the patient with the doctor now (Open
+ * consultation, Complete), a prominent "Call next" (opens the consult workspace), the waiting
+ * list in queue order and today's numbers. Updates live.
  */
 export default function DoctorQueuePage() {
   const user = useAppSelector(selectCurrentUser);
+  const navigate = useNavigate();
   const today = clinicDate();
   const { data, isLoading, isError, error, refetch } = useGetQueueQuery({ date: today });
   useQueueRooms(user ? [{ doctorId: user.id, date: today }] : []);
@@ -45,6 +56,7 @@ export default function DoctorQueuePage() {
         toast.success(
           `Token ${called.tokenNumber ?? '–'}: ${called.patient?.fullName ?? 'next patient'}`,
         );
+        navigate(`/doctor/consult/${called.id}`);
       } else {
         toast('Nobody is waiting');
       }
@@ -137,14 +149,23 @@ export default function DoctorQueuePage() {
                     </Link>
                   </div>
                 </div>
-                <Button
-                  onClick={() => {
-                    setCompleteError(null);
-                    setCompleting(current);
-                  }}
-                >
-                  <CircleCheck className="h-4 w-4" aria-hidden="true" /> Complete
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    to={`/doctor/consult/${current.appointmentId}`}
+                    className={buttonClass('primary')}
+                  >
+                    <FileText className="h-4 w-4" aria-hidden="true" /> Open consultation
+                  </Link>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setCompleteError(null);
+                      setCompleting(current);
+                    }}
+                  >
+                    <CircleCheck className="h-4 w-4" aria-hidden="true" /> Complete
+                  </Button>
+                </div>
               </div>
             ) : (
               <p className="text-sm text-muted">
@@ -187,7 +208,7 @@ export default function DoctorQueuePage() {
           </div>
         )}
         Mark the consultation with {completing?.patient.shortName} (token {completing?.tokenNumber})
-        as completed?
+        as completed? An unsigned note can still be signed within 72 hours.
       </ConfirmDialog>
     </section>
   );

@@ -169,3 +169,20 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Printing (Phase 5): only a `.print-area` sheet is printed, without the app shell. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0 0 auto 0;
+    border: 0;
+    box-shadow: none;
+  }
+}

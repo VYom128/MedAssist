@@ -59,9 +59,17 @@ function base(e: EncounterLike) {
   };
 }
 
-/** One row of GET /encounters: no clinical text. */
-export function toListItem(e: EncounterLike) {
-  return { ...base(e), updatedAt: orNull(e.updatedAt) };
+/**
+ * One row of GET /encounters: no clinical text – except, for one patient's history
+ * (`withDiagnosis`, audited by the service), the primary diagnosis.
+ */
+export function toListItem(e: EncounterLike, { withDiagnosis = false } = {}) {
+  const primary = (e.diagnoses ?? []).find((d) => d.isPrimary) ?? e.diagnoses?.[0];
+  return {
+    ...base(e),
+    ...(withDiagnosis ? { primaryDiagnosis: primary?.description ?? null } : {}),
+    updatedAt: orNull(e.updatedAt),
+  };
 }
 
 /** The full note for a doctor (own, or signed notes of a related patient). */

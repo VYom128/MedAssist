@@ -177,6 +177,50 @@ describe('Doctor queue', () => {
   });
 });
 
+describe('Doctor queue → consult workspace', () => {
+  it('"Call next" opens the workspace; the patient with the doctor has "Open consultation"', async () => {
+    const doctor = makeUser('doctor', { id: 'dr1' });
+    server.use(
+      http.get(url('/queue'), () =>
+        ok(
+          queue({
+            inConsultation: [
+              item({
+                appointmentId: 'q4',
+                tokenNumber: 4,
+                status: 'in_consultation',
+                startedAt: at(TODAY, '09:10'),
+                patient: { id: 'p4', shortName: 'Asha K.', mrn: 'MRN-000004' },
+              }),
+            ],
+          }),
+        ),
+      ),
+    );
+    const { unmount } = renderRoutes(routes, '/doctor/queue', authState(doctor));
+    const link = await screen.findByRole('link', { name: /Open consultation/ }, { timeout: 5000 });
+    expect(link).toHaveAttribute('href', '/doctor/consult/q4');
+    unmount();
+
+    server.use(
+      http.get(url('/queue'), () => ok(queue({ waiting: [item()] }))),
+      http.post(url('/queue/call-next'), () =>
+        ok(appointment({ id: 'q5', status: 'in_consultation', tokenNumber: 5 })),
+      ),
+      // The workspace starts loading the called appointment.
+      http.get(url('/appointments/q5'), () => ok(appointment({ id: 'q5' }))),
+      http.get(url('/appointments/q5/encounter'), () => new Promise(() => undefined)),
+    );
+    const second = renderRoutes(routes, '/doctor/queue', authState(doctor));
+    const user = userEvent.setup();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Call next' })).toBeEnabled(), {
+      timeout: 5000,
+    });
+    await user.click(screen.getByRole('button', { name: 'Call next' }));
+    await waitFor(() => expect(second.router.state.location.pathname).toBe('/doctor/consult/q5'));
+  });
+});
+
 describe('Appointment drawer actions by status', () => {
   const started = () => new Date(Date.now() - 60_000).toISOString();
   const cases = [

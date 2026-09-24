@@ -173,6 +173,7 @@ export function toListItem(p: PrescriptionLike, { withPatient }: { withPatient: 
           },
         }
       : {}),
+    ...(withPatient ? { isCurrent: p.isCurrent } : {}),
     encounterId: p.encounter.toString(),
     appointmentId: p.appointment.toString(),
     itemCount: (p.items ?? []).length,

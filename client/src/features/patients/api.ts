@@ -15,6 +15,9 @@ export interface PatientListItem {
   isActive: boolean;
   phone: string;
   hasPortal: boolean;
+  /** Doctors' list (`scope=mine`): last visit (in consultation or completed) and last booking. */
+  lastVisitAt?: string | null;
+  lastAppointmentAt?: string;
 }
 
 export interface Address {
@@ -123,6 +126,8 @@ export interface PendingLink {
 }
 
 export interface PatientListParams {
+  /** Doctors: the patients they have a care relationship with. */
+  scope?: 'mine';
   page?: number;
   limit?: number;
   q?: string;

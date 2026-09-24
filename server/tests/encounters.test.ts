@@ -142,11 +142,25 @@ describe('GET /encounters', () => {
     expect(drafts.body.data.map((e: { id: string }) => e.id)).toEqual([mine.encounterId]);
   });
 
-  it('?patient= gives that patient’s history, 404 without a relationship', async () => {
+  it('?patient= gives that patient’s history with primary diagnoses (audited), 404 without a relationship', async () => {
     const mine = await startedConsultation();
     const other = await createPatient();
+    await patch(mine.encounterId, mine.doctor, {
+      expectedVersion: 0,
+      diagnoses: [
+        { description: 'Dehydration' },
+        { description: 'Gastroenteritis', isPrimary: true },
+      ],
+    });
     const history = await get(`/encounters?patient=${mine.patientId}`, mine.doctor);
     expect(history.body.data.map((e: { id: string }) => e.id)).toEqual([mine.encounterId]);
+    expect(history.body.data[0].primaryDiagnosis).toBe('Gastroenteritis');
+    await get(`/encounters?patient=${mine.patientId}`, mine.doctor);
+    const reads = (await auditEntries('encounter.view')).filter(
+      (e) => e.resource?.type === 'encounter_history',
+    );
+    expect(reads).toHaveLength(1);
+    expect(reads[0]?.patient?.toString()).toBe(mine.patientId);
     const denied = await get(`/encounters?patient=${other.id}`, mine.doctor);
     expect(denied.status).toBe(404);
   });

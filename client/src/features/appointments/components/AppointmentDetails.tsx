@@ -1,10 +1,11 @@
-import { ArrowRight, History } from 'lucide-react';
+import { ArrowRight, FileText, History } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
 import Code from '../../../components/ui/Code';
 import DescriptionList from '../../../components/ui/DescriptionList';
 import SectionCard from '../../../components/ui/SectionCard';
 import StatusPill from '../../../components/ui/StatusPill';
+import { buttonClass } from '../../../components/ui/buttonClass';
 import { linkClass } from '../../../components/ui/linkClass';
 import {
   APPOINTMENT_PRIORITY_LABELS,
@@ -36,7 +37,16 @@ export default function AppointmentDetails({ appointment: a }: { appointment: Ap
         {a.isOverbook && <StatusPill domain="appointmentFlag" status="overbook" />}
       </div>
 
-      <AppointmentActions appointment={a} />
+      <div className="flex flex-wrap items-center gap-2">
+        <AppointmentActions appointment={a} />
+        {user?.role === ROLES.DOCTOR &&
+          (a.status === 'in_consultation' || a.status === 'completed') && (
+            <Link to={`/doctor/consult/${a.id}`} className={buttonClass('secondary', 'sm')}>
+              <FileText className="h-4 w-4" aria-hidden="true" />
+              {a.status === 'in_consultation' ? 'Open consultation' : 'Open visit note'}
+            </Link>
+          )}
+      </div>
 
       <DescriptionList
         items={[

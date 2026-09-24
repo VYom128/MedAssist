@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
@@ -59,6 +60,7 @@ const BUTTONS: Record<
  */
 export default function AppointmentActions({ appointment: a }: { appointment: Appointment }) {
   const user = useAppSelector(selectCurrentUser);
+  const navigate = useNavigate();
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<'reschedule' | 'priority' | 'cancel' | null>(null);
@@ -135,6 +137,10 @@ export default function AppointmentActions({ appointment: a }: { appointment: Ap
       const updated = await runAction({ id: a.id, action: confirm.action }).unwrap();
       toast.success(confirm.done(updated));
       setConfirm(null);
+      // A doctor who starts a consultation goes straight to the consult workspace.
+      if (confirm.action === 'start' && user?.role === 'doctor') {
+        navigate(`/doctor/consult/${a.id}`);
+      }
     } catch (err) {
       setError(getQueryErrorMessage(err));
     }

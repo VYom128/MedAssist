@@ -27,6 +27,11 @@ export const apiSlice = createApi({
     'Availability',
     'Queue',
     'QueueBoard',
+    'Encounter',
+    'EncounterList',
+    'Amendment',
+    'Prescription',
+    'PrescriptionList',
   ],
   endpoints: () => ({}),
 });

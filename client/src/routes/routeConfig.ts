@@ -103,6 +103,21 @@ export const APP_ROUTES: AppRoute[] = [
     load: () => import('../features/appointments/pages/AppointmentDetailPage'),
   },
   {
+    path: '/doctor/consult/:appointmentId',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/encounters/pages/ConsultWorkspacePage'),
+  },
+  {
+    path: '/doctor/encounters/:id',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/encounters/pages/EncounterPage'),
+  },
+  {
+    path: '/doctor/prescriptions/:id/print',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/prescriptions/pages/PrescriptionPrintPage'),
+  },
+  {
     path: '/patient/appointments',
     roles: [ROLES.PATIENT],
     load: () => import('../features/appointments/pages/MyAppointmentsPage'),

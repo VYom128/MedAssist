@@ -126,8 +126,9 @@ export async function getEncounterForAppointment(
 
 /**
  * GET /encounters (doctor) – own notes and signed notes of related patients, newest visit
- * first. With `patient`, that patient's history (404 without a care relationship). List items
- * carry no clinical text, so the list is not audited per row.
+ * first. With `patient`, that patient's history (404 without a care relationship), with each
+ * visit's primary diagnosis (audited as a debounced read of the history). Otherwise list items
+ * carry no clinical text and the list is not audited.
  */
 export async function listEncounters(
   user: AuthUser,
@@ -155,8 +156,20 @@ export async function listEncounters(
       .lean(),
     Encounter.countDocuments(filter),
   ]);
+  // One patient's history shows each visit's primary diagnosis: a clinical read, audited once
+  // per user + patient (debounced).
+  const withDiagnosis = Boolean(query.patient);
+  if (withDiagnosis && items.length > 0) {
+    await audit.recordRead({
+      action: AUDIT_ACTIONS.ENCOUNTER_VIEW,
+      actor: actorOf(user),
+      resource: { type: 'encounter_history', id: query.patient },
+      patient: query.patient,
+      request: meta,
+    });
+  }
   return {
-    items: (items as unknown as EncounterLike[]).map(toListItem),
+    items: (items as unknown as EncounterLike[]).map((e) => toListItem(e, { withDiagnosis })),
     meta: buildMeta({ page, limit, total }),
   };
 }
