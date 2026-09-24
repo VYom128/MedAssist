@@ -9,8 +9,12 @@ import {
   cancelItemSchema,
   cancelLabOrderSchema,
   createLabOrderSchema,
+  itemIdSchema,
   labOrderIdSchema,
+  labOrderReasonSchema,
   listLabOrdersSchema,
+  putResultsSchema,
+  reviseItemSchema,
   updateLabOrderSchema,
 } from './validation.js';
 
@@ -18,12 +22,14 @@ import {
  * /lab-orders (spec §7.14). Reads are scoped by policies/labOrderAccess: lab technicians every
  * placed order (the worklist); doctors their own and placed orders of related patients;
  * receptionists a status-only view (billing); patients their own released orders. Admins get no
- * lab order endpoints (counts come with the Phase 10 reports). Ordering: the doctor of the note.
+ * lab order endpoints (counts come with the Phase 10 reports). Ordering: the doctor of the note;
+ * the lab workflow: lab technicians.
  */
 const router = Router();
 const { DOCTOR, LABTECH, PATIENT, RECEPTIONIST } = ROLES;
 const readers = [authenticate, authorize(DOCTOR, LABTECH, RECEPTIONIST, PATIENT)];
 const doctor = [authenticate, authorize(DOCTOR)];
+const lab = [authenticate, authorize(LABTECH)];
 
 router.get(
   '/',
@@ -67,6 +73,75 @@ router.post(
   authorize(DOCTOR, LABTECH),
   validate(cancelItemSchema),
   asyncHandler(labOrdersController.cancelLabOrderItem),
+);
+
+// Lab workflow (spec §4.8): lab technicians.
+router.post(
+  '/:id/collect-sample',
+  ...lab,
+  validate(labOrderIdSchema),
+  asyncHandler(labOrdersController.collectSample),
+);
+router.post(
+  '/:id/reject-sample',
+  ...lab,
+  validate(labOrderReasonSchema),
+  asyncHandler(labOrdersController.rejectSample),
+);
+router.post(
+  '/:id/recollect',
+  ...lab,
+  validate(labOrderIdSchema),
+  asyncHandler(labOrdersController.recollectSample),
+);
+router.post(
+  '/:id/start-processing',
+  ...lab,
+  validate(labOrderIdSchema),
+  asyncHandler(labOrdersController.startProcessing),
+);
+router.put(
+  '/:id/items/:itemId/results',
+  ...lab,
+  validate(putResultsSchema),
+  asyncHandler(labOrdersController.putItemResults),
+);
+router.post(
+  '/:id/verify',
+  ...lab,
+  validate(labOrderIdSchema),
+  asyncHandler(labOrdersController.verifyOrder),
+);
+router.post(
+  '/:id/send-back',
+  ...lab,
+  validate(labOrderReasonSchema),
+  asyncHandler(labOrdersController.sendBack),
+);
+router.post(
+  '/:id/release',
+  ...lab,
+  validate(labOrderIdSchema),
+  asyncHandler(labOrdersController.releaseOrder),
+);
+router.post(
+  '/:id/items/:itemId/revise',
+  ...lab,
+  validate(reviseItemSchema),
+  asyncHandler(labOrdersController.reviseItem),
+);
+router.post(
+  '/:id/items/:itemId/verify-revision',
+  ...lab,
+  validate(itemIdSchema),
+  asyncHandler(labOrdersController.verifyRevision),
+);
+// The doctor marks results reviewed ("results to review").
+router.post(
+  '/:id/acknowledge',
+  ...doctor,
+  validate(labOrderIdSchema),
+  asyncHandler(labOrdersController.acknowledgeResults),
 );
 
 export default router;

@@ -4,6 +4,7 @@ import {
   ERROR_CODES,
   LAB_ITEM_CANCELLABLE_IN,
   LAB_ORDER_DOCTOR_CANCELLABLE,
+  LAB_REVIEWABLE_STATUSES,
   ROLES,
   SEQUENCES,
 } from '../../config/constants.js';
@@ -429,7 +430,7 @@ export async function cancelLabOrderItem(
     resource: resourceOf(o),
     patient: patientIdOf(o),
     request: meta,
-    metadata: { itemId, testCode: item.testSnapshot.code, reasonGiven: true, orderStatus: status },
+    metadata: { itemId, reasonGiven: true, orderStatus: status },
   });
   emitLabWorklistUpdated([o._id.toString()]);
   emitLabOrderChanged(o._id.toString(), [o.orderedBy._id.toString()]);
@@ -458,9 +459,6 @@ export async function getLabOrder(user: AuthUser, id: string, meta: RequestMeta)
 
 type Filter = FilterQuery<LabOrderDoc>;
 
-/** Statuses whose results a doctor still has to acknowledge ("results to review"). */
-const REVIEWABLE = ['result_entered', 'released'] as const;
-
 /** The base filter per role for GET /lab-orders (after the patient checks). */
 async function roleFilter(user: AuthUser, query: ListLabOrdersQuery, meta: RequestMeta) {
   switch (user.role) {
@@ -473,7 +471,7 @@ async function roleFilter(user: AuthUser, query: ListLabOrdersQuery, meta: Reque
       if (query.needsReview) {
         return {
           orderedBy: me,
-          status: { $in: REVIEWABLE },
+          status: { $in: LAB_REVIEWABLE_STATUSES },
           reviewedByDoctorAt: null,
         } as Filter;
       }

@@ -291,6 +291,8 @@ export const JOB_RULES = Object.freeze({
   every15Minutes: '*/15 * * * *',
   /** Prescription completion (spec §8.11). */
   daily0200: '0 2 * * *',
+  /** Lab turnaround alerts (spec §8.11). */
+  hourly: '0 * * * *',
   reminderWindowMinutes: 15,
   batchSize: 500,
 });
@@ -490,6 +492,17 @@ export const AUDIT_ACTIONS = Object.freeze({
   LAB_ORDER_CANCEL: 'lab_order.cancel',
   LAB_ORDER_ITEM_CANCEL: 'lab_order.item_cancel',
   LAB_ORDER_VIEW: 'lab_order.view',
+  LAB_ORDER_COLLECT_SAMPLE: 'lab_order.collect_sample',
+  LAB_ORDER_REJECT_SAMPLE: 'lab_order.reject_sample',
+  LAB_ORDER_RECOLLECT: 'lab_order.recollect',
+  LAB_ORDER_START_PROCESSING: 'lab_order.start_processing',
+  LAB_ORDER_RESULTS_ENTER: 'lab_order.results_enter',
+  LAB_ORDER_VERIFY: 'lab_order.verify',
+  LAB_ORDER_SEND_BACK: 'lab_order.send_back',
+  LAB_ORDER_RELEASE: 'lab_order.release',
+  LAB_ORDER_REVISE: 'lab_order.revise',
+  LAB_ORDER_REVISION_VERIFY: 'lab_order.revision_verify',
+  LAB_ORDER_ACKNOWLEDGE: 'lab_order.acknowledge',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /**
@@ -621,11 +634,23 @@ export const LAB_ITEM_CANCELLABLE_IN = Object.freeze([
   'sample_rejected',
   'processing',
 ] as const satisfies readonly LabOrderStatus[]);
-/** Statuses from which a doctor sees results (spec §8.7: from result_entered, "unverified"). */
-export const LAB_RESULTS_VISIBLE_TO_DOCTOR = Object.freeze([
+/**
+ * Orders whose results the ordering doctor reviews and acknowledges ("results to review"):
+ * results entered (unverified), verified or released.
+ */
+export const LAB_REVIEWABLE_STATUSES = Object.freeze([
   'result_entered',
   'verified',
   'released',
+] as const satisfies readonly LabOrderStatus[]);
+/** Orders still in the lab: the turnaround job looks at these (spec §8.11). */
+export const LAB_OPEN_STATUSES = Object.freeze([
+  'ordered',
+  'sample_collected',
+  'sample_rejected',
+  'processing',
+  'result_entered',
+  'verified',
 ] as const satisfies readonly LabOrderStatus[]);
 
 /**

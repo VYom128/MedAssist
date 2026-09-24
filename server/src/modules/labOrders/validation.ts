@@ -99,6 +99,51 @@ export const listLabOrdersSchema = {
     }),
 };
 
+/** POST /lab-orders/:id/reject-sample and /send-back. */
+export const labOrderReasonSchema = cancelLabOrderSchema;
+
+/**
+ * One entered value. Unknown keys (e.g. a client-computed `flag`) are stripped: the server
+ * computes flags. `null` or '' = no value yet (a partial save).
+ */
+const resultEntry = z.object({
+  parameterKey: z.string().trim().min(1).max(30),
+  value: z.union([z.number(), z.string().max(LAB_ORDER_RULES.textValueMax * 2), z.null()]),
+});
+const results = z.array(resultEntry).max(50, 'At most 50 results');
+const remarks = optionalText(LAB_ORDER_RULES.remarksMax);
+
+/** PUT /lab-orders/:id/items/:itemId/results (spec §7.14). */
+export const putResultsSchema = {
+  params: itemParams,
+  body: z.strictObject({ results, remarks }),
+};
+
+/** POST /lab-orders/:id/items/:itemId/revise – after release, with a reason. */
+export const reviseItemSchema = {
+  params: itemParams,
+  body: z.strictObject({
+    results,
+    remarks,
+    reason: z
+      .string()
+      .trim()
+      .min(
+        LAB_ORDER_RULES.revisionReasonMinLength,
+        `At least ${LAB_ORDER_RULES.revisionReasonMinLength} characters`,
+      )
+      .max(
+        LAB_ORDER_RULES.reasonMaxLength,
+        `At most ${LAB_ORDER_RULES.reasonMaxLength} characters`,
+      ),
+  }),
+};
+
+/** POST /lab-orders/:id/items/:itemId/verify-revision. */
+export const itemIdSchema = { params: itemParams };
+
 export type CreateLabOrderInput = z.infer<typeof createLabOrderSchema.body>;
 export type UpdateLabOrderInput = z.infer<typeof updateLabOrderSchema.body>;
 export type ListLabOrdersQuery = z.infer<typeof listLabOrdersSchema.query>;
+export type PutResultsInput = z.infer<typeof putResultsSchema.body>;
+export type ReviseItemInput = z.infer<typeof reviseItemSchema.body>;

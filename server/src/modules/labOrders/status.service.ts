@@ -20,7 +20,7 @@ export const historyEntry = (
 
 export interface TransitionOptions {
   session?: ClientSession;
-  /** Extra update operators applied with the status change (e.g. `$unset`). */
+  /** Extra update operators applied with the status change (`$unset`, more `$push` paths). */
   extra?: Omit<UpdateQuery<LabOrderDoc>, '$set'>;
   /** Query options (e.g. revisionWriteOptions for released orders). */
   queryOptions?: Record<string, unknown>;
@@ -43,7 +43,7 @@ export async function applyOrderTransition(
     {
       ...extra,
       $set: { ...set, status: to, ...(by ? { updatedBy: by } : {}) },
-      $push: { statusHistory: historyEntry(to, by, note, at) },
+      $push: { ...(extra.$push ?? {}), statusHistory: historyEntry(to, by, note, at) },
       $inc: { __v: 1 },
     },
     { new: true, session, ...queryOptions },

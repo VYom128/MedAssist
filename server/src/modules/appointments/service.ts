@@ -127,7 +127,7 @@ const DOCTOR_VERBS: Partial<Record<AppointmentNotification, string>> = {
 };
 
 /** The patient as a recipient: portal user, and an email unless they opted out of emails. */
-async function patientRecipient(patientId: Types.ObjectId): Promise<Recipient> {
+export async function patientRecipient(patientId: Types.ObjectId): Promise<Recipient> {
   const p = await Patient.findById(patientId).select('email user consent').lean();
   if (!p) return {};
   const account = p.user ? await User.findById(p.user).select('email').lean() : null;

@@ -143,6 +143,7 @@ describe('doctors without a care relationship', () => {
         `/lab-orders/${c.labOrderId}/items/${c.labItemId}/cancel`,
         { reason: 'Not my patient here' },
       ],
+      ['post', `/lab-orders/${c.labOrderId}/acknowledge`],
     ];
     const before = (await auditEntries('access.denied')).length;
     for (const [method, path, body] of reqs) {

@@ -91,6 +91,19 @@ export interface Ctx {
   labItemId: string;
   /** A released lab order of doctorId for patientId (the patient's own). */
   releasedLabOrderId: string;
+  releasedLabItemId: string;
+  /**
+   * Lab orders of doctorId in each workflow status (step 2). Results were entered, and pending
+   * revisions made, by another lab technician (`targetId`), so the caller may verify them.
+   */
+  collectedLabOrderId: string;
+  rejectedLabOrderId: string;
+  processingLabOrderId: string;
+  processingLabItemId: string;
+  enteredLabOrderId: string;
+  verifiedLabOrderId: string;
+  revisionLabOrderId: string;
+  revisionLabItemId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -122,6 +135,7 @@ const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
 const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionist'];
 const LAB_ORDER_READERS: readonly Role[] = ['doctor', 'labtech', 'receptionist', 'patient'];
 const DOCTOR_LABTECH: readonly Role[] = ['doctor', 'labtech'];
+const LABTECH: readonly Role[] = ['labtech'];
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
 const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
@@ -709,6 +723,77 @@ ENDPOINTS.push(
     roles: DOCTOR_LABTECH,
     status: 200,
   },
+  // Lab workflow (spec §4.8): lab technicians; the doctor acknowledges results.
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.labOrderId}/collect-sample`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.collectedLabOrderId}/reject-sample`,
+    body: () => ({ reason: 'Haemolysed' }),
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.rejectedLabOrderId}/recollect`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.collectedLabOrderId}/start-processing`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'put',
+    path: (c) => `/lab-orders/${c.processingLabOrderId}/items/${c.processingLabItemId}/results`,
+    body: () => ({ results: [{ parameterKey: 'hb', value: 14 }] }),
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.enteredLabOrderId}/verify`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.enteredLabOrderId}/send-back`,
+    body: () => ({ reason: 'Check the values' }),
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.verifiedLabOrderId}/release`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.releasedLabOrderId}/items/${c.releasedLabItemId}/revise`,
+    body: () => ({ results: [], reason: 'Matrix revision reason' }),
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.revisionLabOrderId}/items/${c.revisionLabItemId}/verify-revision`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.releasedLabOrderId}/acknowledge`,
+    roles: DOCTOR,
+    status: 200,
+  },
   // Slots and availability (spec §7.6): any logged-in user
   {
     method: 'get',
@@ -785,6 +870,15 @@ export const PATTERN_CTX = {
   labOrderId: ':id',
   labItemId: ':itemId',
   releasedLabOrderId: ':id',
+  releasedLabItemId: ':itemId',
+  collectedLabOrderId: ':id',
+  rejectedLabOrderId: ':id',
+  processingLabOrderId: ':id',
+  processingLabItemId: ':itemId',
+  enteredLabOrderId: ':id',
+  verifiedLabOrderId: ':id',
+  revisionLabOrderId: ':id',
+  revisionLabItemId: ':itemId',
   n: 0,
 } as unknown as Ctx;
 

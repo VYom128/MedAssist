@@ -3,7 +3,9 @@ import { ApiError } from '../../utils/ApiError.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { parsePagination } from '../../utils/pagination.js';
 import { buildRequestMeta } from '../../utils/requestContext.js';
+import * as revisionService from './revision.service.js';
 import * as labOrdersService from './service.js';
+import * as workflowService from './workflow.service.js';
 import type { ListLabOrdersQuery } from './validation.js';
 
 const currentUser = (req: Request) => {
@@ -87,4 +89,86 @@ export async function cancelLabOrderItem(req: Request, res: Response) {
     buildRequestMeta(req),
   );
   return sendSuccess(res, { message: 'Test cancelled', data });
+}
+
+// ---- Lab workflow (step 2) ---------------------------------------------------------------------
+
+type OrderAction = (
+  user: NonNullable<Request['user']>,
+  id: string,
+  meta: ReturnType<typeof buildRequestMeta>,
+) => Promise<unknown>;
+type OrderBodyAction = (
+  user: NonNullable<Request['user']>,
+  id: string,
+  body: never,
+  meta: ReturnType<typeof buildRequestMeta>,
+) => Promise<unknown>;
+
+const orderAction = (run: OrderAction, message: string) => async (req: Request, res: Response) => {
+  const data = await run(currentUser(req), params(req).id, buildRequestMeta(req));
+  return sendSuccess(res, { message, data });
+};
+const orderBodyAction =
+  (run: OrderBodyAction, message: string) => async (req: Request, res: Response) => {
+    const data = await run(
+      currentUser(req),
+      params(req).id,
+      req.body as never,
+      buildRequestMeta(req),
+    );
+    return sendSuccess(res, { message, data });
+  };
+
+export const collectSample = orderAction(workflowService.collectSample, 'Sample collected');
+export const rejectSample = orderBodyAction(workflowService.rejectSample, 'Sample rejected');
+export const recollectSample = orderAction(
+  workflowService.recollectSample,
+  'Ready for a new sample',
+);
+export const startProcessing = orderAction(workflowService.startProcessing, 'Processing started');
+export const verifyOrder = orderAction(workflowService.verifyOrder, 'Results verified');
+export const sendBack = orderBodyAction(workflowService.sendBack, 'Sent back for correction');
+export const releaseOrder = orderAction(workflowService.releaseOrder, 'Results released');
+export const acknowledgeResults = orderAction(
+  workflowService.acknowledgeResults,
+  'Results marked as reviewed',
+);
+
+export async function putItemResults(req: Request, res: Response) {
+  const { id, itemId } = params(req);
+  const data = await workflowService.saveItemResults(
+    currentUser(req),
+    id,
+    itemId!,
+    req.body,
+    buildRequestMeta(req),
+  );
+  return sendSuccess(res, { message: 'Results saved', data });
+}
+
+export async function reviseItem(req: Request, res: Response) {
+  const { id, itemId } = params(req);
+  const data = await revisionService.reviseItem(
+    currentUser(req),
+    id,
+    itemId!,
+    req.body,
+    buildRequestMeta(req),
+  );
+  return sendSuccess(res, { message: 'Revision saved', data });
+}
+
+export async function verifyRevision(req: Request, res: Response) {
+  const { id, itemId } = params(req);
+  const data = await revisionService.verifyRevision(
+    currentUser(req),
+    id,
+    itemId!,
+    buildRequestMeta(req),
+  );
+  return sendSuccess(res, {
+    message: 'Revision verified – the corrected results are released',
+    data,
+  });
 }

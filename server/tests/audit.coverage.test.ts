@@ -386,6 +386,37 @@ describe('audit coverage', () => {
     await post(`/lab-orders/${placed.body.data.id}/cancel`, drToday.auth, {
       reason: 'Patient declined',
     });
+    // The lab workflow: collect_sample, reject_sample, recollect, start_processing,
+    // results_enter, send_back, verify, release, revise, revision_verify; the doctor's
+    // acknowledge. Two lab technicians (dual verification).
+    const lab1 = await loginAs('labtech');
+    const lab2 = await loginAs('labtech');
+    keep(lab1.token, lab2.token);
+    const work = await post('/lab-orders', drToday.auth, {
+      encounterId: noteId,
+      testIds: [labTest],
+    });
+    const lo = `/lab-orders/${work.body.data.id}`;
+    const results = {
+      results: [
+        { parameterKey: 'hb', value: 14 },
+        { parameterKey: 'smear', value: 'Negative' },
+      ],
+    };
+    await post(`${lo}/collect-sample`, lab1.auth);
+    await post(`${lo}/reject-sample`, lab1.auth, { reason: 'Clotted sample' });
+    await post(`${lo}/recollect`, lab1.auth);
+    await post(`${lo}/collect-sample`, lab1.auth);
+    await post(`${lo}/start-processing`, lab1.auth);
+    const item = `${lo}/items/${work.body.data.items[0].id}`;
+    await api().put(`/api/v1${item}/results`).set(lab1.auth).send(results);
+    await post(`${lo}/send-back`, lab2.auth, { reason: 'Recheck please' });
+    await api().put(`/api/v1${item}/results`).set(lab1.auth).send(results);
+    await post(`${lo}/verify`, lab2.auth);
+    await post(`${lo}/release`, lab2.auth);
+    await post(`${item}/revise`, lab1.auth, { ...results, reason: 'Recalibrated analyser' });
+    await post(`${item}/verify-revision`, lab2.auth);
+    await post(`${lo}/acknowledge`, drToday.auth);
     // prescription.view, encounter.amend, prescription.cancel + prescription.reissue, then the
     // reissued draft is issued and completed by the job (prescription.complete)
     await api().get(`/api/v1/prescriptions/${rx.body.data.id}`).set(drToday.auth);

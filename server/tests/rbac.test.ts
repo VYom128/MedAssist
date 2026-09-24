@@ -18,6 +18,7 @@ import {
   createPatient,
   createSchedule,
   insertAppointment,
+  createLabTest,
   insertLabOrder,
   nextWeekday,
 } from './helpers/fixtures.js';
@@ -232,6 +233,48 @@ async function buildContext(role: Role): Promise<Ctx> {
     ],
     releasedAt: new Date(),
   });
+  // Step 2: an order in each workflow status. `target` (another lab technician) entered the
+  // results and made the pending revision, so a lab tech caller may verify them.
+  const hbTest = await createLabTest();
+  const workflow = (status: string, extra: Record<string, unknown> = {}) =>
+    insertLabOrder({
+      patient: patient.id,
+      doctor: doctorId,
+      status,
+      encounter: signedEncounter,
+      appointment: signedAppt._id,
+      tests: [{ _id: hbTest._id, code: hbTest.code, name: hbTest.name, pricePaise: 100 }],
+      ...extra,
+    });
+  const hbItem = (status: string, extra: Record<string, unknown> = {}) => ({
+    test: hbTest._id,
+    testSnapshot: { code: hbTest.code, name: hbTest.name, pricePaise: 100 },
+    status,
+    results: [{ parameterKey: 'hb', name: 'Haemoglobin', value: 14, flag: 'normal' }],
+    enteredBy: target._id,
+    enteredAt: new Date(),
+    ...extra,
+  });
+  const collected = await workflow('sample_collected', {
+    sample: { sampleId: `S99-${String(n).padStart(6, '0')}`, collectedAt: new Date() },
+  });
+  const rejected = await workflow('sample_rejected');
+  const processing = await workflow('processing');
+  const entered = await workflow('result_entered', { items: [hbItem('result_entered')] });
+  const verified = await workflow('verified', { items: [hbItem('verified')] });
+  const revision = await workflow('released', {
+    items: [
+      hbItem('verified', {
+        pendingRevision: {
+          results: [{ parameterKey: 'hb', name: 'Haemoglobin', value: 13, flag: 'normal' }],
+          reason: 'Matrix correction',
+          by: target._id,
+          at: new Date(),
+        },
+      }),
+    ],
+    releasedAt: new Date(),
+  });
   return {
     me,
     targetId: target._id.toString(),
@@ -271,6 +314,15 @@ async function buildContext(role: Role): Promise<Ctx> {
     labOrderId: labOrder._id.toString(),
     labItemId: labOrder.items[0]!._id.toString(),
     releasedLabOrderId: releasedLabOrder._id.toString(),
+    releasedLabItemId: releasedLabOrder.items[0]!._id.toString(),
+    collectedLabOrderId: collected._id.toString(),
+    rejectedLabOrderId: rejected._id.toString(),
+    processingLabOrderId: processing._id.toString(),
+    processingLabItemId: processing.items[0]!._id.toString(),
+    enteredLabOrderId: entered._id.toString(),
+    verifiedLabOrderId: verified._id.toString(),
+    revisionLabOrderId: revision._id.toString(),
+    revisionLabItemId: revision.items[0]!._id.toString(),
     n,
   };
 }
@@ -317,6 +369,15 @@ const send = (row: Row, c: Ctx | null) => {
       labOrderId: zero,
       labItemId: zero,
       releasedLabOrderId: zero,
+      releasedLabItemId: zero,
+      collectedLabOrderId: zero,
+      rejectedLabOrderId: zero,
+      processingLabOrderId: zero,
+      processingLabItemId: zero,
+      enteredLabOrderId: zero,
+      verifiedLabOrderId: zero,
+      revisionLabOrderId: zero,
+      revisionLabItemId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
