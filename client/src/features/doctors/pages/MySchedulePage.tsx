@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAppSelector } from '../../../app/hooks';
-import PageHeader from '../../../components/PageHeader';
+import PageHeader from '../../../components/ui/PageHeader';
 import Tabs from '../../../components/ui/Tabs';
 import LeaveTab from '../components/LeaveTab';
 import ScheduleTab from '../components/ScheduleTab';

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
 import Button from '../../../components/ui/Button';
+import { buttonClass } from '../../../components/ui/buttonClass';
 import ConfirmDialog from '../../../components/ui/ConfirmDialog';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { selectCurrentUser } from '../../auth/authSlice';
@@ -61,14 +62,13 @@ export default function UserActions({
     }
   };
 
-  const iconButton = 'px-2.5 py-1.5';
   return (
     <div className="flex flex-wrap justify-end gap-1.5">
       {showEdit && (
         <Link
           to={`/admin/users/${user.id}`}
           aria-label={`Edit ${name}`}
-          className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-brand-600"
+          className={buttonClass('secondary', 'sm')}
         >
           <Pencil className="h-4 w-4" aria-hidden="true" /> Edit
         </Link>
@@ -76,7 +76,7 @@ export default function UserActions({
       {user.isActive && !isSelf && (
         <Button
           variant="secondary"
-          className={iconButton}
+          size="sm"
           onClick={() => setPending('deactivate')}
           aria-label={`Deactivate ${name}`}
         >
@@ -86,7 +86,7 @@ export default function UserActions({
       {!user.isActive && (
         <Button
           variant="secondary"
-          className={iconButton}
+          size="sm"
           onClick={() => setPending('activate')}
           aria-label={`Activate ${name}`}
         >
@@ -96,7 +96,7 @@ export default function UserActions({
       {user.isLocked && (
         <Button
           variant="secondary"
-          className={iconButton}
+          size="sm"
           onClick={() => setPending('unlock')}
           aria-label={`Unlock ${name}`}
         >
@@ -106,7 +106,7 @@ export default function UserActions({
       {user.isActive && (
         <Button
           variant="secondary"
-          className={iconButton}
+          size="sm"
           onClick={() => setPending('reset-password')}
           aria-label={`Send password reset to ${name}`}
         >
@@ -124,7 +124,7 @@ export default function UserActions({
         onCancel={() => setPending(null)}
       >
         <p>
-          <span className="font-medium text-slate-800">{name}</span> ({user.email})
+          <span className="font-semibold text-ink">{name}</span> ({user.email})
         </p>
         <p className="mt-2">{pending ? CONFIRM[pending].body : ''}</p>
       </ConfirmDialog>

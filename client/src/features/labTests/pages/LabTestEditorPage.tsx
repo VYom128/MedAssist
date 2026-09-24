@@ -1,18 +1,19 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeft, Plus } from 'lucide-react';
+import { FlaskConical, ListTree, Plus } from 'lucide-react';
 import { useEffect } from 'react';
 import { Controller, FormProvider, useFieldArray, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import PageHeader from '../../../components/PageHeader';
+import { useNavigate, useParams } from 'react-router-dom';
 import StatusToggleButton from '../../../components/StatusToggleButton';
 import Alert from '../../../components/ui/Alert';
+import BackLink from '../../../components/ui/BackLink';
 import Button from '../../../components/ui/Button';
-import Card from '../../../components/ui/Card';
 import ErrorState from '../../../components/ui/ErrorState';
 import Input from '../../../components/ui/Input';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
 import MoneyInput from '../../../components/ui/MoneyInput';
+import PageHeader from '../../../components/ui/PageHeader';
+import SectionCard from '../../../components/ui/SectionCard';
 import Select from '../../../components/ui/Select';
 import Textarea from '../../../components/ui/Textarea';
 import { LAB_SAMPLE_TYPES, LAB_TEST_CATEGORIES, optionsOf } from '../../../constants/catalog';
@@ -54,13 +55,8 @@ export default function LabTestEditorPage() {
   const query = useGetLabTestQuery(id ?? '', { skip: isNew });
 
   return (
-    <section className="mx-auto w-full max-w-5xl">
-      <Link
-        to="/admin/lab-tests"
-        className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Lab tests
-      </Link>
+    <section className="mx-auto w-full max-w-form">
+      <BackLink to="/admin/lab-tests" label="Lab tests" />
       {isNew ? (
         <LabTestForm />
       ) : (
@@ -140,7 +136,12 @@ function LabTestForm({ test }: { test?: LabTest }) {
       />
       <form onSubmit={onSubmit} noValidate className="space-y-6">
         {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
-        <Card title="Test">
+        <SectionCard
+          title="Test"
+          description="What is ordered and billed, and how long results take."
+          icon={FlaskConical}
+          iconTone="consult"
+        >
           <div className="grid gap-4 sm:grid-cols-3">
             <Input
               label="Code"
@@ -195,10 +196,14 @@ function LabTestForm({ test }: { test?: LabTest }) {
               {...register('preparation')}
             />
           </div>
-        </Card>
+        </SectionCard>
 
-        <div className="space-y-4">
-          <h2 className="text-base font-semibold">Parameters</h2>
+        <SectionCard
+          title="Parameters"
+          description="Each value the lab records, with its unit and reference ranges."
+          icon={ListTree}
+          bodyClassName="space-y-4"
+        >
           {errors.parameters?.root?.message && (
             <Alert tone="error">{errors.parameters.root.message}</Alert>
           )}
@@ -214,9 +219,9 @@ function LabTestForm({ test }: { test?: LabTest }) {
           <Button variant="secondary" onClick={() => parameters.append(emptyParameter())}>
             <Plus className="h-4 w-4" aria-hidden="true" /> Add parameter
           </Button>
-        </div>
+        </SectionCard>
 
-        <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/95 py-3 sm:flex-row sm:justify-end">
+        <div className="sticky bottom-0 z-10 -mx-4 flex flex-col-reverse gap-2 border-t border-line bg-surface/90 px-4 py-3 backdrop-blur-md sm:mx-0 sm:flex-row sm:justify-end sm:rounded-card sm:border sm:shadow-card-hover">
           <Button variant="secondary" onClick={() => navigate('/admin/lab-tests')}>
             Cancel
           </Button>

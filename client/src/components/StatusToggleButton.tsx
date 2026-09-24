@@ -1,3 +1,4 @@
+import { CircleCheck, CircleMinus } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import { getQueryErrorMessage } from '../utils/http';
@@ -51,11 +52,17 @@ export default function StatusToggleButton({
   return (
     <>
       <Button
-        variant={active ? 'ghost' : 'secondary'}
-        className={size === 'small' ? '!px-2 !py-1' : ''}
+        variant={active ? 'ghost' : 'soft'}
+        size={size === 'small' ? 'sm' : 'md'}
+        className={active ? 'hover:text-danger-700' : ''}
         onClick={() => setOpen(true)}
         aria-label={`${verb} ${name}`}
       >
+        {active ? (
+          <CircleMinus className="h-4 w-4" aria-hidden="true" />
+        ) : (
+          <CircleCheck className="h-4 w-4" aria-hidden="true" />
+        )}
         {verb}
       </Button>
       <ConfirmDialog

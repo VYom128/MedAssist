@@ -1,14 +1,15 @@
-import { Plus, Receipt, Search } from 'lucide-react';
+import { Pencil, Plus, Receipt, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import PageHeader from '../../../components/PageHeader';
 import StatusToggleButton from '../../../components/StatusToggleButton';
 import Badge from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
+import Code from '../../../components/ui/Code';
 import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
 import FilterBar from '../../../components/ui/FilterBar';
 import Input from '../../../components/ui/Input';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
 import Pagination from '../../../components/ui/Pagination';
 import Select from '../../../components/ui/Select';
 import StatusBadge from '../../../components/ui/StatusBadge';
@@ -60,49 +61,61 @@ export default function ServicesPage() {
   const filtered = list.hasAny('q', 'department', 'type', 'status');
 
   const columns: Column<AdminService>[] = [
-    { key: 'code', header: 'Code', cell: (s) => <span className="font-mono">{s.code}</span> },
-    { key: 'name', header: 'Name', cell: (s) => <span className="font-medium">{s.name}</span> },
+    { key: 'code', header: 'Code', hideOnCard: true, cell: (s) => <Code>{s.code}</Code> },
+    {
+      key: 'name',
+      header: 'Name',
+      hideOnCard: true,
+      cell: (s) => <span className="font-semibold text-ink">{s.name}</span>,
+    },
     {
       key: 'department',
       header: 'Department',
-      cell: (s) => s.department?.name ?? <span className="text-slate-500">Clinic-wide</span>,
+      cell: (s) => s.department?.name ?? <span className="text-muted">Clinic-wide</span>,
     },
     {
       key: 'type',
       header: 'Type',
-      cell: (s) => <Badge tone="info">{SERVICE_TYPE_LABELS[s.type]}</Badge>,
+      cell: (s) => <Badge tone="neutral">{SERVICE_TYPE_LABELS[s.type]}</Badge>,
     },
-    { key: 'duration', header: 'Duration', cell: (s) => `${s.durationMinutes} min` },
+    {
+      key: 'duration',
+      header: 'Duration',
+      cell: (s) => <span className="tabular">{s.durationMinutes} min</span>,
+    },
     {
       key: 'price',
       header: 'Price',
       className: 'text-right whitespace-nowrap',
-      cell: (s) => formatINR(s.pricePaise),
+      cell: (s) => (
+        <span className="tabular font-semibold text-ink">{formatINR(s.pricePaise)}</span>
+      ),
     },
     {
       key: 'tax',
       header: 'Tax',
       cell: (s) =>
         s.taxRateBps === null ? (
-          <span className="text-slate-500">Default</span>
+          <span className="text-muted">Default</span>
         ) : (
-          formatPercentFromBps(s.taxRateBps)
+          <span className="tabular">{formatPercentFromBps(s.taxRateBps)}</span>
         ),
     },
     { key: 'status', header: 'Status', cell: (s) => <StatusBadge active={s.isActive} /> },
     {
       key: 'actions',
+      cardFooter: true,
       header: 'Actions',
       className: 'text-right',
       cell: (s) => (
         <div className="flex justify-end gap-1">
           <Button
             variant="ghost"
-            className="!px-2 !py-1"
+            size="sm"
             onClick={() => setEditing(s)}
             aria-label={`Edit ${s.name}`}
           >
-            Edit
+            <Pencil className="h-4 w-4" aria-hidden="true" /> Edit
           </Button>
           <StatusToggleButton
             size="small"
@@ -116,7 +129,7 @@ export default function ServicesPage() {
   ];
 
   return (
-    <section className="mx-auto w-full max-w-6xl">
+    <section>
       <PageHeader
         title="Services"
         description="Consultations, procedures and other billable items."
@@ -143,7 +156,7 @@ export default function ServicesPage() {
           placeholder="Name or code"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          trailing={<Search className="mr-1 h-4 w-4 text-slate-400" aria-hidden="true" />}
+          trailing={<Search className="mr-2 h-4 w-4 text-subtle" aria-hidden="true" />}
         />
         <Select
           label="Department"
@@ -194,7 +207,18 @@ export default function ServicesPage() {
       )}
       {data && data.items.length > 0 && (
         <div aria-busy={isFetching || undefined}>
-          <Table caption="Services" columns={columns} rows={data.items} rowKey={(s) => s.id} />
+          <Table
+            caption="Services"
+            columns={columns}
+            rows={data.items}
+            rowKey={(s) => s.id}
+            cardHeader={(s) => (
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-semibold text-ink">{s.name}</p>
+                <Code>{s.code}</Code>
+              </div>
+            )}
+          />
           <Pagination meta={data.meta} onPageChange={(p) => list.update({ page: String(p) })} />
         </div>
       )}

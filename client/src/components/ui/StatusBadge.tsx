@@ -1,6 +1,6 @@
-import Badge from './Badge';
+import StatusPill from './StatusPill';
 
 /** Active / Inactive for master data (departments, services, doctors, lab tests). */
 export default function StatusBadge({ active }: { active: boolean }) {
-  return active ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>;
+  return <StatusPill domain="record" status={active ? 'active' : 'inactive'} />;
 }

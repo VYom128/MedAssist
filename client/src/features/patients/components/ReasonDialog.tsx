@@ -64,7 +64,7 @@ export default function ReasonDialog({
       }
     >
       <div className="space-y-3">
-        {children && <div className="text-sm text-slate-600">{children}</div>}
+        {children && <div className="text-sm text-muted">{children}</div>}
         {error && <Alert tone="error">{error}</Alert>}
         <Textarea
           label={label}

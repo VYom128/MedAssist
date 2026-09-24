@@ -31,6 +31,10 @@ const defaults = (): LeaveFormValues => ({
  * POST /doctors/:id/leaves (spec §4.13): whole day(s), or a time range on one day, entered in
  * clinic time (times are converted to UTC before sending).
  */
+/** A radio option drawn as a selectable card (the native radio stays visible and focusable). */
+const RADIO_CARD =
+  'flex min-h-11 cursor-pointer items-center gap-2 rounded-control border border-line-strong bg-surface px-3 font-medium text-body transition-colors hover:border-line-control has-checked:border-primary-600 has-checked:bg-primary-50 has-checked:text-primary-700 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-primary-600';
+
 export default function AddLeaveModal({
   doctorId,
   open,
@@ -93,13 +97,25 @@ export default function AddLeaveModal({
       <form id="leave-form" onSubmit={onSubmit} noValidate className="space-y-4">
         {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
         <fieldset>
-          <legend className="text-sm font-medium text-slate-700">Length</legend>
-          <div className="mt-1 flex gap-4 text-sm">
-            <label className="flex items-center gap-2">
-              <input type="radio" value="fullDay" {...register('mode')} /> Full day(s)
+          <legend className="text-sm font-medium text-ink">Length</legend>
+          <div className="mt-1.5 grid grid-cols-2 gap-2 text-sm">
+            <label className={RADIO_CARD}>
+              <input
+                type="radio"
+                value="fullDay"
+                className="h-4 w-4 accent-primary-600"
+                {...register('mode')}
+              />{' '}
+              Full day(s)
             </label>
-            <label className="flex items-center gap-2">
-              <input type="radio" value="range" {...register('mode')} /> Part of a day
+            <label className={RADIO_CARD}>
+              <input
+                type="radio"
+                value="range"
+                className="h-4 w-4 accent-primary-600"
+                {...register('mode')}
+              />{' '}
+              Part of a day
             </label>
           </div>
         </fieldset>
@@ -120,7 +136,7 @@ export default function AddLeaveModal({
               {...register('endDate')}
             />
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <TimeInput
                 label="From"
                 error={errors.startTime?.message}
@@ -142,7 +158,7 @@ export default function AddLeaveModal({
           error={errors.reason?.message}
           {...register('reason')}
         />
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted">
           Times are in the clinic timezone ({getClinicTimezone()}).
         </p>
       </form>

@@ -22,16 +22,17 @@ export default function Pagination({
   return (
     <nav
       aria-label="Pagination"
-      className="mt-4 flex flex-col items-center justify-between gap-3 text-sm text-slate-600 sm:flex-row"
+      className="mt-4 flex flex-col items-center justify-between gap-3 text-sm text-muted sm:flex-row"
     >
-      <p>
-        Showing <span className="font-medium">{from}</span>–
-        <span className="font-medium">{to}</span> of{' '}
-        <span className="font-medium">{meta.total}</span>
+      <p className="tabular">
+        Showing <span className="font-semibold text-ink">{from}</span>–
+        <span className="font-semibold text-ink">{to}</span> of{' '}
+        <span className="font-semibold text-ink">{meta.total}</span>
       </p>
       <div className="flex gap-2">
         <Button
           variant="secondary"
+          size="sm"
           onClick={() => onPageChange(meta.page - 1)}
           disabled={meta.page <= 1}
           aria-label="Previous page"
@@ -40,6 +41,7 @@ export default function Pagination({
         </Button>
         <Button
           variant="secondary"
+          size="sm"
           onClick={() => onPageChange(meta.page + 1)}
           disabled={meta.page >= meta.totalPages}
           aria-label="Next page"

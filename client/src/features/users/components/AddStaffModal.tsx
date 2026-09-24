@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
+import FormSection from '../../../components/ui/FormSection';
 import Input from '../../../components/ui/Input';
 import Modal from '../../../components/ui/Modal';
 import Select from '../../../components/ui/Select';
@@ -64,29 +65,42 @@ export default function AddStaffModal({ open, onClose }: { open: boolean; onClos
         </>
       }
     >
-      <form id="add-staff-form" onSubmit={onSubmit} noValidate className="space-y-4">
+      <form id="add-staff-form" onSubmit={onSubmit} noValidate className="space-y-6">
         {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Input label="First name" error={errors.firstName?.message} {...register('firstName')} />
-          <Input label="Last name" error={errors.lastName?.message} {...register('lastName')} />
-        </div>
-        <Input label="Email" type="email" error={errors.email?.message} {...register('email')} />
-        <Input
-          label="Mobile number (optional)"
-          type="tel"
-          error={errors.phone?.message}
-          {...register('phone')}
-        />
-        <Select
-          label="Role"
-          placeholder="Choose a role"
-          options={ROLE_OPTIONS}
-          error={errors.role?.message}
-          {...register('role')}
-        />
-        <p className="text-xs text-slate-500">
-          They will get an email with a link to set their password (valid 72 hours).
-        </p>
+        <FormSection title="Person">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              label="First name"
+              error={errors.firstName?.message}
+              {...register('firstName')}
+            />
+            <Input label="Last name" error={errors.lastName?.message} {...register('lastName')} />
+            <Input
+              label="Email"
+              type="email"
+              error={errors.email?.message}
+              {...register('email')}
+            />
+            <Input
+              label="Mobile number (optional)"
+              type="tel"
+              error={errors.phone?.message}
+              {...register('phone')}
+            />
+          </div>
+        </FormSection>
+        <FormSection
+          title="Access"
+          description="They will get an email with a link to set their password (valid 72 hours)."
+        >
+          <Select
+            label="Role"
+            placeholder="Choose a role"
+            options={ROLE_OPTIONS}
+            error={errors.role?.message}
+            {...register('role')}
+          />
+        </FormSection>
       </form>
     </Modal>
   );

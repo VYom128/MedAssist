@@ -55,11 +55,13 @@ export default function TagInput({
   return (
     <FormField id={id} label={label} hint={hint} error={error}>
       {({ inputId, describedBy, invalid }) => (
-        <div className={`${controlClass(error)} flex flex-wrap items-center gap-1.5 py-1.5`}>
+        <div
+          className={`${controlClass(error)} flex flex-wrap items-center gap-1.5 py-1.5! focus-within:ring-4 ${error ? 'focus-within:border-danger-600 focus-within:ring-danger-100' : 'focus-within:border-primary-600 focus-within:ring-primary-100'}`}
+        >
           {value.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700"
+              className="inline-flex items-center gap-1 rounded-full bg-primary-50 py-0.5 pr-1 pl-2.5 text-xs font-semibold text-primary-700"
             >
               {tag}
               {!disabled && (
@@ -67,7 +69,7 @@ export default function TagInput({
                   type="button"
                   onClick={() => onChange(value.filter((t) => t !== tag))}
                   aria-label={`Remove ${tag}`}
-                  className="rounded-full p-0.5 text-slate-500 hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-brand-600"
+                  className="rounded-full p-0.5 text-primary-700 hover:bg-primary-100 focus-visible:outline-2 focus-visible:outline-primary-600"
                 >
                   <X className="h-3 w-3" aria-hidden="true" />
                 </button>
@@ -85,7 +87,7 @@ export default function TagInput({
             onChange={(e) => setText(e.target.value)}
             onKeyDown={onKeyDown}
             onBlur={add}
-            className="min-w-[8rem] flex-1 border-0 bg-transparent p-0.5 text-sm outline-none"
+            className="min-w-[8rem] flex-1 border-0 bg-transparent p-0.5 text-sm outline-none placeholder:text-subtle"
           />
         </div>
       )}

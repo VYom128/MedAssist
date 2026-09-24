@@ -1,12 +1,171 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/plus-jakarta-sans/wght.css';
 
+/*
+ * MedAssist design tokens (docs/DESIGN_SYSTEM.md). Tailwind v4 turns each variable into
+ * utilities: --color-ink → text-ink / bg-ink, --radius-card → rounded-card, and so on.
+ */
 @theme {
-  --color-brand-50: #eff8ff;
-  --color-brand-100: #dbeefe;
-  --color-brand-600: #0b6bcb;
-  --color-brand-700: #0a56a3;
+  --font-sans:
+    'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* Surfaces and lines */
+  --color-canvas: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f9fafc;
+  --color-line: #e6e8f0;
+  --color-line-strong: #d5d9e4;
+  /* Form control outlines and switch tracks: 3:1 against white (WCAG 1.4.11). */
+  --color-line-control: #8a93a6;
+
+  /* Text */
+  --color-ink: #0f1b3d;
+  --color-body: #1e293b;
+  --color-muted: #5b6478;
+  --color-subtle: #6b7385;
+
+  /* Primary: 600 for filled buttons and links, 400 only for charts and decoration. */
+  --color-primary-50: #eef0fd;
+  --color-primary-100: #e0e3fb;
+  --color-primary-200: #c7ccf7;
+  --color-primary-300: #a6aef3;
+  --color-primary-400: #7c86f0;
+  --color-primary-500: #6470e6;
+  --color-primary-600: #4f5bd5;
+  --color-primary-700: #3f49b8;
+  --color-primary-800: #343c94;
+  --color-primary-900: #2b3175;
+
+  /* Legacy brand-* classes point at primary until every page is migrated. */
+  --color-brand-50: var(--color-primary-50);
+  --color-brand-100: var(--color-primary-100);
+  --color-brand-600: var(--color-primary-600);
+  --color-brand-700: var(--color-primary-700);
+
+  /* Status tones: 50 background, 500 dot, 700 text (see components/ui/statusStyles.ts). */
+  --color-info-50: #eff5ff;
+  --color-info-100: #dbe8ff;
+  --color-info-500: #3b82f6;
+  --color-info-700: #1d4ed8;
+  --color-success-50: #ecfbf4;
+  --color-success-100: #d1f5e3;
+  --color-success-500: #10b981;
+  --color-success-700: #047857;
+  --color-warning-50: #fff7e8;
+  --color-warning-100: #feebc8;
+  --color-warning-500: #f59e0b;
+  --color-warning-700: #a14a06;
+  --color-consult-50: #f4f1ff;
+  --color-consult-100: #e6dfff;
+  --color-consult-500: #8b5cf6;
+  --color-consult-700: #6232c9;
+  --color-danger-50: #fff0f1;
+  --color-danger-100: #ffdfe3;
+  --color-danger-500: #f43f5e;
+  --color-danger-600: #d22d4e;
+  --color-danger-700: #be123c;
+  --color-neutral-50: #f1f3f7;
+  --color-neutral-100: #e6e9f0;
+  --color-neutral-500: #8a93a6;
+  --color-neutral-700: #3f4758;
+
+  /* Type scale (body text is text-sm, captions text-xs) */
+  --text-page: 1.5rem;
+  --text-page--line-height: 2rem;
+  --text-page--letter-spacing: -0.015em;
+  --text-page--font-weight: 700;
+  --text-section: 1.125rem;
+  --text-section--line-height: 1.75rem;
+  --text-section--letter-spacing: -0.01em;
+  --text-section--font-weight: 600;
+  --text-card: 1rem;
+  --text-card--line-height: 1.5rem;
+  --text-card--font-weight: 600;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-caption--letter-spacing: 0.04em;
+  --text-caption--font-weight: 600;
+  --text-stat: 1.75rem;
+  --text-stat--line-height: 2.125rem;
+  --text-stat--letter-spacing: -0.02em;
+  --text-stat--font-weight: 700;
+
+  /* Shape and elevation */
+  --radius-card: 1.25rem;
+  --radius-control: 0.75rem;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04);
+  --shadow-card-hover: 0 4px 12px -2px rgb(16 24 40 / 0.08);
+  --shadow-overlay: 0 16px 40px -8px rgb(15 27 61 / 0.18);
+
+  /* Layout */
+  --container-content: 80rem;
+  --container-form: 48rem;
+
+  /* Motion (always behind motion-safe:). 150ms hover/press, 200ms menus/tabs, 250ms modals/sheets. */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --animate-fade-up: fade-up 250ms var(--ease-standard) both;
+  --animate-fade-in: fade-in 200ms var(--ease-standard) both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
 }
 
-body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-canvas font-sans text-body antialiased;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply text-ink;
+  }
+  /* A visible focus ring for anything that does not style its own. */
+  :focus-visible {
+    outline: 2px solid var(--color-primary-600);
+    outline-offset: 2px;
+  }
+}
+
+/* Numbers that should line up: money, times, MRNs, tokens, counts. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -2,12 +2,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useState } from 'react';
 import { FormProvider, get, useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import PageHeader from '../../../components/PageHeader';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
-import Card from '../../../components/ui/Card';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
 import Tabs from '../../../components/ui/Tabs';
 import { useUnsavedChanges } from '../../../hooks/useUnsavedChanges';
 import { formatDateTime } from '../../../utils/dates';
@@ -55,7 +54,7 @@ const SECTIONS: Record<SettingsTab, () => React.JSX.Element> = {
 export default function SettingsPage() {
   const { data, isLoading, isError, error, refetch } = useGetSettingsQuery();
   return (
-    <section className="mx-auto w-full max-w-4xl">
+    <section className="mx-auto w-full max-w-form">
       <PageHeader
         title="Clinic settings"
         description={
@@ -127,24 +126,26 @@ function SettingsForm({ settings }: { settings: AdminSettings }) {
   return (
     <FormProvider {...form}>
       <form onSubmit={onSubmit} noValidate>
-        <Card>
-          <Tabs
-            label="Settings sections"
-            tabs={TABS.map((t) => ({ ...t, alert: tabHasError(t.id) }))}
-            value={tab}
-            onChange={(id) => setTab(id as SettingsTab)}
-          >
-            {errors.root && (
-              <div className="mb-4">
-                <Alert tone="error">{errors.root.message}</Alert>
-              </div>
-            )}
-            <Section />
-          </Tabs>
-        </Card>
-        <div className="sticky bottom-0 mt-4 flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50/95 py-3 sm:flex-row sm:items-center sm:justify-end">
+        <Tabs
+          variant="pills"
+          label="Settings sections"
+          tabs={TABS.map((t) => ({ ...t, alert: tabHasError(t.id) }))}
+          value={tab}
+          onChange={(id) => setTab(id as SettingsTab)}
+        >
+          {errors.root && (
+            <div className="mb-4">
+              <Alert tone="error">{errors.root.message}</Alert>
+            </div>
+          )}
+          <Section />
+        </Tabs>
+        <div className="sticky bottom-0 z-10 -mx-4 mt-6 flex flex-col-reverse gap-2 border-t border-line bg-surface/90 px-4 py-3 backdrop-blur-md sm:mx-0 sm:flex-row sm:items-center sm:justify-end sm:rounded-card sm:border sm:shadow-card-hover">
           {isDirty && (
-            <p className="text-sm text-slate-600 sm:mr-auto">You have unsaved changes.</p>
+            <p className="flex items-center gap-2 text-sm font-medium text-warning-700 sm:mr-auto">
+              <span aria-hidden="true" className="h-2 w-2 rounded-full bg-warning-500" />
+              You have unsaved changes.
+            </p>
           )}
           <Button
             variant="secondary"

@@ -1,5 +1,8 @@
-import Badge from '../../../components/ui/Badge';
-import { GENDER_LABELS } from '../../../constants/catalog';
+import type { ReactNode } from 'react';
+import Code from '../../../components/ui/Code';
+import RecordHeader from '../../../components/ui/RecordHeader';
+import StatusPill from '../../../components/ui/StatusPill';
+import { BLOOD_GROUP_LABELS, GENDER_LABELS } from '../../../constants/catalog';
 import { formatPhone } from '../../../utils/phone';
 import type { Patient } from '../api';
 import { portalState } from '../portal';
@@ -7,31 +10,54 @@ import AllergyChips from './AllergyChips';
 import PortalBadge from './PortalBadge';
 
 /**
- * Name, MRN, age/sex, phone, portal status, and allergies in red when the role may see them
- * (not admins, spec §2.5).
+ * Header card: avatar, name, MRN, age/sex, blood group, phone, portal status, and allergies in
+ * red when the role may see them (not admins, spec §2.5). `actions` holds the page's actions.
  */
-export default function PatientHeader({ patient }: { patient: Patient }) {
+export default function PatientHeader({
+  patient,
+  actions,
+}: {
+  patient: Patient;
+  actions?: ReactNode;
+}) {
+  const hasAllergies = (patient.allergies?.length ?? 0) > 0;
   return (
-    <header className="mb-6 space-y-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold break-words">{patient.fullName}</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            <span className="font-mono">{patient.mrn}</span> · {patient.age} y ·{' '}
-            {GENDER_LABELS[patient.gender]} · {formatPhone(patient.phone)}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-1.5">
+    <RecordHeader
+      name={patient.fullName}
+      meta={
+        <>
+          <Code>{patient.mrn}</Code>
+          <span className="tabular">
+            {patient.age} y · {GENDER_LABELS[patient.gender]}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>Blood group {BLOOD_GROUP_LABELS[patient.bloodGroup]}</span>
+          <span aria-hidden="true">·</span>
+          <span className="tabular">{formatPhone(patient.phone)}</span>
+        </>
+      }
+      pills={
+        <>
           <PortalBadge state={portalState(patient.portal, patient.hasPortal)} />
-          {!patient.isActive && <Badge tone="neutral">Inactive</Badge>}
-        </div>
-      </div>
+          {!patient.isActive && <StatusPill domain="record" status="inactive" />}
+        </>
+      }
+      actions={actions}
+    >
       {patient.allergies && (
-        <div>
-          <h2 className="sr-only">Allergies</h2>
+        <div
+          className={`rounded-control border p-3 ${
+            hasAllergies ? 'border-danger-100 bg-danger-50/50' : 'border-line bg-surface-muted'
+          }`}
+        >
+          <h2
+            className={`mb-2 text-caption uppercase ${hasAllergies ? 'text-danger-700' : 'text-muted'}`}
+          >
+            Allergies
+          </h2>
           <AllergyChips allergies={patient.allergies} />
         </div>
       )}
-    </header>
+    </RecordHeader>
   );
 }

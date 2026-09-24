@@ -1,7 +1,8 @@
-import { ArrowLeft, History } from 'lucide-react';
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { History, Send } from 'lucide-react';
+import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
 import Alert from '../../../components/ui/Alert';
+import BackLink from '../../../components/ui/BackLink';
 import Card from '../../../components/ui/Card';
 import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
@@ -41,14 +42,7 @@ export default function PatientDetailPage() {
   const { data: patient, isLoading, isError, error, refetch } = useGetPatientQuery(id);
   const offerInvite = (location.state as { offerInvite?: boolean } | null)?.offerInvite;
 
-  const back = (
-    <Link
-      to={base}
-      className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
-    >
-      <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Patients
-    </Link>
-  );
+  const back = <BackLink to={base} label="Patients" />;
 
   if (isLoading) {
     return (
@@ -78,15 +72,14 @@ export default function PatientDetailPage() {
   return (
     <section className="mx-auto w-full max-w-5xl">
       {back}
-      <PatientHeader patient={patient} />
-      {isAdmin && (
-        <div className="-mt-3 mb-4 flex justify-end">
-          <PatientStatusActions patient={patient} />
-        </div>
-      )}
+      <PatientHeader
+        patient={patient}
+        actions={isAdmin ? <PatientStatusActions patient={patient} /> : undefined}
+      />
       {showInviteOffer && (
-        <div className="mb-4 flex flex-col gap-3 rounded-xl border border-brand-100 bg-brand-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-brand-700">
+        <div className="mb-6 flex flex-col gap-3 rounded-card border border-primary-100 bg-primary-50 p-4 motion-safe:animate-fade-in sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-2 text-sm text-primary-700">
+            <Send className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
             Invite {patient.firstName} to the patient portal to book appointments and see records
             online.
           </p>

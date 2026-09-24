@@ -1,15 +1,19 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeft } from 'lucide-react';
+import { PencilLine, ShieldCheck } from 'lucide-react';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Link, useParams } from 'react-router-dom';
-import PageHeader from '../../../components/PageHeader';
+import { useParams } from 'react-router-dom';
 import Alert from '../../../components/ui/Alert';
+import BackLink from '../../../components/ui/BackLink';
 import Badge from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
-import Card from '../../../components/ui/Card';
+import DescriptionList from '../../../components/ui/DescriptionList';
+import ErrorState from '../../../components/ui/ErrorState';
 import Input from '../../../components/ui/Input';
+import ListSkeleton from '../../../components/ui/ListSkeleton';
+import RecordHeader from '../../../components/ui/RecordHeader';
+import SectionCard from '../../../components/ui/SectionCard';
 import { ROLE_LABELS } from '../../../constants/roles';
 import { formatDateTime } from '../../../utils/dates';
 import { applyServerFieldErrors } from '../../../utils/forms';
@@ -25,15 +29,6 @@ const toForm = (u: AdminUser): UserEditValues => ({
   email: u.email,
   phone: u.phone ?? '',
 });
-
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="mt-0.5 font-medium text-slate-800">{children}</dd>
-    </div>
-  );
-}
 
 /** /admin/users/:id – account details, edit form and account actions. */
 export default function UserDetailPage() {
@@ -64,21 +59,12 @@ export default function UserDetailPage() {
     }
   });
 
-  const back = (
-    <Link
-      to="/admin/users"
-      className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:underline"
-    >
-      <ArrowLeft className="h-4 w-4" aria-hidden="true" /> All users
-    </Link>
-  );
+  const back = <BackLink to="/admin/users" label="All users" />;
 
   if (isLoading) {
     return (
-      <section className="mx-auto w-full max-w-4xl space-y-3" role="status">
-        <span className="sr-only">Loading user…</span>
-        <div className="h-8 w-48 animate-pulse rounded bg-slate-100" />
-        <div className="h-48 animate-pulse rounded-xl bg-slate-100" />
+      <section className="mx-auto w-full max-w-5xl">
+        <ListSkeleton label="Loading user…" rows={3} />
       </section>
     );
   }
@@ -86,80 +72,93 @@ export default function UserDetailPage() {
   if (isError || !user) {
     const notFound = isApiQueryError(error) && error.status === 404;
     return (
-      <section className="mx-auto w-full max-w-4xl space-y-3">
+      <section className="mx-auto w-full max-w-5xl">
         {back}
-        <Alert tone="error">
-          {notFound ? 'This user does not exist.' : getQueryErrorMessage(error)}
-        </Alert>
-        {!notFound && (
-          <Button variant="secondary" onClick={() => void refetch()}>
-            Try again
-          </Button>
+        {notFound ? (
+          <Alert tone="error">This user does not exist.</Alert>
+        ) : (
+          <ErrorState error={error} onRetry={() => void refetch()} />
         )}
       </section>
     );
   }
 
+  const name = `${user.firstName} ${user.lastName}`;
   return (
-    <section className="mx-auto w-full max-w-4xl space-y-4">
+    <section className="mx-auto w-full max-w-5xl">
       {back}
-      <PageHeader
-        title={`${user.firstName} ${user.lastName}`}
-        description={user.email}
+      <RecordHeader
+        name={name}
+        meta={<span className="break-all">{user.email}</span>}
+        pills={
+          <>
+            <Badge tone="primary">{ROLE_LABELS[user.role]}</Badge>
+            <UserStatusBadge user={user} />
+            {user.mustChangePassword && <Badge tone="warning">Password change pending</Badge>}
+          </>
+        }
         actions={<UserActions user={user} showEdit={false} />}
       />
 
-      <Card title="Account">
-        <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          <Detail label="Role">
-            <Badge tone="info">{ROLE_LABELS[user.role]}</Badge>
-          </Detail>
-          <Detail label="Status">
-            <UserStatusBadge user={user} />
-            {user.mustChangePassword && (
-              <span className="ml-1">
-                <Badge tone="warning">Password change pending</Badge>
-              </span>
-            )}
-          </Detail>
-          <Detail label="Last login">{formatDateTime(user.lastLoginAt)}</Detail>
-          <Detail label="Created">{formatDateTime(user.createdAt)}</Detail>
-          <Detail label="Failed login attempts">{user.failedLoginAttempts}</Detail>
-          {user.isLocked && <Detail label="Locked until">{formatDateTime(user.lockUntil)}</Detail>}
-        </dl>
-      </Card>
+      <div className="space-y-6">
+        <SectionCard title="Account" icon={ShieldCheck}>
+          <DescriptionList
+            columns={3}
+            items={[
+              { label: 'Last login', value: formatDateTime(user.lastLoginAt) },
+              { label: 'Created', value: formatDateTime(user.createdAt) },
+              {
+                label: 'Failed login attempts',
+                value: <span className="tabular">{user.failedLoginAttempts}</span>,
+              },
+              ...(user.isLocked
+                ? [{ label: 'Locked until', value: formatDateTime(user.lockUntil) }]
+                : []),
+            ]}
+          />
+        </SectionCard>
 
-      <Card title="Edit details">
-        <form onSubmit={onSubmit} noValidate className="space-y-4">
-          {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Input
-              label="First name"
-              error={errors.firstName?.message}
-              {...register('firstName')}
-            />
-            <Input label="Last name" error={errors.lastName?.message} {...register('lastName')} />
-            <Input
-              label="Email"
-              type="email"
-              error={errors.email?.message}
-              {...register('email')}
-            />
-            <Input
-              label="Mobile number"
-              type="tel"
-              error={errors.phone?.message}
-              {...register('phone')}
-            />
-          </div>
-          <p className="text-xs text-slate-500">
-            The role cannot be changed; create a new account instead.
-          </p>
-          <Button type="submit" loading={saving} disabled={!isDirty}>
-            Save changes
-          </Button>
+        <form onSubmit={onSubmit} noValidate>
+          <SectionCard
+            title="Edit details"
+            description="The role cannot be changed; create a new account instead."
+            icon={PencilLine}
+            footer={
+              <Button type="submit" loading={saving} disabled={!isDirty}>
+                Save changes
+              </Button>
+            }
+          >
+            <div className="space-y-4">
+              {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Input
+                  label="First name"
+                  error={errors.firstName?.message}
+                  {...register('firstName')}
+                />
+                <Input
+                  label="Last name"
+                  error={errors.lastName?.message}
+                  {...register('lastName')}
+                />
+                <Input
+                  label="Email"
+                  type="email"
+                  error={errors.email?.message}
+                  {...register('email')}
+                />
+                <Input
+                  label="Mobile number"
+                  type="tel"
+                  error={errors.phone?.message}
+                  {...register('phone')}
+                />
+              </div>
+            </div>
+          </SectionCard>
         </form>
-      </Card>
+      </div>
     </section>
   );
 }

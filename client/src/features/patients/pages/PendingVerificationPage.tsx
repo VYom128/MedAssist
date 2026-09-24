@@ -1,7 +1,9 @@
 import { IdCard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
+import { buttonClass } from '../../../components/ui/buttonClass';
 import Card from '../../../components/ui/Card';
+import IconChip from '../../../components/ui/IconChip';
 import { ROLE_HOME } from '../../../constants/roles';
 import { formatPhone } from '../../../utils/phone';
 import { selectCurrentUser } from '../../auth/authSlice';
@@ -20,27 +22,27 @@ export default function PendingVerificationPage() {
     : '';
 
   return (
-    <section className="mx-auto w-full max-w-2xl">
+    <section className="mx-auto w-full max-w-form">
       <Card>
         <div className="space-y-4 text-center">
-          <IdCard className="mx-auto h-12 w-12 text-brand-600" aria-hidden="true" />
-          <h1 className="text-2xl font-semibold">
+          <IconChip icon={IdCard} size="lg" className="mx-auto" />
+          <h1 className="text-page">
             {linked ? 'Your records are connected' : 'Almost there – show your photo ID'}
           </h1>
           {linked ? (
-            <p className="text-slate-600">The clinic has confirmed your identity.</p>
+            <p className="text-sm text-body">The clinic has confirmed your identity.</p>
           ) : (
             <>
-              <p className="text-slate-600">
+              <p className="text-sm text-body">
                 Your account has been created. We found an existing patient record with your phone
                 number and date of birth. To protect it, please show a photo ID (Aadhaar, PAN,
                 passport or driving licence) at the clinic reception to connect your records.
               </p>
-              <p className="text-slate-600">
+              <p className="text-sm text-body">
                 Until then you are logged in, but you will not see any records.
               </p>
               {clinic && (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted">
                   {clinic.name}
                   {address && ` · ${address}`}
                   {clinic.phone && ` · ${formatPhone(clinic.phone)}`}
@@ -48,10 +50,7 @@ export default function PendingVerificationPage() {
               )}
             </>
           )}
-          <Link
-            to={ROLE_HOME.patient}
-            className="inline-flex items-center justify-center rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
-          >
+          <Link to={ROLE_HOME.patient} className={buttonClass()}>
             Go to my dashboard
           </Link>
         </div>

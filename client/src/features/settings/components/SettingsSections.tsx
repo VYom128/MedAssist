@@ -1,7 +1,23 @@
+import {
+  Bell,
+  Building2,
+  CalendarClock,
+  CalendarCog,
+  Clock,
+  FlaskConical,
+  MapPin,
+  Phone,
+  Power,
+  Receipt,
+  Sparkles,
+  type LucideIcon,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Controller, get, useFormContext, type FieldPath } from 'react-hook-form';
+import FilterChip from '../../../components/ui/FilterChip';
 import Input from '../../../components/ui/Input';
 import SearchableSelect from '../../../components/ui/SearchableSelect';
+import SectionCard from '../../../components/ui/SectionCard';
 import Switch from '../../../components/ui/Switch';
 import Textarea from '../../../components/ui/Textarea';
 import {
@@ -35,12 +51,32 @@ function useField() {
   };
 }
 
-function Fieldset({ legend, children }: { legend: string; children: ReactNode }) {
+/** One settings card: title, one-line description, then its fields. */
+function Fieldset({
+  legend,
+  description,
+  icon,
+  tone = 'default',
+  children,
+}: {
+  legend: string;
+  description?: string;
+  icon?: LucideIcon;
+  /** `critical` marks a switch with wide effect (the AI kill switch). */
+  tone?: 'default' | 'critical';
+  children: ReactNode;
+}) {
   return (
-    <fieldset className="space-y-4">
-      <legend className="mb-2 text-sm font-semibold text-slate-900">{legend}</legend>
+    <SectionCard
+      title={legend}
+      description={description}
+      icon={icon}
+      iconTone={tone === 'critical' ? 'warning' : 'primary'}
+      className={tone === 'critical' ? 'border-warning-100 bg-warning-50/40' : ''}
+      bodyClassName="space-y-5"
+    >
       {children}
-    </fieldset>
+    </SectionCard>
   );
 }
 
@@ -67,29 +103,19 @@ function ToggleGroup<T extends string | number>({
           field.onChange(selected.includes(v) ? selected.filter((s) => s !== v) : [...selected, v]);
         return (
           <div role="group" aria-label={label}>
-            <p className="text-sm font-medium text-slate-700">{label}</p>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {options.map((o) => {
-                const on = selected.includes(o.value);
-                return (
-                  <button
-                    key={String(o.value)}
-                    type="button"
-                    aria-pressed={on}
-                    title={o.title}
-                    onClick={() => toggle(o.value)}
-                    className={`min-w-12 rounded-lg border px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-brand-600 ${
-                      on
-                        ? 'border-brand-600 bg-brand-600 text-white'
-                        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {o.label}
-                  </button>
-                );
-              })}
+            <p className="text-sm font-medium text-ink">{label}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {options.map((o) => (
+                <FilterChip
+                  key={String(o.value)}
+                  label={o.label}
+                  title={o.title}
+                  selected={selected.includes(o.value)}
+                  onClick={() => toggle(o.value)}
+                />
+              ))}
             </div>
-            {message && <p className="mt-1 text-sm text-rose-600">{message}</p>}
+            {message && <p className="mt-1.5 text-sm text-danger-700">{message}</p>}
           </div>
         );
       }}
@@ -126,8 +152,12 @@ function SwitchField({
 export function ClinicSection() {
   const f = useField();
   return (
-    <div className="space-y-8">
-      <Fieldset legend="Clinic">
+    <div className="space-y-6">
+      <Fieldset
+        legend="Clinic"
+        description="The clinic's name and registration details."
+        icon={Building2}
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Clinic name" {...f.text('name')} />
           <Input label="Tagline" {...f.text('tagline')} />
@@ -136,7 +166,7 @@ export function ClinicSection() {
           <Input label="GSTIN" {...f.text('gstin')} />
         </div>
       </Fieldset>
-      <Fieldset legend="Address">
+      <Fieldset legend="Address" icon={MapPin}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Address line 1" {...f.text('address.line1')} />
           <Input label="Address line 2" {...f.text('address.line2')} />
@@ -146,14 +176,18 @@ export function ClinicSection() {
           <Input label="Country" {...f.text('address.country')} />
         </div>
       </Fieldset>
-      <Fieldset legend="Contact">
+      <Fieldset legend="Contact" icon={Phone}>
         <div className="grid gap-4 sm:grid-cols-3">
           <Input label="Phone" type="tel" {...f.text('phone')} />
           <Input label="Email" type="email" {...f.text('email')} />
           <Input label="Website" type="url" placeholder="https://…" {...f.text('website')} />
         </div>
       </Fieldset>
-      <Fieldset legend="Region and hours">
+      <Fieldset
+        legend="Region and hours"
+        description="Timezone, currency and the days the clinic is open."
+        icon={Clock}
+      >
         <div className="grid gap-4 sm:grid-cols-2">
           <SearchableSelect
             label="Timezone"
@@ -180,48 +214,60 @@ export function ClinicSection() {
 export function AppointmentsSection() {
   const f = useField();
   return (
-    <Fieldset legend="Appointment rules">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Input
-          label="Default slot length (minutes)"
-          {...f.number('appointment.defaultSlotMinutes')}
+    <div className="space-y-6">
+      <Fieldset
+        legend="Appointment rules"
+        description="Slot length, how far ahead people can book, and cancellation limits."
+        icon={CalendarCog}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Input
+            label="Default slot length (minutes)"
+            {...f.number('appointment.defaultSlotMinutes')}
+          />
+          <Input
+            label="Booking window (days ahead)"
+            hint="How far ahead patients can book."
+            {...f.number('appointment.bookingWindowDays')}
+          />
+          <Input
+            label="Cancel / reschedule up to (hours before)"
+            {...f.number('appointment.minCancelHours')}
+          />
+          <Input
+            label="Active bookings per patient"
+            {...f.number('appointment.maxActiveBookingsPerPatient')}
+          />
+          <Input
+            label="Walk-in overbook per session"
+            {...f.number('appointment.walkInOverbookPerSession')}
+          />
+          <Input
+            label="No-show after (minutes past slot end)"
+            {...f.number('appointment.noShowGraceMinutes')}
+          />
+          <Input label="Reminder (hours before)" {...f.number('appointment.reminderHoursBefore')} />
+        </div>
+      </Fieldset>
+      <Fieldset legend="Online booking" icon={CalendarClock}>
+        <SwitchField
+          name="appointment.allowPatientSelfBooking"
+          label="Patients can book online"
+          description="When off, only reception can book appointments."
         />
-        <Input
-          label="Booking window (days ahead)"
-          hint="How far ahead patients can book."
-          {...f.number('appointment.bookingWindowDays')}
-        />
-        <Input
-          label="Cancel / reschedule up to (hours before)"
-          {...f.number('appointment.minCancelHours')}
-        />
-        <Input
-          label="Active bookings per patient"
-          {...f.number('appointment.maxActiveBookingsPerPatient')}
-        />
-        <Input
-          label="Walk-in overbook per session"
-          {...f.number('appointment.walkInOverbookPerSession')}
-        />
-        <Input
-          label="No-show after (minutes past slot end)"
-          {...f.number('appointment.noShowGraceMinutes')}
-        />
-        <Input label="Reminder (hours before)" {...f.number('appointment.reminderHoursBefore')} />
-      </div>
-      <SwitchField
-        name="appointment.allowPatientSelfBooking"
-        label="Patients can book online"
-        description="When off, only reception can book appointments."
-      />
-    </Fieldset>
+      </Fieldset>
+    </div>
   );
 }
 
 export function BillingSection() {
   const f = useField();
   return (
-    <Fieldset legend="Billing">
+    <Fieldset
+      legend="Billing"
+      description="Invoice numbering, tax and accepted payment methods."
+      icon={Receipt}
+    >
       <div className="grid gap-4 sm:grid-cols-2">
         <Input label="Invoice prefix" maxLength={6} {...f.text('billing.invoicePrefix')} />
         <Input label="Tax label" {...f.text('billing.taxLabel')} />
@@ -249,42 +295,62 @@ export function BillingSection() {
 
 export function LabSection() {
   return (
-    <Fieldset legend="Lab">
+    <Fieldset legend="Lab" description="How results are checked and flagged." icon={FlaskConical}>
       <SwitchField
         name="lab.requireDualVerification"
         label="Second lab technician verifies results"
         description="The person who entered results cannot verify them. Turn off if you have one lab technician."
       />
-      <SwitchField name="lab.criticalAlertEnabled" label="Alert the doctor about critical values" />
+      <div className="border-t border-line pt-5">
+        <SwitchField
+          name="lab.criticalAlertEnabled"
+          label="Alert the doctor about critical values"
+        />
+      </div>
     </Fieldset>
   );
 }
 
 export function AiSection() {
   return (
-    <Fieldset legend="AI features">
-      <SwitchField
-        name="ai.enabled"
-        label="AI features"
-        description="Turns every AI feature off when off."
-      />
-      <SwitchField name="ai.clinicalSummaryEnabled" label="Clinical summaries for doctors" />
-      <SwitchField
-        name="ai.patientExplanationEnabled"
-        label="Plain-language explanations for patients"
-      />
-      <ToggleGroup
-        name="ai.explanationLanguages"
-        label="Explanation languages"
-        options={EXPLANATION_LANGUAGES.map((l) => ({ value: l, label: LANGUAGE_LABELS[l] }))}
-      />
-    </Fieldset>
+    <div className="space-y-6">
+      <Fieldset
+        legend="Master switch"
+        description="Switch this off to stop every AI feature at once. Each feature below can also be switched off on its own."
+        icon={Power}
+        tone="critical"
+      >
+        <SwitchField
+          name="ai.enabled"
+          label="AI features"
+          description="Turns every AI feature off when off."
+        />
+      </Fieldset>
+      <Fieldset
+        legend="AI features"
+        description="AI never diagnoses or changes treatment. Doctors approve every clinical summary."
+        icon={Sparkles}
+      >
+        <SwitchField name="ai.clinicalSummaryEnabled" label="Clinical summaries for doctors" />
+        <div className="border-t border-line pt-5">
+          <SwitchField
+            name="ai.patientExplanationEnabled"
+            label="Plain-language explanations for patients"
+          />
+        </div>
+        <ToggleGroup
+          name="ai.explanationLanguages"
+          label="Explanation languages"
+          options={EXPLANATION_LANGUAGES.map((l) => ({ value: l, label: LANGUAGE_LABELS[l] }))}
+        />
+      </Fieldset>
+    </div>
   );
 }
 
 export function NotificationsSection() {
   return (
-    <Fieldset legend="Notifications">
+    <Fieldset legend="Notifications" icon={Bell}>
       <SwitchField
         name="notifications.emailEnabled"
         label="Email notifications"

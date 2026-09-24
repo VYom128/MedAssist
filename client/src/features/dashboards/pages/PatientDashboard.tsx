@@ -3,10 +3,14 @@ import { Link } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
 import { VERIFY_IDENTITY_PATH } from '../../../routes/home';
 import Alert from '../../../components/ui/Alert';
-import Card from '../../../components/ui/Card';
+import DescriptionList from '../../../components/ui/DescriptionList';
+import PageHeader from '../../../components/ui/PageHeader';
+import SectionCard from '../../../components/ui/SectionCard';
+import Skeleton from '../../../components/ui/Skeleton';
 import { selectCurrentUser } from '../../auth/authSlice';
 import { useGetMyPatientQuery } from '../../patients/api';
-import DashboardPlaceholder from '../components/DashboardPlaceholder';
+import DashboardPlaceholder, { TodayPill } from '../components/DashboardPlaceholder';
+import { linkClass } from '../../../components/ui/linkClass';
 
 const UPCOMING = [
   'Book and manage appointments',
@@ -19,29 +23,35 @@ const UPCOMING = [
 function MyDetailsCard() {
   const { data: patient, isLoading, isError } = useGetMyPatientQuery();
   return (
-    <Card
+    <SectionCard
       title="My details"
+      icon={IdCard}
       actions={
-        <Link to="/patient/profile" className="text-sm font-medium text-brand-700 hover:underline">
+        <Link to="/patient/profile" className={`text-sm ${linkClass}`}>
           View profile
         </Link>
       }
     >
-      {isLoading && <p className="text-sm text-slate-500">Loading…</p>}
-      {isError && <p className="text-sm text-slate-500">Your details could not be loaded.</p>}
-      {patient && (
-        <dl className="grid gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-slate-500">Patient number (MRN)</dt>
-            <dd className="font-mono font-medium">{patient.mrn}</dd>
-          </div>
-          <div>
-            <dt className="text-slate-500">Name</dt>
-            <dd className="font-medium">{patient.fullName}</dd>
-          </div>
-        </dl>
+      {isLoading && (
+        <div role="status" className="grid gap-4 sm:grid-cols-2">
+          <span className="sr-only">Loading…</span>
+          <Skeleton className="h-10" />
+          <Skeleton className="h-10" />
+        </div>
       )}
-    </Card>
+      {isError && <p className="text-sm text-muted">Your details could not be loaded.</p>}
+      {patient && (
+        <DescriptionList
+          items={[
+            {
+              label: 'Patient number (MRN)',
+              value: <span className="tabular font-mono">{patient.mrn}</span>,
+            },
+            { label: 'Name', value: patient.fullName },
+          ]}
+        />
+      )}
+    </SectionCard>
   );
 }
 
@@ -53,8 +63,12 @@ export default function PatientDashboard() {
   const user = useAppSelector(selectCurrentUser);
   if (user?.patientLinkStatus === 'pending_verification') {
     return (
-      <section className="mx-auto w-full max-w-4xl space-y-4">
-        <h1 className="text-2xl font-semibold">Welcome, {user.firstName}</h1>
+      <section>
+        <PageHeader
+          eyebrow="Patient dashboard"
+          title={`Welcome, ${user.firstName}`}
+          actions={<TodayPill />}
+        />
         <Alert tone="warning" title="Please verify your identity at the clinic">
           <p>
             Show a photo ID at the reception desk to connect your records. Until then, your
@@ -62,7 +76,7 @@ export default function PatientDashboard() {
           </p>
           <Link
             to={VERIFY_IDENTITY_PATH}
-            className="mt-2 inline-flex items-center gap-1 font-medium underline"
+            className="mt-2 inline-flex items-center gap-1 rounded font-semibold underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-warning-700"
           >
             <IdCard className="h-4 w-4" aria-hidden="true" /> What to bring
           </Link>
@@ -71,7 +85,10 @@ export default function PatientDashboard() {
     );
   }
   return (
-    <DashboardPlaceholder upcoming={UPCOMING}>
+    <DashboardPlaceholder
+      upcoming={UPCOMING}
+      hideLinksTo={user?.patientId ? ['/patient/profile'] : []}
+    >
       {user?.patientId && <MyDetailsCard />}
     </DashboardPlaceholder>
   );

@@ -1,12 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { ArrowLeft } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
-import PageHeader from '../../../components/PageHeader';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
+import { buttonClass } from '../../../components/ui/buttonClass';
+import PageHeader from '../../../components/ui/PageHeader';
 import { useUnsavedChanges } from '../../../hooks/useUnsavedChanges';
 import { applyServerFieldErrorsByPath } from '../../../utils/forms';
 import { getQueryErrorMessage, isApiQueryError } from '../../../utils/http';
@@ -92,14 +92,12 @@ export default function NewPatientPage() {
     })();
 
   return (
-    <section className="mx-auto w-full max-w-4xl">
-      <Link
-        to={BASE}
-        className="mb-3 inline-flex items-center gap-1 text-sm text-slate-600 hover:text-slate-900"
-      >
-        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Patients
-      </Link>
-      <PageHeader title="New patient" description="An MRN is issued when you save." />
+    <section className="mx-auto w-full max-w-form">
+      <PageHeader
+        back={{ to: BASE, label: 'Patients' }}
+        title="New patient"
+        description="An MRN is issued when you save."
+      />
 
       <form
         noValidate
@@ -107,7 +105,7 @@ export default function NewPatientPage() {
           e.preventDefault();
           void save(overrideReason);
         }}
-        className="space-y-4"
+        className="space-y-6"
       >
         {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
         <PatientFormSections
@@ -133,11 +131,8 @@ export default function NewPatientPage() {
             </div>
           }
         />
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Link
-            to={BASE}
-            className="inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
-          >
+        <div className="sticky bottom-0 z-10 -mx-4 flex flex-col-reverse gap-2 border-t border-line bg-surface/90 px-4 py-3 backdrop-blur-md sm:mx-0 sm:flex-row sm:justify-end sm:rounded-card sm:border sm:shadow-card-hover">
+          <Link to={BASE} className={buttonClass('ghost')}>
             Cancel
           </Link>
           <Button type="submit" loading={saving}>

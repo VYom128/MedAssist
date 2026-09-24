@@ -4,10 +4,10 @@ export default function AdminDashboard() {
   return (
     <DashboardPlaceholder
       upcoming={[
-        'Clinic settings, departments and services',
-        'Doctor schedules and lab test catalogue',
-        'Users and audit logs',
-        'Reports and revenue',
+        "Today's appointments by status",
+        'Revenue and reports',
+        'Doctor utilisation and no-show rate',
+        'AI usage and audit alerts',
       ]}
     />
   );

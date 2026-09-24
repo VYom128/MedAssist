@@ -1,11 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Pencil } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { HeartPulse, Languages, Pencil, Phone, ShieldCheck, UserRound } from 'lucide-react';
+import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
-import Card from '../../../components/ui/Card';
+import DescriptionList from '../../../components/ui/DescriptionList';
+import SectionCard from '../../../components/ui/SectionCard';
 import { BLOOD_GROUP_LABELS, GENDER_LABELS, LANGUAGE_LABELS } from '../../../constants/catalog';
 import { useUnsavedChanges } from '../../../hooks/useUnsavedChanges';
 import { formatCalendarDate, formatDate } from '../../../utils/dates';
@@ -24,15 +25,6 @@ import DuplicatePanel from './DuplicatePanel';
 import PatientFormSections from './PatientFormSections';
 import { useDuplicateCheck } from './useDuplicateCheck';
 
-function Detail({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="mt-0.5 font-medium break-words text-slate-800">{children ?? '—'}</dd>
-    </div>
-  );
-}
-
 const joinAddress = (a: Patient['address']) =>
   a ? [a.line1, a.line2, a.city, a.state, a.postalCode, a.country].filter(Boolean).join(', ') : '';
 
@@ -41,63 +33,77 @@ const yesNo = (v: boolean) => (v ? 'Yes' : 'No');
 /** Everything the role may see, read-only. */
 function PatientDetails({ patient: p }: { patient: Patient }) {
   return (
-    <div className="space-y-4">
-      <Card title="Basic details">
-        <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          <Detail label="Date of birth">
-            {formatCalendarDate(p.dateOfBirth)} ({p.age} y)
-          </Detail>
-          <Detail label="Gender">{GENDER_LABELS[p.gender]}</Detail>
-          <Detail label="Blood group">{BLOOD_GROUP_LABELS[p.bloodGroup]}</Detail>
-          <Detail label="Registered">{formatDate(p.registeredAt)}</Detail>
-        </dl>
-      </Card>
-      <Card title="Contact">
-        <dl className="grid gap-4 text-sm sm:grid-cols-2">
-          <Detail label="Mobile number">{formatPhone(p.phone)}</Detail>
-          <Detail label="Email">{p.email || '—'}</Detail>
-          <Detail label="Address">{joinAddress(p.address) || '—'}</Detail>
-          <Detail label="Emergency contact">
-            {p.emergencyContact?.name
-              ? `${p.emergencyContact.name}${p.emergencyContact.relation ? ` (${p.emergencyContact.relation})` : ''} · ${formatPhone(p.emergencyContact.phone)}`
-              : '—'}
-          </Detail>
-        </dl>
-      </Card>
+    <div className="grid gap-6 lg:grid-cols-2">
+      <SectionCard title="Basic details" icon={UserRound}>
+        <DescriptionList
+          items={[
+            {
+              label: 'Date of birth',
+              value: `${formatCalendarDate(p.dateOfBirth)} (${p.age} y)`,
+            },
+            { label: 'Gender', value: GENDER_LABELS[p.gender] },
+            { label: 'Blood group', value: BLOOD_GROUP_LABELS[p.bloodGroup] },
+            { label: 'Registered', value: formatDate(p.registeredAt) },
+          ]}
+        />
+      </SectionCard>
+      <SectionCard title="Contact" icon={Phone}>
+        <DescriptionList
+          items={[
+            { label: 'Mobile number', value: formatPhone(p.phone) },
+            { label: 'Email', value: p.email },
+            { label: 'Address', value: joinAddress(p.address), wide: true },
+            {
+              label: 'Emergency contact',
+              wide: true,
+              value: p.emergencyContact?.name
+                ? `${p.emergencyContact.name}${p.emergencyContact.relation ? ` (${p.emergencyContact.relation})` : ''} · ${formatPhone(p.emergencyContact.phone)}`
+                : null,
+            },
+          ]}
+        />
+      </SectionCard>
       {p.allergies && (
-        <Card title="Allergies">
+        <SectionCard title="Allergies" icon={HeartPulse} iconTone="danger">
           <AllergyChips allergies={p.allergies} />
-        </Card>
+        </SectionCard>
       )}
       {p.insurance !== undefined && (
-        <Card title="Insurance">
+        <SectionCard title="Insurance" icon={ShieldCheck}>
           {p.insurance ? (
-            <dl className="grid gap-4 text-sm sm:grid-cols-3">
-              <Detail label="Insurer">{p.insurance.provider || '—'}</Detail>
-              <Detail label="Policy number">{p.insurance.policyNumber || '—'}</Detail>
-              <Detail label="Valid till">{formatCalendarDate(p.insurance.validTill)}</Detail>
-            </dl>
+            <DescriptionList
+              columns={3}
+              items={[
+                { label: 'Insurer', value: p.insurance.provider },
+                { label: 'Policy number', value: p.insurance.policyNumber },
+                { label: 'Valid till', value: formatCalendarDate(p.insurance.validTill) },
+              ]}
+            />
           ) : (
-            <p className="text-sm text-slate-500">No insurance recorded.</p>
+            <p className="text-sm text-muted">No insurance recorded.</p>
           )}
-        </Card>
+        </SectionCard>
       )}
-      <Card title="Preferences and consent">
-        <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          <Detail label="Preferred language">{LANGUAGE_LABELS[p.preferredLanguage]}</Detail>
-          <Detail label="Data processing consent">
-            {p.consent.dataProcessing.given
-              ? `Given ${formatDate(p.consent.dataProcessing.at)}`
-              : 'Not given'}
-          </Detail>
-          <Detail label="AI explanations">{yesNo(p.consent.aiExplanations.given)}</Detail>
-          <Detail label="Email reminders">{yesNo(p.consent.communications.email)}</Detail>
-          <Detail label="SMS reminders">{yesNo(p.consent.communications.sms)}</Detail>
-          {p.adminNotes !== undefined && (
-            <Detail label="Front-desk notes">{p.adminNotes || '—'}</Detail>
-          )}
-        </dl>
-      </Card>
+      <SectionCard title="Preferences and consent" icon={Languages} className="lg:col-span-2">
+        <DescriptionList
+          columns={3}
+          items={[
+            { label: 'Preferred language', value: LANGUAGE_LABELS[p.preferredLanguage] },
+            {
+              label: 'Data processing consent',
+              value: p.consent.dataProcessing.given
+                ? `Given ${formatDate(p.consent.dataProcessing.at)}`
+                : 'Not given',
+            },
+            { label: 'AI explanations', value: yesNo(p.consent.aiExplanations.given) },
+            { label: 'Email reminders', value: yesNo(p.consent.communications.email) },
+            { label: 'SMS reminders', value: yesNo(p.consent.communications.sms) },
+            ...(p.adminNotes !== undefined
+              ? [{ label: 'Front-desk notes', value: p.adminNotes }]
+              : []),
+          ]}
+        />
+      </SectionCard>
     </div>
   );
 }
@@ -191,7 +197,7 @@ function EditPatient({
           />
         }
       />
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <div className="sticky bottom-0 z-10 -mx-4 flex flex-col-reverse gap-2 border-t border-line bg-surface/90 px-4 py-3 backdrop-blur-md sm:mx-0 sm:flex-row sm:justify-end sm:rounded-card sm:border sm:shadow-card-hover">
         <Button variant="ghost" onClick={onDone} disabled={saving}>
           Cancel
         </Button>
@@ -228,7 +234,7 @@ export default function OverviewTab({
     );
   }
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 motion-safe:animate-fade-in">
       {canEdit && (
         <div className="flex justify-end">
           <Button variant="secondary" onClick={() => setEditing(true)}>

@@ -2,10 +2,16 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import PageHeader from '../../../components/PageHeader';
+import { UserRound } from 'lucide-react';
 import Alert from '../../../components/ui/Alert';
+import Avatar from '../../../components/ui/Avatar';
+import Badge from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
+import ErrorState from '../../../components/ui/ErrorState';
 import Input from '../../../components/ui/Input';
+import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
+import SectionCard from '../../../components/ui/SectionCard';
 import { ROLE_LABELS } from '../../../constants/roles';
 import { applyServerFieldErrors } from '../../../utils/forms';
 import { getQueryErrorMessage } from '../../../utils/http';
@@ -44,60 +50,68 @@ export default function ProfilePage() {
   });
 
   return (
-    <section className="mx-auto w-full max-w-lg">
-      <PageHeader title="My profile" />
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        {isLoading && (
-          <div className="space-y-3" role="status">
-            <span className="sr-only">Loading profile…</span>
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-10 animate-pulse rounded bg-slate-100" />
-            ))}
-          </div>
-        )}
+    <section className="mx-auto w-full max-w-2xl">
+      <PageHeader title="My profile" description="Your account details." />
 
-        {isError && (
-          <div className="space-y-3">
-            <Alert tone="error">{getQueryErrorMessage(error)}</Alert>
-            <Button variant="secondary" onClick={() => void refetch()}>
-              Try again
-            </Button>
-          </div>
-        )}
+      {isLoading && <ListSkeleton label="Loading profile…" rows={3} />}
 
-        {me && (
-          <form onSubmit={onSubmit} noValidate className="space-y-4">
-            {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
-            <dl className="grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-slate-500">Email</dt>
-                <dd className="font-medium break-all">{me.email}</dd>
+      {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
+
+      {me && (
+        <div className="space-y-5">
+          <div className="flex flex-col items-center gap-4 rounded-card border border-line bg-surface p-5 text-center shadow-card sm:flex-row sm:text-left lg:p-6">
+            <Avatar name={`${me.firstName} ${me.lastName}`} size="xl" />
+            <div className="min-w-0">
+              <p className="text-section break-words">
+                {me.firstName} {me.lastName}
+              </p>
+              <p className="mt-0.5 text-sm break-all text-muted">{me.email}</p>
+              <div className="mt-2">
+                <Badge tone="primary">{ROLE_LABELS[me.role]}</Badge>
               </div>
-              <div>
-                <dt className="text-slate-500">Role</dt>
-                <dd className="font-medium">{ROLE_LABELS[me.role]}</dd>
-              </div>
-            </dl>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Input
-                label="First name"
-                error={errors.firstName?.message}
-                {...register('firstName')}
-              />
-              <Input label="Last name" error={errors.lastName?.message} {...register('lastName')} />
             </div>
-            <Input
-              label="Mobile number"
-              type="tel"
-              error={errors.phone?.message}
-              {...register('phone')}
-            />
-            <Button type="submit" loading={saving} disabled={!isDirty}>
-              Save changes
-            </Button>
+          </div>
+
+          <form onSubmit={onSubmit} noValidate>
+            <SectionCard
+              title="Personal details"
+              description="Your email address and role can't be changed here."
+              icon={UserRound}
+              footer={
+                <Button type="submit" loading={saving} disabled={!isDirty}>
+                  Save changes
+                </Button>
+              }
+            >
+              <div className="space-y-4">
+                {errors.root && (
+                  <div className="motion-safe:animate-fade-in">
+                    <Alert tone="error">{errors.root.message}</Alert>
+                  </div>
+                )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Input
+                    label="First name"
+                    error={errors.firstName?.message}
+                    {...register('firstName')}
+                  />
+                  <Input
+                    label="Last name"
+                    error={errors.lastName?.message}
+                    {...register('lastName')}
+                  />
+                </div>
+                <Input
+                  label="Mobile number"
+                  type="tel"
+                  error={errors.phone?.message}
+                  {...register('phone')}
+                />
+              </div>
+            </SectionCard>
           </form>
-        )}
-      </div>
+        </div>
+      )}
     </section>
   );
 }

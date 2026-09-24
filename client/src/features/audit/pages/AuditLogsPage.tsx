@@ -1,14 +1,17 @@
 import { ScrollText, ShieldCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import PageHeader from '../../../components/PageHeader';
 import Alert from '../../../components/ui/Alert';
-import Badge, { type BadgeTone } from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
+import Code from '../../../components/ui/Code';
 import EmptyState from '../../../components/ui/EmptyState';
+import ErrorState from '../../../components/ui/ErrorState';
 import Input from '../../../components/ui/Input';
+import ListSkeleton from '../../../components/ui/ListSkeleton';
+import PageHeader from '../../../components/ui/PageHeader';
 import Pagination from '../../../components/ui/Pagination';
 import Select from '../../../components/ui/Select';
+import StatusPill from '../../../components/ui/StatusPill';
 import Table, { type Column } from '../../../components/ui/Table';
 import { ROLE_LABELS, type Role } from '../../../constants/roles';
 import { clinicDayBoundary, formatDateTime } from '../../../utils/dates';
@@ -22,11 +25,6 @@ import {
 } from '../api';
 
 const PAGE_SIZE = 25;
-const OUTCOME_TONE: Record<AuditEntry['outcome'], BadgeTone> = {
-  success: 'success',
-  denied: 'danger',
-  failure: 'warning',
-};
 const OUTCOME_OPTIONS = [
   { value: 'success', label: 'Success' },
   { value: 'denied', label: 'Denied' },
@@ -45,7 +43,9 @@ const columns: Column<AuditEntry>[] = [
   {
     key: 'at',
     header: 'Time',
-    cell: (e) => <span className="whitespace-nowrap text-slate-600">{formatDateTime(e.at)}</span>,
+    cell: (e) => (
+      <span className="tabular whitespace-nowrap text-muted">{formatDateTime(e.at)}</span>
+    ),
   },
   {
     key: 'actor',
@@ -53,24 +53,24 @@ const columns: Column<AuditEntry>[] = [
     cell: (e) =>
       e.actor.name ? (
         <div>
-          <p className="font-medium text-slate-800">{e.actor.name}</p>
+          <p className="font-medium text-ink">{e.actor.name}</p>
           {e.actor.role && (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-muted">
               {ROLE_LABELS[e.actor.role as Role] ?? e.actor.role}
             </p>
           )}
         </div>
       ) : (
-        <span className="text-slate-500">System / anonymous</span>
+        <span className="text-muted">System / anonymous</span>
       ),
   },
-  { key: 'action', header: 'Action', cell: (e) => <code className="text-xs">{e.action}</code> },
+  { key: 'action', header: 'Action', cell: (e) => <Code>{e.action}</Code> },
   {
     key: 'resource',
     header: 'Resource',
     cell: (e) =>
       e.resource ? (
-        <span className="text-slate-600">
+        <span className="text-muted">
           {e.resource.type} {e.resource.number ?? shortId(e.resource.id)}
         </span>
       ) : (
@@ -80,7 +80,7 @@ const columns: Column<AuditEntry>[] = [
   {
     key: 'outcome',
     header: 'Outcome',
-    cell: (e) => <Badge tone={OUTCOME_TONE[e.outcome]}>{e.outcome}</Badge>,
+    cell: (e) => <StatusPill domain="auditOutcome" status={e.outcome} />,
   },
 ];
 
@@ -88,8 +88,8 @@ function Json({ label, value }: { label: string; value: unknown }) {
   if (value === null || value === undefined) return null;
   return (
     <div>
-      <p className="text-xs font-semibold text-slate-500 uppercase">{label}</p>
-      <pre className="mt-1 overflow-x-auto rounded-lg bg-white p-3 text-xs text-slate-700 ring-1 ring-slate-200">
+      <p className="text-caption text-muted uppercase">{label}</p>
+      <pre className="mt-1 overflow-x-auto rounded-control bg-surface p-3 text-xs text-body ring-1 ring-line">
         {JSON.stringify(value, null, 2)}
       </pre>
     </div>
@@ -103,7 +103,7 @@ function EntryDetails({ entry }: { entry: AuditEntry }) {
       <Json label="Metadata" value={entry.metadata} />
       <Json label="Request" value={entry.request} />
       {!entry.changes && !entry.metadata && !entry.request && (
-        <p className="text-sm text-slate-500">No further details.</p>
+        <p className="text-sm text-muted">No further details.</p>
       )}
     </div>
   );
@@ -168,7 +168,7 @@ export default function AuditLogsPage() {
   const filtered = Object.values(filters).some(Boolean);
 
   return (
-    <section className="mx-auto w-full max-w-6xl">
+    <section>
       <PageHeader
         title="Audit log"
         description="Every sign-in, account change and denied access. Times are in the clinic timezone."
@@ -198,9 +198,11 @@ export default function AuditLogsPage() {
               : `Entry ${verification.firstBrokenId ?? ''} failed the check: ${
                   verification.reason ? REASONS[verification.reason] : 'unknown reason'
                 }. ${verification.checked} entries checked.`}
-            <button type="button" className="ml-2 underline" onClick={clearVerification}>
-              Dismiss
-            </button>
+            <div className="mt-2">
+              <Button variant="ghost" size="sm" onClick={clearVerification}>
+                Dismiss
+              </Button>
+            </div>
           </Alert>
         </div>
       )}
@@ -212,7 +214,7 @@ export default function AuditLogsPage() {
 
       <form
         onSubmit={apply}
-        className="mb-4 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-6"
+        className="mb-4 grid gap-3 rounded-card border border-line bg-surface p-4 shadow-card sm:grid-cols-2 lg:grid-cols-6 lg:p-5"
         aria-label="Filter audit log"
       >
         <Input
@@ -264,23 +266,9 @@ export default function AuditLogsPage() {
         </div>
       </form>
 
-      {isLoading && (
-        <div className="space-y-2" role="status">
-          <span className="sr-only">Loading audit log…</span>
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-12 animate-pulse rounded-lg bg-slate-100" />
-          ))}
-        </div>
-      )}
+      {isLoading && <ListSkeleton label="Loading audit log…" rows={5} />}
 
-      {isError && (
-        <div className="space-y-3">
-          <Alert tone="error">{getQueryErrorMessage(error)}</Alert>
-          <Button variant="secondary" onClick={() => void refetch()}>
-            Try again
-          </Button>
-        </div>
-      )}
+      {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
 
       {data && data.items.length === 0 && (
         <EmptyState

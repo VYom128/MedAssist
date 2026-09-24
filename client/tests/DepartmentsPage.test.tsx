@@ -45,7 +45,7 @@ describe('DepartmentsPage', () => {
     expect(rows[0]).toHaveTextContent('2');
     expect(lastQuery.get('includeInactive')).toBe('false');
 
-    await userEvent.setup().click(screen.getByRole('switch', { name: 'Show inactive' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show inactive' }));
     await waitFor(() => expect(lastQuery.get('includeInactive')).toBe('true'));
   });
 

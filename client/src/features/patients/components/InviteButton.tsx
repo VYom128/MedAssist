@@ -13,7 +13,7 @@ export default function InviteButton({ patient }: { patient: Patient }) {
 
   if (!patient.email) {
     return (
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-muted">
         Add an email address to the patient's details to invite them to the portal.
       </p>
     );

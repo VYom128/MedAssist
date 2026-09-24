@@ -5,6 +5,7 @@ import { Provider } from 'react-redux';
 import SessionRestorer from './app/SessionRestorer';
 import { store } from './app/store';
 import { settingsApi } from './features/settings/api';
+import { TOAST_OPTIONS } from './components/ui/toastTheme';
 import AppRoutes from './routes/AppRoutes';
 import './index.css';
 
@@ -20,7 +21,7 @@ createRoot(rootElement).render(
       <SessionRestorer>
         <AppRoutes />
       </SessionRestorer>
-      <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+      <Toaster position="top-right" toastOptions={TOAST_OPTIONS} />
     </Provider>
   </StrictMode>,
 );

@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Trash2 } from 'lucide-react';
+import { CircleAlert, Plus, Trash2 } from 'lucide-react';
 import { useEffect } from 'react';
 import {
   useFieldArray,
@@ -56,18 +56,25 @@ function DayRow({
   return (
     <fieldset
       aria-label={name}
-      className="grid gap-3 border-b border-slate-100 py-4 last:border-0 sm:grid-cols-[8rem_1fr]"
+      className="grid gap-3 border-b border-line py-4 last:border-0 sm:grid-cols-[8rem_1fr]"
     >
       <legend className="sr-only">{name}</legend>
       <div className="flex items-center justify-between sm:block">
-        <p aria-hidden="true" className="font-medium text-slate-800">
+        <p aria-hidden="true" className="font-semibold text-ink">
           {name}
         </p>
-        <p className="text-xs text-slate-500">{fields.length === 0 ? 'Day off' : ''}</p>
+        {fields.length === 0 && (
+          <p className="mt-0.5 inline-block rounded-full bg-neutral-50 px-2 py-0.5 text-xs font-medium text-muted">
+            Day off
+          </p>
+        )}
       </div>
       <div className="space-y-3">
         {fields.map((field, i) => (
-          <div key={field.id} className="flex flex-wrap items-start gap-3">
+          <div
+            key={field.id}
+            className="flex flex-wrap items-start gap-3 rounded-control bg-surface-muted p-3"
+          >
             <TimeInput
               label="Start"
               className="w-32"
@@ -82,7 +89,7 @@ function DayRow({
             />
             <Button
               variant="ghost"
-              className="mt-6 !px-2"
+              className="mt-7 px-2.5 hover:text-danger-700"
               onClick={() => remove(i)}
               aria-label={`Remove ${name} session ${i + 1}`}
             >
@@ -90,11 +97,16 @@ function DayRow({
             </Button>
           </div>
         ))}
-        {dayErrors?.message && <p className="text-sm text-rose-600">{dayErrors.message}</p>}
+        {dayErrors?.message && (
+          <p className="flex items-start gap-1.5 rounded-control bg-danger-50 px-3 py-2 text-sm text-danger-700 motion-safe:animate-fade-in">
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            {dayErrors.message}
+          </p>
+        )}
         {fields.length < 6 && (
           <Button
-            variant="secondary"
-            className="!px-3 !py-1"
+            variant="soft"
+            size="sm"
             onClick={() => append(nextSession(sessions))}
             aria-label={`Add ${name} session`}
           >
@@ -174,9 +186,12 @@ export default function ScheduleEditor({
           error={errors.effectiveFrom?.message}
           {...register('effectiveFrom')}
         />
-        <p className="text-sm text-slate-600" aria-live="polite">
-          Total: <span className="font-semibold">{weeklyHours({ days: days ?? [] })} hours</span> a
-          week
+        <p className="text-sm text-muted sm:pb-3" aria-live="polite">
+          Total:{' '}
+          <span className="tabular font-semibold text-ink">
+            {weeklyHours({ days: days ?? [] })} hours
+          </span>{' '}
+          a week
         </p>
       </div>
       <div className="mt-2">
@@ -184,7 +199,7 @@ export default function ScheduleEditor({
           <DayRow key={d.weekday} index={i} control={control} register={register} errors={errors} />
         ))}
       </div>
-      <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <div className="-mx-5 mt-4 -mb-5 flex flex-col-reverse gap-2 border-t border-line px-5 py-4 sm:flex-row sm:justify-end lg:-mx-6 lg:-mb-6 lg:px-6">
         <Button variant="secondary" disabled={!isDirty || saving} onClick={() => reset(initial)}>
           Discard changes
         </Button>

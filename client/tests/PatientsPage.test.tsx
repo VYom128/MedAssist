@@ -79,7 +79,7 @@ describe('PatientsPage', () => {
     const { router } = renderRoutes(routes, '/admin/patients', authState(admin));
     await screen.findByRole('table', { name: 'Patients' });
     expect(screen.queryByRole('link', { name: 'New patient' })).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole('switch', { name: 'Show inactive only' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Show inactive only' }));
     await waitFor(() => expect(router.state.location.search).toBe('?inactive=1'));
     await waitFor(() => expect(queries.at(-1)?.get('isActive')).toBe('false'));
   });

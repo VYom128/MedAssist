@@ -3,9 +3,11 @@ import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
-import PageHeader from '../../../components/PageHeader';
+import { KeyRound } from 'lucide-react';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
+import PageHeader from '../../../components/ui/PageHeader';
+import SectionCard from '../../../components/ui/SectionCard';
 import { ROLE_HOME } from '../../../constants/roles';
 import { applyServerFieldErrors } from '../../../utils/forms';
 import { getQueryErrorMessage } from '../../../utils/http';
@@ -42,44 +44,62 @@ export default function ChangePasswordPage() {
   });
 
   return (
-    <section className="mx-auto w-full max-w-lg">
+    <section className={`mx-auto w-full max-w-lg ${forced ? 'pt-2 sm:pt-[4vh]' : ''}`}>
       <PageHeader
         title="Change password"
         description="Changing your password signs you out on all other devices."
       />
-      <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <form onSubmit={onSubmit} noValidate className="space-y-4">
-          {forced && (
-            <Alert tone="warning" title="Please set a new password">
-              Your account was set up with a temporary password, or an administrator asked for a new
-              one. Choose your own password to continue; the rest of MedAssist opens afterwards.
-            </Alert>
-          )}
-          {errors.root && <Alert tone="error">{errors.root.message}</Alert>}
-          <PasswordInput
-            label="Current password"
-            autoComplete="current-password"
-            error={errors.currentPassword?.message}
-            {...register('currentPassword')}
-          />
-          <PasswordInput
-            label="New password"
-            autoComplete="new-password"
-            hint="At least 8 characters, with a letter and a number. Avoid your name or email."
-            error={errors.newPassword?.message}
-            {...register('newPassword')}
-          />
-          <PasswordInput
-            label="Confirm new password"
-            autoComplete="new-password"
-            error={errors.confirmPassword?.message}
-            {...register('confirmPassword')}
-          />
-          <Button type="submit" loading={isLoading}>
-            Change password
-          </Button>
-        </form>
-      </div>
+      <form onSubmit={onSubmit} noValidate>
+        <SectionCard
+          title={forced ? 'Set your own password' : 'Update your password'}
+          icon={KeyRound}
+          footer={
+            <Button type="submit" loading={isLoading}>
+              Change password
+            </Button>
+          }
+        >
+          <div className="space-y-2">
+            {forced && (
+              <div className="pb-3">
+                <Alert tone="warning" title="Please set a new password">
+                  Your account was set up with a temporary password, or an administrator asked for a
+                  new one. Choose your own password to continue; the rest of MedAssist opens
+                  afterwards.
+                </Alert>
+              </div>
+            )}
+            {errors.root && (
+              <div className="pb-3 motion-safe:animate-fade-in">
+                <Alert tone="error">{errors.root.message}</Alert>
+              </div>
+            )}
+            <PasswordInput
+              label="Current password"
+              autoComplete="current-password"
+              reserveMessage
+              error={errors.currentPassword?.message}
+              {...register('currentPassword')}
+            />
+            <PasswordInput
+              label="New password"
+              autoComplete="new-password"
+              hint="At least 8 characters, with a letter and a number. Avoid your name or email."
+              error={errors.newPassword?.message}
+              {...register('newPassword')}
+            />
+            <div className="pt-2">
+              <PasswordInput
+                label="Confirm new password"
+                autoComplete="new-password"
+                reserveMessage
+                error={errors.confirmPassword?.message}
+                {...register('confirmPassword')}
+              />
+            </div>
+          </div>
+        </SectionCard>
+      </form>
     </section>
   );
 }
