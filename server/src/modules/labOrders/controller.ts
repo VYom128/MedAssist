@@ -3,6 +3,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { parsePagination } from '../../utils/pagination.js';
 import { buildRequestMeta } from '../../utils/requestContext.js';
+import { sendFile } from '../../utils/sendFile.js';
 import * as revisionService from './revision.service.js';
 import * as labOrdersService from './service.js';
 import * as workflowService from './workflow.service.js';
@@ -171,4 +172,13 @@ export async function verifyRevision(req: Request, res: Response) {
     message: 'Revision verified – the corrected results are released',
     data,
   });
+}
+
+export async function downloadReport(req: Request, res: Response) {
+  const file = await labOrdersService.openReport(
+    currentUser(req),
+    params(req).id,
+    buildRequestMeta(req),
+  );
+  sendFile(res, file);
 }

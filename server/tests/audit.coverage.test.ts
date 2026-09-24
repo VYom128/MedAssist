@@ -20,6 +20,7 @@ import {
   TEST_PASSWORD,
 } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
+import { pdfBytes } from './helpers/files.js';
 import { createLabTest, insertAppointment, loginAsDoctor } from './helpers/fixtures.js';
 import { api } from './helpers/testApp.js';
 
@@ -417,6 +418,19 @@ describe('audit coverage', () => {
     await post(`${item}/revise`, lab1.auth, { ...results, reason: 'Recalibrated analyser' });
     await post(`${item}/verify-revision`, lab2.auth);
     await post(`${lo}/acknowledge`, drToday.auth);
+    // document.download (the lab report), document.upload, .view, .delete
+    await api().get(`/api/v1${lo}/report.pdf`).set(drToday.auth);
+    const uploaded = await api()
+      .post('/api/v1/documents')
+      .set(reception.auth)
+      .field('patientId', patientId)
+      .field('category', 'id_proof')
+      .field('title', 'ID card')
+      .attach('file', pdfBytes(), { filename: 'id.pdf', contentType: 'application/pdf' });
+    await api().get(`/api/v1/documents/${uploaded.body.data.id}`).set(reception.auth);
+    await post(`/documents/${uploaded.body.data.id}/delete`, reception.auth, {
+      reason: 'Wrong patient',
+    });
     // prescription.view, encounter.amend, prescription.cancel + prescription.reissue, then the
     // reissued draft is issued and completed by the job (prescription.complete)
     await api().get(`/api/v1/prescriptions/${rx.body.data.id}`).set(drToday.auth);

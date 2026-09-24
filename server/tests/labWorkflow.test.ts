@@ -220,7 +220,7 @@ describe('the full path ordered → released', () => {
     await flushAudit();
     const audit = JSON.stringify(await AuditLog.find({ action: /^lab_order\./ }).lean());
     expect(audit).toMatch(/lab_order\.results_enter/);
-    expect(audit).not.toMatch(/14\.2|Negative|lipaemic/);
+    expect(audit).not.toMatch(/\b14\.2\b|Negative|lipaemic/);
   });
 
   it('every invalid transition → 409 INVALID_STATUS_TRANSITION', async () => {

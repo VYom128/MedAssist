@@ -29,6 +29,7 @@ import { buildMeta, type Pagination } from '../../utils/pagination.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { buildPatientSearchQuery } from '../../utils/search.js';
 import { withTransaction } from '../../utils/transaction.js';
+import { openLabReport } from '../documents/service.js';
 import { assertDocumentationOpen, loadEncounter } from '../encounters/service.js';
 import { LabTest } from '../labTests/model.js';
 import { Patient } from '../patients/model.js';
@@ -565,4 +566,78 @@ export async function listLabOrders(
     items: (items as unknown as LabOrderLike[]).map((o) => toListItem(o, user.role)),
     meta: buildMeta({ page, limit, total }),
   };
+}
+
+/**
+ * GET /lab-orders/:id/report.pdf – the current report of an order (same readers as the order:
+ * the doctors, lab technicians, and the patient once released). 404 before the first release.
+ * Audited as `document.download`.
+ */
+export async function openReport(user: AuthUser, id: string, meta: RequestMeta) {
+  if (user.role === ROLES.PATIENT) await resolveMyPatientId(user);
+  const o = await loadLabOrder(id);
+  await assertCanReadLabOrder(user, o, meta);
+  if (!o.reportDocument) throw ApiError.notFound('This lab order has no report yet');
+  return openLabReport(user, o.reportDocument, meta);
+}
+
+// ---- Seed ------------------------------------------------------------------------------------
+
+/**
+ * Seed only (like insertSignedNoteForSeed): places an order on a signed note of the past,
+ * skipping the documentation window. Same tests check, snapshots and numbering (the counter of
+ * `orderedAt`'s clinic year) as POST /lab-orders; audited `lab_order.create` as the doctor.
+ */
+export async function insertPlacedOrderForSeed(
+  {
+    doctor,
+    encounter,
+    testIds,
+    priority = 'routine',
+    clinicalNotes,
+    orderedAt,
+  }: {
+    doctor: AuthUser;
+    encounter: { _id: Types.ObjectId; patient: Types.ObjectId; appointment: Types.ObjectId };
+    testIds: string[];
+    priority?: 'routine' | 'urgent';
+    clinicalNotes?: string;
+    orderedAt: Date;
+  },
+  meta: RequestMeta,
+) {
+  const items = await itemsFor(testIds);
+  const created = await withTransaction(async (session) => {
+    const orderNumber = await nextOrderNumber(session, orderedAt);
+    const [doc] = await LabOrder.create(
+      [
+        {
+          patient: encounter.patient,
+          orderedBy: doctor.id,
+          encounter: encounter._id,
+          appointment: encounter.appointment,
+          priority,
+          ...(clinicalNotes ? { clinicalNotes } : {}),
+          status: 'ordered',
+          orderNumber,
+          orderedAt,
+          items,
+          statusHistory: [historyEntry('ordered', doctor.id, undefined, orderedAt)],
+          createdBy: doctor.id,
+          updatedBy: doctor.id,
+        },
+      ],
+      { session },
+    );
+    return doc!;
+  });
+  await audit.record({
+    action: AUDIT_ACTIONS.LAB_ORDER_CREATE,
+    actor: actorOf(doctor),
+    resource: resourceOf(created),
+    patient: created.patient,
+    request: meta,
+    metadata: { status: 'ordered', testCount: items.length, priority, via: 'seed' },
+  });
+  return loadLabOrder(created._id, { detail: true });
 }

@@ -683,9 +683,12 @@ describe('reading lab orders per role', () => {
       }),
     ]);
     const text = JSON.stringify(detail.body);
-    expect(text).not.toMatch(
-      /remarks|Internal|previousResults|pendingRevision|11\.5|10\.2|clinicalNotes/,
+    expect(text).not.toMatch(/remarks|Internal|previousResults|pendingRevision|clinicalNotes/);
+    // Only the released value – not the old version (10.2) or the pending revision (11.5).
+    const values = detail.body.data.items.flatMap((i: { results: { value: unknown }[] }) =>
+      i.results.map((r) => r.value),
     );
+    expect(values).toEqual([11.2]);
     const someoneElse = await loginAsPatient();
     expectError(await get(someoneElse, `/lab-orders/${s.released._id}`), 404, 'NOT_FOUND');
   });

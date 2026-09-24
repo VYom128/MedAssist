@@ -430,30 +430,31 @@ export async function sendBack(
 export async function releaseOrder(user: AuthUser, id: string, meta: RequestMeta) {
   const o = await forLab(user, id, meta);
   assertTransition('labOrder', o.status, 'released');
-  const report = await prepareReleaseReport(o._id, 'release');
   const now = new Date();
+  const report = await prepareReleaseReport(await loadLabOrder(o._id, { detail: true }), {
+    kind: 'release',
+    releasedAt: now,
+    releasedBy: `${user.firstName} ${user.lastName}`,
+    createdBy: user.id,
+  });
   try {
     await withTransaction(async (session) => {
-      const documentId = report ? await report.save(session) : null;
+      const documentId = await report.save(session);
       await applyOrderTransition(
         o,
         'released',
-        {
-          releasedAt: now,
-          releasedBy: user.id,
-          ...(documentId ? { reportDocument: documentId } : {}),
-        },
+        { releasedAt: now, releasedBy: user.id, reportDocument: documentId },
         user.id,
         undefined,
         { session, at: now },
       );
     });
   } catch (err) {
-    await report?.discard();
+    await report.discard(err);
     throw err;
   }
   await record(user, AUDIT_ACTIONS.LAB_ORDER_RELEASE, o, meta, {
-    metadata: { reportGenerated: report !== null },
+    metadata: { reportGenerated: true },
   });
   void notifyResultsReleased(o, 'release');
   await announce(o, { patient: true });

@@ -43,6 +43,13 @@ router.get(
   validate(labOrderIdSchema),
   asyncHandler(labOrdersController.getLabOrder),
 );
+router.get(
+  '/:id/report.pdf',
+  authenticate,
+  authorize(DOCTOR, LABTECH, PATIENT),
+  validate(labOrderIdSchema),
+  asyncHandler(labOrdersController.downloadReport),
+);
 router.post(
   '/',
   ...doctor,

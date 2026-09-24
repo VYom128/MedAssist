@@ -31,4 +31,9 @@ afterAll(async () => {
   await closeTestServers();
   await mongoose.disconnect();
   await replSet?.stop();
+  // Uploads go to a per-process temp directory (config/env.ts); files run one after another in
+  // a worker, so removing it here never races another file.
+  const { config } = await import('../src/config/env.js');
+  const { rm } = await import('node:fs/promises');
+  await rm(config.storage.uploadDir, { recursive: true, force: true });
 });

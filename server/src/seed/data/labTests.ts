@@ -35,11 +35,12 @@ const num = (key: string, name: string, unit: string, ranges: Range[]) => ({
   valueType: 'number' as const,
   ranges,
 });
-const option = (key: string, name: string, options: string[]) => ({
+const option = (key: string, name: string, options: string[], abnormalOptions: string[] = []) => ({
   key,
   name,
   valueType: 'option' as const,
   options,
+  ...(abnormalOptions.length > 0 ? { abnormalOptions } : {}),
 });
 const text = (key: string, name: string, unit?: string) => ({
   key,
@@ -186,12 +187,12 @@ export const LAB_TESTS: Test[] = [
     turnaroundHours: 4,
     preparation: 'Early-morning midstream sample in a sterile container',
     parameters: [
-      option('colour', 'Colour', ['Pale yellow', 'Yellow', 'Dark yellow', 'Red', 'Other']),
-      option('appearance', 'Appearance', ['Clear', 'Slightly turbid', 'Turbid']),
+      option('colour', 'Colour', ['Pale yellow', 'Yellow', 'Dark yellow', 'Red', 'Other'], ['Red']),
+      option('appearance', 'Appearance', ['Clear', 'Slightly turbid', 'Turbid'], ['Turbid']),
       num('ph', 'pH', '', [any(4.5, 8)]),
       num('specific_gravity', 'Specific gravity', '', [any(1.005, 1.03)]),
-      option('protein', 'Protein', ['Nil', 'Trace', '+', '++', '+++']),
-      option('glucose', 'Glucose', ['Nil', 'Trace', '+', '++', '+++']),
+      option('protein', 'Protein', ['Nil', 'Trace', '+', '++', '+++'], ['+', '++', '+++']),
+      option('glucose', 'Glucose', ['Nil', 'Trace', '+', '++', '+++'], ['+', '++', '+++']),
       text('pus_cells', 'Pus cells', '/hpf'),
       text('rbc', 'RBCs', '/hpf'),
     ],
@@ -237,7 +238,7 @@ export const LAB_TESTS: Test[] = [
     sampleType: 'blood',
     pricePaise: 60_000,
     turnaroundHours: 6,
-    parameters: [option('ns1', 'NS1 antigen', ['Negative', 'Positive'])],
+    parameters: [option('ns1', 'NS1 antigen', ['Negative', 'Positive'], ['Positive'])],
   },
   {
     code: 'ELECTROLYTES',

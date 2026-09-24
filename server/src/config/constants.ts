@@ -503,6 +503,10 @@ export const AUDIT_ACTIONS = Object.freeze({
   LAB_ORDER_REVISE: 'lab_order.revise',
   LAB_ORDER_REVISION_VERIFY: 'lab_order.revision_verify',
   LAB_ORDER_ACKNOWLEDGE: 'lab_order.acknowledge',
+  DOCUMENT_UPLOAD: 'document.upload',
+  DOCUMENT_VIEW: 'document.view',
+  DOCUMENT_DOWNLOAD: 'document.download',
+  DOCUMENT_DELETE: 'document.delete',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /**
@@ -652,6 +656,69 @@ export const LAB_OPEN_STATUSES = Object.freeze([
   'result_entered',
   'verified',
 ] as const satisfies readonly LabOrderStatus[]);
+
+/** Documents (spec §6.23, §7.16, §12.2). */
+export const DOCUMENT_CATEGORIES = Object.freeze([
+  'lab_report',
+  'prescription',
+  'visit_summary',
+  'invoice',
+  'referral',
+  'imaging',
+  'id_proof',
+  'insurance',
+  'other',
+] as const);
+export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+export const DOCUMENT_LINK_TYPES = Object.freeze([
+  'appointment',
+  'encounter',
+  'lab_order',
+  'invoice',
+  'followup_request',
+] as const);
+export type DocumentLinkType = (typeof DOCUMENT_LINK_TYPES)[number];
+export const STORAGE_DRIVERS = Object.freeze(['local', 's3', 'cloudinary'] as const);
+/** The only file types accepted, checked on the bytes (magic numbers), never the name. */
+export const UPLOAD_MIME_TYPES = Object.freeze([
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+] as const);
+export type UploadMimeType = (typeof UPLOAD_MIME_TYPES)[number];
+/**
+ * Categories each role may upload (Phase 6). Lab techs upload lab reports for patients with a
+ * lab order; patients upload for themselves only; admins upload nothing.
+ */
+export const DOCUMENT_UPLOAD_CATEGORIES: Readonly<
+  Partial<Record<Role, readonly DocumentCategory[]>>
+> = Object.freeze({
+  doctor: ['referral', 'imaging', 'visit_summary', 'other'],
+  receptionist: ['id_proof', 'insurance', 'referral', 'other'],
+  labtech: ['lab_report'],
+  patient: ['other', 'referral'],
+});
+/** Non-clinical categories reception always reads (invoices from Phase 7). */
+export const RECEPTION_DOCUMENT_CATEGORIES = Object.freeze([
+  'id_proof',
+  'insurance',
+  'invoice',
+] as const satisfies readonly DocumentCategory[]);
+/** Categories reception reads only when a receptionist or the patient uploaded them. */
+export const RECEPTION_SHARED_CATEGORIES = Object.freeze([
+  'referral',
+  'other',
+] as const satisfies readonly DocumentCategory[]);
+export const DOCUMENT_RULES = Object.freeze({
+  titleMax: 120,
+  originalNameMax: 120,
+  /** The uploader may delete their own upload for this long (spec §7.16). */
+  uploaderDeleteHours: 24,
+  deleteReasonMinLength: 5,
+  deleteReasonMaxLength: 500,
+  /** Uploads per user per hour (spec §10.3). */
+  uploadsPerHour: 30,
+});
 
 /**
  * Scopes for canAccessPatient (spec §2.3). `allergies` is separate from `clinical` because

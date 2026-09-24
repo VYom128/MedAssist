@@ -46,11 +46,22 @@ async function deliver({ recipients, type, title, body, link, email }: NotifyInp
   }
 }
 
+let muted = false;
+
+/**
+ * Seed only: generating demo data (lab releases, critical values…) must not email anyone.
+ * Always reset it in a `finally`.
+ */
+export function setNotificationsMuted(value: boolean): void {
+  muted = value;
+}
+
 /**
  * Sends a notification without blocking the caller; failures are logged, never thrown. Call it
  * after the transaction has committed. The returned promise (always resolves) is for tests.
  */
 export function notify(input: NotifyInput): Promise<void> {
+  if (muted) return Promise.resolve();
   return deliver(input).catch((err: unknown) =>
     logger.error({ err: serializeError(err), type: input.type }, 'Notification failed'),
   );

@@ -4,6 +4,7 @@ import auditRoutes from '../modules/audit/routes.js';
 import authRoutes from '../modules/auth/routes.js';
 import departmentRoutes from '../modules/departments/routes.js';
 import doctorRoutes from '../modules/doctors/routes.js';
+import documentRoutes from '../modules/documents/routes.js';
 import encounterRoutes from '../modules/encounters/routes.js';
 import formularyRoutes from '../modules/formulary/routes.js';
 import healthRoutes from '../modules/health/routes.js';
@@ -35,5 +36,6 @@ router.use('/encounters', encounterRoutes);
 router.use('/formulary', formularyRoutes);
 router.use('/prescriptions', prescriptionRoutes);
 router.use('/lab-orders', labOrderRoutes);
+router.use('/documents', documentRoutes);
 
 export default router;

@@ -104,6 +104,13 @@ export interface Ctx {
   verifiedLabOrderId: string;
   revisionLabOrderId: string;
   revisionLabItemId: string;
+  /**
+   * A generated lab report of patientId (visible to the patient, file in storage); it is also
+   * the report of `releasedLabOrderId`.
+   */
+  documentId: string;
+  /** A document the caller uploaded just now (category 'other'), for delete. */
+  myDocumentId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -112,6 +119,8 @@ export interface Row {
   method: Method;
   path: (c: Ctx) => string;
   body?: (c: Ctx) => object;
+  /** A multipart/form-data request instead of a JSON body (uploads). */
+  multipart?: (c: Ctx) => { fields: Record<string, string>; file: Buffer; filename: string };
   roles: readonly Role[];
   status: number;
   /**
@@ -136,6 +145,19 @@ const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionis
 const LAB_ORDER_READERS: readonly Role[] = ['doctor', 'labtech', 'receptionist', 'patient'];
 const DOCTOR_LABTECH: readonly Role[] = ['doctor', 'labtech'];
 const LABTECH: readonly Role[] = ['labtech'];
+const DOCUMENT_UPLOADERS: readonly Role[] = ['doctor', 'receptionist', 'labtech', 'patient'];
+/** A category each uploading role may use for `patientId`. */
+const UPLOAD_CATEGORY: Partial<Record<Role, string>> = {
+  doctor: 'referral',
+  receptionist: 'id_proof',
+  labtech: 'lab_report',
+  patient: 'other',
+};
+/** A minimal valid PDF (uploads are checked on their bytes). */
+export const MATRIX_PDF = Buffer.from(
+  '%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n',
+  'latin1',
+);
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
 const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
@@ -794,6 +816,55 @@ ENDPOINTS.push(
     roles: DOCTOR,
     status: 200,
   },
+  {
+    method: 'get',
+    path: (c) => `/lab-orders/${c.releasedLabOrderId}/report.pdf`,
+    roles: ['doctor', 'labtech', 'patient'],
+    status: 200,
+  },
+  // Documents (spec §7.16): uploads per role and category; admins see metadata and delete.
+  {
+    method: 'post',
+    path: () => '/documents',
+    multipart: (c) => ({
+      fields: {
+        patientId: c.patientId,
+        category: UPLOAD_CATEGORY[c.me.user.role as Role] ?? 'other',
+        title: 'Matrix upload',
+      },
+      file: MATRIX_PDF,
+      filename: 'matrix.pdf',
+    }),
+    roles: DOCUMENT_UPLOADERS,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/documents?patient=${c.patientId}`,
+    roles: ALL,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/documents/${c.documentId}`,
+    roles: ALL,
+    status: 200,
+    statusFor: { receptionist: 404 }, // lab reports are clinical
+  },
+  {
+    method: 'get',
+    path: (c) => `/documents/${c.documentId}/download`,
+    roles: DOCUMENT_UPLOADERS,
+    status: 200,
+    statusFor: { receptionist: 404 },
+  },
+  {
+    method: 'post',
+    path: (c) => `/documents/${c.myDocumentId}/delete`,
+    body: () => ({ reason: 'Matrix delete' }),
+    roles: ALL,
+    status: 200,
+  },
   // Slots and availability (spec §7.6): any logged-in user
   {
     method: 'get',
@@ -879,6 +950,8 @@ export const PATTERN_CTX = {
   verifiedLabOrderId: ':id',
   revisionLabOrderId: ':id',
   revisionLabItemId: ':itemId',
+  documentId: ':id',
+  myDocumentId: ':id',
   n: 0,
 } as unknown as Ctx;
 

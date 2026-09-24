@@ -86,8 +86,34 @@ async function applyRevision(
   guard: Record<string, unknown>,
 ) {
   const version = item.resultVersion ?? 1;
-  const report = await prepareReleaseReport(o._id, 'revision');
   const now = new Date();
+  // The PDF shows the order as it will read after the revision.
+  const current = await loadLabOrder(o._id, { detail: true });
+  const revised = {
+    ...current,
+    items: current.items.map((i) =>
+      i._id.equals(item._id)
+        ? {
+            ...i,
+            results: revision.results,
+            remarks: revision.remarks ?? undefined,
+            resultVersion: version + 1,
+            verifiedBy: {
+              _id: verifier.id,
+              firstName: verifier.firstName,
+              lastName: verifier.lastName,
+            },
+            verifiedAt: now,
+          }
+        : i,
+    ),
+  } as unknown as LabOrderLike;
+  const report = await prepareReleaseReport(revised, {
+    kind: 'revision',
+    releasedAt: now,
+    releasedBy: `${verifier.firstName} ${verifier.lastName}`,
+    createdBy: verifier.id,
+  });
   const at = (field: string) => `items.$[it].${field}`;
   const previous = {
     version,
@@ -107,10 +133,10 @@ async function applyRevision(
   if (!revision.remarks) unset[at('remarks')] = '';
   try {
     await withTransaction(async (session) => {
-      const documentId = report ? await report.save(session) : null;
+      const documentId = await report.save(session);
       const filter = { items: { $elemMatch: { _id: item._id, resultVersion: version, ...guard } } };
-      const current = await LabOrder.exists({ _id: o._id, ...filter }).session(session);
-      if (!current) {
+      const unchanged = await LabOrder.exists({ _id: o._id, ...filter }).session(session);
+      if (!unchanged) {
         throw ApiError.conflict('These results changed meanwhile. Reload the order.');
       }
       await applyOrderTransition(
@@ -124,7 +150,7 @@ async function applyRevision(
           [at('enteredAt')]: revision.at,
           [at('verifiedBy')]: verifier.id,
           [at('verifiedAt')]: now,
-          ...(documentId ? { reportDocument: documentId } : {}),
+          reportDocument: documentId,
         },
         verifier.id,
         'Results revised',
@@ -141,7 +167,7 @@ async function applyRevision(
       await refreshHasCritical(o._id, session);
     });
   } catch (err) {
-    await report?.discard();
+    await report.discard(err);
     throw err;
   }
 
