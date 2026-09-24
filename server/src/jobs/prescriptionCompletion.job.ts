@@ -2,6 +2,7 @@ import { AUDIT_ACTIONS, JOB_RULES } from '../config/constants.js';
 import { Prescription } from '../modules/prescriptions/model.js';
 import * as audit from '../services/audit.service.js';
 import { logger, serializeError } from '../utils/logger.js';
+import { assertTransition } from '../utils/stateMachine.js';
 
 export interface PrescriptionCompletionJobResult {
   completed: number;
@@ -42,6 +43,7 @@ export async function runPrescriptionCompletionJob(
   const result: PrescriptionCompletionJobResult = { completed: 0, skipped: 0, failed: 0 };
   for (const rx of due) {
     try {
+      assertTransition('prescription', 'issued', 'completed');
       const res = await Prescription.updateOne(
         { _id: rx._id, status: 'issued' },
         { $set: { status: 'completed', completedAt: now }, $inc: { __v: 1 } },

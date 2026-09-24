@@ -16,8 +16,8 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | 2 | Admin setup data | ✅ Done |
 | 3 | Patients | ✅ Done |
 | 4 | Appointments and queue | ✅ Done |
-| 5 | Visit notes and prescriptions | 🟡 In progress |
-| 6 | Lab workflow and documents | ⬜ Not started |
+| 5 | Visit notes and prescriptions | ✅ Done |
+| 6 | Lab workflow and documents | 🟡 In progress |
 | 7 | Billing | ⬜ Not started |
 | 8 | Patient timeline, portal and follow-ups | ⬜ Not started |
 | 9 | AI features | ⬜ Not started |
@@ -283,19 +283,60 @@ Other roles and sizes:
 **Goal:** doctors document consultations and prescribe safely.
 **Spec:** §4.7, §5.2–5.3, §6.13–6.16, §7.10, §7.12, §8.5–8.6
 
-- [ ] Encounter model (draft → signed → amended), created on consultation start
-- [ ] Vitals (BMI auto), notes, diagnoses, plan, follow-up plan
-- [ ] Autosave with optimistic concurrency
-- [ ] Sign transaction (issue prescription, complete appointment)
-- [ ] Amendments with reason and versions
-- [ ] Prescriptions with allergy warning + acknowledgement; cancel/reissue
-- [ ] Care-relationship checks in `canAccessPatient`
-- [ ] Consult workspace UI (patient header, allergy banner, tabs, sign)
-- [ ] Tests: locked after sign, amendments, access without care relationship → 404
+- [x] Encounter model (draft → signed → amended), created on consultation start
+- [x] Vitals (BMI auto), notes, diagnoses, plan, follow-up plan
+- [x] Autosave with optimistic concurrency
+- [x] Sign transaction (issue prescription, complete appointment)
+- [x] Amendments with reason and versions
+- [x] Prescriptions with allergy warning + acknowledgement; cancel/reissue
+- [x] Care-relationship checks in `canAccessPatient`
+- [x] Consult workspace UI (patient header, allergy banner, tabs, sign)
+- [x] Tests: locked after sign, amendments, access without care relationship → 404
 
 **Done when:** a doctor completes a full consultation from queue to signed note and issued prescription.
+Verified 2026-09-24 (automated): `npm run lint`, `npm run format:check` and `npm test` three times in a row – 1544 server + 179 client tests, all green each run. `npm run seed -- --reset` then `npm run seed` (second run: 0 notes, 0 prescriptions created; "users 5 updated" is the existing demo-account repair). The full flow queue → start → autosaved note → allergy-acknowledged prescription → sign (note signed, RX issued, appointment completed in one transaction) → print → amend is covered end to end by server tests (`encounters.*`, `prescriptions.test.ts`, `phase5.security.test.ts`) and client tests (`ConsultWorkspace`, `Prescriptions`, `DoctorPages`). **Not yet checked in a real browser** – see the manual test script below.
 
-**Notes / decisions:**
+**Notes / decisions:** (recorded as D97–D118 in spec §20 "Decisions made")
+- **Care relationship (D97–D98):** `CARE_RELATIONSHIP_CHECKS` in `policies/patientAccess.ts` – for now "a non-cancelled appointment with the patient" (no-shows count). A doctor with a relationship gets demographics, clinical, lab and allergies (not billing); otherwise 404 + `access.denied`. `canAccessPatient` is async and cached per request (WeakMap keyed by the `AuthUser` object). Break-glass is not built.
+- **Doctor patient endpoints (D99):** `GET /patients?scope=mine` (one aggregation: last visit, `hasAllergies`), `GET /patients/:id` (doctor view), `PATCH /patients/:id/clinical-profile`.
+- **Encounters (D100–D104):** draft created in the start / call-next transaction (idempotent, unique per appointment; responses carry `encounterId`); `GET /appointments/:id/encounter`; `visitAt` added to §6.13; editing with `expectedVersion` = `__v` (API field `revision`) → 409 CONFLICT; documentation window: in consultation or ≤ 72 h after completion, else 422 `DOCUMENTATION_WINDOW_CLOSED`; drafts are private to their author, other related doctors see signed notes only; list rows carry no clinical text except the primary diagnosis in one patient's history (audited read); `GET /encounters?mine=true`.
+- **Immutability (D105):** Mongoose hooks refuse every update of a signed/amended note unless the amendment service passes its internal token (`amendmentWriteOptions`); notes and prescriptions are never deleted; issued prescriptions allow status bookkeeping only; `note_amendments` is append-only with unique `{ encounter, version }`.
+- **Signing (D106–D107):** `POST /encounters/:id/sign` needs `expectedVersion`; 422 `SIGN_VALIDATION_FAILED` / `ALLERGY_ACK_REQUIRED` with `details`; one transaction: note signed, draft prescription (with items) issued with its RX number, appointment in consultation → completed; audit + queue event after commit; empty vitals = warning. TODO(Phase 6/7/8) markers for lab orders, invoice and follow-up reminder.
+- **Prescriptions (D108–D112):** `isCurrent` + partial unique index replaces "unique encounter"; number on issue; drafts may hold incomplete items (checked at sign/issue); reissue = cancel + a linked draft (acknowledgements cleared), editable although the note is signed, issued with `POST /prescriptions/:id/issue`; cancel/reissue/issue are not limited by the 72 h window; draft → cancelled not allowed; reception lists prescriptions only per patient/appointment/encounter (issued/completed); `GET /prescriptions/:id/print` (clinic registration/GSTIN, doctor registration, follow-up; no diagnosis).
+- **Allergy check (D113):** whole-name match of drug, generic and formulary brand names against recorded allergies plus `data/allergyClasses.ts` (penicillins, cephalosporins, sulfonamides, NSAIDs, macrolides, quinolones, …); an allergy to one member warns for its class; acknowledgement stored per item, kept across autosaves of the same drug, re-checked against current allergies at sign/issue. Labelled a convenience check everywhere.
+- **Audit (D114):** new actions `encounter.create|view|update|sign|amend`, `prescription.update|issue|cancel|reissue|complete|view`; clinical records audit field names and counts only; autosaves (`encounter.update`, `prescription.update`) debounced 5 min per user + record; 4xx messages never name drugs or allergies (details only).
+- **Formulary + job (D115):** 123 drugs in `data/formulary.ts`, `GET /formulary?q=` (prefix of name or generic, doctors); `runPrescriptionCompletionJob` daily 02:00 (24-hour days from `issuedAt`).
+- **Client (D116–D117):** consult workspace `/doctor/consult/:appointmentId` (sticky header, allergy banner announced once, tabs, history side panel/drawer), autosave (2 s debounce, blur, tab change, Ctrl/⌘+S, one request in flight, offline back-off, conflict banner with "Reload latest") in memory-only `consultDraft` / `rxDraft` slices; review & sign dialog with links to fields; amend modal; prescription editor (formulary combobox, allergy acknowledgement, preview; incomplete rows never sent); `/print/prescriptions/:id` without app chrome (`PrintLayout`, A4, diagnosis toggle for doctors only); My patients, patient page, Notes (drafts > 24 h "Unsigned").
+- **Seed (D118):** ~20 note templates; a signed note for every completed appointment (seed-only path skipping the 72 h window), ~85 % prescriptions, ~40 % follow-ups, allergy-safe prescribing except one acknowledged demo, 3 amendments, drafts for today's consultations.
+- Fixed on the way: a latent department-code collision in the RBAC matrix; a vital typed past its range left the last valid keystroke pending.
+- No new packages.
+- Tests: 1544 server (was 1301) + 179 client (was 148). Phase 5 complete 2026-09-24.
+
+<details>
+<summary>Phase 5 manual test script (seeded DB, password <code>Password@123</code>)</summary>
+
+Seed data used: **Rahul Verma** (MRN-000002, penicillin allergy, portal login `patient2@medassist.dev`) is checked in with `dr.mehta` today; `dr.saini` has no appointment with him. (Today's queue depends on the clinic date – re-seed with `--reset` if it looks different.)
+
+Doctor (`dr.mehta@medassist.dev`):
+1. My queue → "With you now" shows a seeded patient already in consultation → Open consultation → a partly written draft (chief complaint, vitals). Review & sign → it lists "Add at least one diagnosis" as a link → the link opens Diagnosis & plan with the focus in place → add a diagnosis → Review & sign → Sign note. The success card offers "Call next patient".
+2. Call next patient → the workspace of the next waiting patient opens (the header shows allergies in red or "No known allergies"). To reach Rahul: My queue → Appointments → Rahul's appointment → Start consultation (or repeat 1–2 until he is called).
+3. Rahul's workspace: the red banner reads "Allergies: Penicillin (severe)". Vitals: weight 70, height 175 → BMI 22.9 appears; pulse 400 → "Between 20 and 250" (not saved). Notes: type a chief complaint, stop typing → header "Saving…" → "Saved hh:mm".
+4. Second tab: open the same URL, change the plan there and wait for "Saved". Back in the first tab, type in any field → after 2 s the red banner "This note was changed in another tab or window" appears, Review & sign is disabled → Reload latest → confirm → the other tab's text shows.
+5. Diagnosis & plan: add "Acute tonsillitis" (J03.9, primary). Prescription: Add drug → type "amox" → pick Amoxicillin (generic, strength, dose and TDS fill in). The row turns red: "Matches the recorded allergy “Penicillin” (Penicillins)". Review & sign → blocked with the allergy item listed. Tick "I have reviewed this allergy warning" → Review & sign → Sign note.
+6. Print prescription → the print page (no sidebar): clinic header with registration/GSTIN (if set in Settings), doctor qualifications + registration no., "Three times a day", "After food", no diagnosis line; "Show diagnosis" adds it. Print → the browser's A4 preview shows only the sheet.
+7. The signed note: "Signed by Dr Anil Mehta on …", Version 1 → Amend → tick Plan → change it → reason "short" is refused, a 10+ character reason saves → Version 2, the Amendment history shows before/after. Prescription: Reissue with a reason → a new draft opens → change the frequency → Issue prescription → a new RX number.
+8. Notes (sidebar): drafts older than 24 h show "Unsigned". My patients: Rahul has the allergy flag; his page lets you edit allergies/conditions.
+
+Reception (`reception1@medassist.dev`):
+9. Appointments → Rahul's (now completed) appointment → Print prescription → the same sheet without the diagnosis toggle. Opening `/doctor/consult/<id>` directly shows the 403 page.
+
+Other doctor (`dr.saini@medassist.dev`):
+10. Open `/doctor/patients/<Rahul's patient id>` (copy it from dr.mehta's URL) → "Patient not found"; `/doctor/encounters/<note id>` → not found. My patients does not list him.
+
+Patient (`patient2@medassist.dev`): 11. `/print/prescriptions/<RX id>` shows his own prescription (portal pages come in Phase 8).
+
+At 360 px: the history panel is a drawer ("Patient history" button), prescription rows stack, nothing scrolls sideways.
+</details>
 
 ---
 

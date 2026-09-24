@@ -786,6 +786,7 @@ Overbooked walk-ins set `isSlotActive: false` + `isOverbook: true` so they bypas
 options: optimisticConcurrency: true
 hooks: any update when status !== 'draft' throws RECORD_LOCKED unless done by the amendment service
 ```
+Phase 5 (D100, D105): `visitAt` (the appointment's start, for lists and history) is stored too; the API exposes `__v` as `revision`, sent back as `expectedVersion`. The amendment service passes an internal option (`amendmentWriteOptions`); notes are never deleted.
 
 ### 6.14 `note_amendments`
 ```js
@@ -823,8 +824,9 @@ indexes: { encounter: 1, status: 1 }
 ### 6.16 `prescriptions`
 ```js
 {
-  prescriptionNumber: String, unique        // 'RX-2026-000321'
-  encounter: ObjectId ref Encounter, required, unique
+  prescriptionNumber: String, unique        // 'RX-2026-000321' – assigned on issue (Phase 5)
+  encounter: ObjectId ref Encounter, required // Phase 5 (D108): not unique – see isCurrent
+  isCurrent: Boolean, default true           // one current prescription per encounter
   appointment, patient, doctor: refs, indexed
   status: enum ['draft','issued','completed','cancelled']
   items: [{
@@ -847,7 +849,9 @@ indexes: { encounter: 1, status: 1 }
   replaces: ObjectId ref Prescription
 }
 options: optimisticConcurrency: true; items locked after 'issued'
+indexes (Phase 5): { encounter: 1 } unique, partialFilterExpression { isCurrent: true } · { prescriptionNumber: 1 } unique where set · { patient: 1, issuedAt: -1 } · { status: 1, issuedAt: 1 }
 ```
+Phase 5 (D108–D113): a reissue sets the old prescription `cancelled` + `isCurrent: false` and creates a new draft (`replaces`, `isCurrent: true`) for the same encounter. Items also store `allergyWarning { substance, matchedOn, drugClass, acknowledgedBy, acknowledgedAt }`. After issue only status fields change (completion, cancellation); prescriptions are never deleted.
 
 ### 6.17 `patient_explanations` (AI, cached)
 ```js
@@ -1228,6 +1232,8 @@ Socket.IO rooms: `queue:<doctorId>:<date>`, `user:<userId>`. Events: `queue.upda
 | GET | `/encounters/:id/amendments` | D (rel) | Version history. |
 | GET | `/encounters/:id/visit-summary.pdf` | D (rel), P (own) | Printable summary. |
 
+Phase 5 (D99–D107): also `GET /appointments/:id/encounter` (D own – the consult workspace); `GET /encounters?mine=true`; `PATCH` sends `expectedVersion` (not `__v`); `POST /sign` needs `{ expectedVersion }`; `POST /amendments` returns 201. Patient views of encounters and `visit-summary.pdf` come with Phases 8 and 10.
+
 ### 7.11 AI clinical summaries
 | Method | Path | Roles | Description |
 |---|---|---|---|
@@ -1261,6 +1267,8 @@ POST /api/v1/encounters/66e…/summary/generate
 | GET | `/prescriptions/:id/pdf` | D, R, P (own) | |
 | POST | `/prescriptions/:id/explain` | P (own), D (preview) | `{ language }` → cached or new explanation (§9.3). |
 | POST | `/prescriptions/:id/explain/feedback` | P (own) | `{ helpful, comment }` |
+
+Phase 5 (D108–D112): also `POST /prescriptions/:id/issue` (D own – issues a reissued draft) and `GET /prescriptions/:id/print` (D, R, P own; issued/completed only – the printed sheet with clinic and doctor registration, no diagnosis). Reissue returns the new draft (201). Receptionists list prescriptions per patient, appointment or encounter only. `pdf` comes in Phase 10, `explain` in Phase 9.
 
 ### 7.13 Follow-ups
 | Method | Path | Roles | Description |
@@ -1502,7 +1510,7 @@ Inside a MongoDB transaction:
 - No PHI in logs, URLs (use ids, not names), error messages, notifications' email bodies (emails say "You have a new lab report – log in to view").
 
 ### 10.4 Audit log — action catalogue
-`auth.login` · `auth.login_failed` · `auth.logout` · `auth.refresh_reuse` · `auth.password_changed` · `auth.password_reset` · `user.create` · `user.update` · `user.deactivate` · `user.activate` · `settings.update` · `department.*` · `service.*` · `doctor.schedule_update` · `doctor.leave_create` · `patient.create` · `patient.create_duplicate_override` · `patient.view` · `patient.update` · `patient.clinical_profile_update` · `patient.portal_invite` · `patient.update_duplicate_override` · `patient.link_confirm` · `patient.link_reject` · `patient.deactivate` · `patient.activate` (Phase 3, D71) · `appointment.create|reschedule|cancel|check_in|start|complete|no_show` · `encounter.view|update|sign|amend` · `summary.generate|approve|reject` · `prescription.issue|cancel|view` · `explanation.generate|blocked` · `lab_order.create|collect|reject_sample|results_enter|verify|release|revise|cancel|view` · `invoice.create|issue|void` · `payment.create|refund` · `document.upload|download|delete` · `followup.create|respond|schedule|close` · `audit.export` · `access.denied` · `access.break_glass`.
+`auth.login` · `auth.login_failed` · `auth.logout` · `auth.refresh_reuse` · `auth.password_changed` · `auth.password_reset` · `user.create` · `user.update` · `user.deactivate` · `user.activate` · `settings.update` · `department.*` · `service.*` · `doctor.schedule_update` · `doctor.leave_create` · `patient.create` · `patient.create_duplicate_override` · `patient.view` · `patient.update` · `patient.clinical_profile_update` · `patient.portal_invite` · `patient.update_duplicate_override` · `patient.link_confirm` · `patient.link_reject` · `patient.deactivate` · `patient.activate` (Phase 3, D71) · `appointment.create|reschedule|cancel|check_in|start|complete|no_show` · `encounter.create|view|update|sign|amend` (Phase 5; `update` debounced, field names only) · `summary.generate|approve|reject` · `prescription.update|issue|cancel|reissue|complete|view` (Phase 5; `update` debounced, counts only) · `explanation.generate|blocked` · `lab_order.create|collect|reject_sample|results_enter|verify|release|revise|cancel|view` · `invoice.create|issue|void` · `payment.create|refund` · `document.upload|download|delete` · `followup.create|respond|schedule|close` · `audit.export` · `access.denied` · `access.break_glass`.
 
 Rules: record **who, what, which record, which patient, when, from where, outcome**, plus changed field names and redacted before/after for updates. Reads of clinical data are logged (debounced: the same user viewing the same record within 5 min = one entry).
 
@@ -1703,6 +1711,9 @@ Reports (§7.18) render as table + chart, filterable by date range, exportable t
 | `SELF_BOOKING_DISABLED` | 403 | Patient online booking/rescheduling is turned off in settings (Phase 4, D82) |
 | `OUTSIDE_BOOKING_WINDOW` | 422 | A date in the past, or (patients) beyond `bookingWindowDays` (Phase 4, D82) |
 | `OVERBOOK_LIMIT_REACHED` | 422 | The session's walk-in overbook places are used up (Phase 4, D82) |
+| `DOCUMENTATION_WINDOW_CLOSED` | 422 | A note edited or signed after the late documentation window (in consultation or ≤ 72 h after completion; Phase 5, D102) |
+| `ALLERGY_ACK_REQUIRED` | 422 | A prescribed drug matches a recorded allergy without an acknowledgement; `details` list the items (Phase 5, D113) |
+| `SIGN_VALIDATION_FAILED` | 422 | The note (or prescription) lacks what signing/issuing needs; `details` list the fields (Phase 5, D106) |
 | `SELF_VERIFICATION_NOT_ALLOWED` | 422 | Same lab tech entering and verifying |
 | `PAYMENT_EXCEEDS_BALANCE` | 422 | Overpayment |
 | `DISCOUNT_REQUIRES_ADMIN` | 422 | Discount over allowed limit |
@@ -1775,6 +1786,8 @@ Record decisions here as they are made (date, decision, reason).
 | 6 | File storage in production | Cloudinary (free tier) |
 
 ### Decisions made
+Phase 5 key decisions: the care relationship is a list of pluggable checks in `patientAccess` (appointments now; lab orders in Phase 6, follow-ups in Phase 8), cached per request (D97); the draft note is created in the start/call-next transaction (D100); clinical records are edited with `expectedVersion` and audited by field name only (D101, D114); signed notes change only through the amendment service's internal path (D105); one transaction signs, issues and completes (D106); one current prescription per encounter via `isCurrent` (D108); the allergy check is a name + drug-class convenience check with per-item acknowledgement (D113); clinical drafts live in memory only on the client (D116).
+
 Phase 4 key decisions: booking lock = `bookingVersion` bumped on the doctor and the patient inside the transaction, with the partial unique index as the last guard (D79); `assertTransition` + one conditional update for every status change (D81); walk-ins take the next free slot or an overbook place (D84); Socket.IO events carry ids only and are sent after commit (D88); the queue board shows tokens, doctors and rooms only, behind `KIOSK_KEY` (D87); jobs run with node-cron only when `JOBS_ENABLED=true` (D90); admins view appointments but the UI offers them no actions (D91).
 
 Phase 3 key decisions: receptionists see and record allergies, not chronic conditions (D60); doctors see no patients until Phase 5 and lab technicians none until Phase 6 (D61); self-signup links by phone + DOB, pending links grant no access until reception confirms (D63, D64); phones are E.164 everywhere (D66); anchored prefix search (D70); patient audit entries redact identifying values (D71); test servers bind to 127.0.0.1 (D78).
@@ -1881,3 +1894,25 @@ Phase 1 key decisions: patient self-registration creates a User only, with no Pa
 | D94 | 2026-09-24 | **Seed**: ~310 appointments (past 60 days: completed with visit times and tokens, follow-ups, cancellations, no-shows; today's live queue for up to three doctors; next 14 days, two for patient1), inside schedules and outside leave. Past ones through the seed-only `insertAppointmentForSeed` (booking checks and numbering, past dates allowed), future ones through `bookAppointment` with `notify: false`. History once; today's queue once per clinic day; `--reset` also clears appointments and token counters. | §15.3. |
 | D95 | 2026-09-24 | **Client.** react-big-calendar works with clinic "wall dates" (`toClinicWallDate`/`fromClinicWallDate`), tested with TZ=America/New_York. Calendar caches are tagged per clinic date. RTK Query invalidates a mutation's tags even when it fails, so a 409 refreshes the free slots. Priority is set with a PATCH right after booking (booking takes none). `/queue/board` is excluded from the 401 → refresh logic (a wrong kiosk key looped refresh → logout → cache reset → refetch). Changed queue cards reuse `animate-fade-up`. `ReasonDialog` moved to the UI kit. | Found while building Phase 4. |
 | D96 | 2026-09-24 | **Rate limits** (§10.3): patient bookings and reschedules 20/hour per user; the queue board 60/minute per IP. | Abuse protection. |
+| D97 | 2026-09-24 | **Care relationship (§2.3)**: `CARE_RELATIONSHIP_CHECKS` in `policies/patientAccess.ts`, starting with "a non-cancelled appointment with the patient" (past, future, no-show). With one a doctor gets demographics, clinical, lab and allergies – not billing; without, 404 + `access.denied`. `canAccessPatient` is async; answers are cached per request (WeakMap keyed by the `AuthUser` object `authenticate` creates per request). Break-glass is not built. | Phases 6 and 8 add their checks without touching callers. |
+| D98 | 2026-09-24 | `patientListFilter` and `relatedPatientIds` mirror the checks for lists; they must be extended together with them. | Lists and single reads must agree. |
+| D99 | 2026-09-24 | **Doctors' patient endpoints**: `GET /patients?scope=mine` (always for doctors; one aggregation grouping the doctor's appointments, with `lastVisitAt` – in consultation or completed – `lastAppointmentAt` and `hasAllergies`), `GET /patients/:id` (doctor view), `PATCH /patients/:id/clinical-profile` (field names in the audit, values `[REDACTED]`). | §7.7 said "empty until Phase 5". |
+| D100 | 2026-09-24 | The **draft encounter** is created inside the start / call-next transaction (after the booking lock; unique on `appointment`; idempotent), so status and note commit together; responses carry `encounterId`; `GET /appointments/:id/encounter` opens it. `visitAt` (appointment start) added to §6.13 for lists. Audited `encounter.create`. | §4.7 step 1; parallel starts create one note. |
+| D101 | 2026-09-24 | **Optimistic concurrency**: `PATCH /encounters/:id` and `PUT /encounters/:id/prescription` send `expectedVersion` (= `__v`, exposed as `revision`); a mismatch → 409 CONFLICT "changed in another tab" with `currentRevision`. Updates are conditional (`{ _id, __v, status: 'draft' }` + `$inc __v`) – Mongoose's `optimisticConcurrency` only covers `save()`. | Two tabs must not overwrite each other. |
+| D102 | 2026-09-24 | **Documentation window (§8.5)**: a note is edited/signed while the appointment is in consultation or up to 72 h after `queue.completedAt`; otherwise 422 `DOCUMENTATION_WINDOW_CLOSED` (amendments only once signed). `POST /appointments/:id/complete` stays available; an unsigned note can still be signed inside the window. | Late documentation without leaving notes open forever. |
+| D103 | 2026-09-24 | **Who reads notes**: the author always; other doctors only signed/amended notes and only with a care relationship; drafts are private. Admins, receptionists and lab techs never (403 by role); patient views come in Phase 8. | §2.4 "C R U own; R rel". |
+| D104 | 2026-09-24 | **Lists without clinical text**: encounter and prescription list rows carry no clinical text (no per-row read audit), except one patient's note history (`?patient=`), which shows each visit's primary diagnosis and is audited as a debounced `encounter.view` of the history. `GET /encounters?mine=true` for the doctor's Notes page. | Minimum necessary with a useful history panel. |
+| D105 | 2026-09-24 | **Immutability**: query and document hooks refuse any update of a signed/amended encounter unless the amendment service passes `amendmentWriteOptions()` (a per-process random token); notes are never deleted; bulk writes are refused. Issued prescriptions allow only status fields (status, isCurrent, cancellation, completedAt); `$setOnInsert` from timestamps is ignored by the check. `note_amendments` is append-only with unique `{ encounter, version }`. | §10.5, testable at the model level. |
+| D106 | 2026-09-24 | **Signing**: `POST /encounters/:id/sign { expectedVersion }` (sign what you see). Checks → 422 `SIGN_VALIDATION_FAILED` (chief complaint, a diagnosis, complete prescription items; `details` = fields) or `ALLERGY_ACK_REQUIRED`; empty vitals = a warning in the response. One transaction: note signed, draft prescription with items issued (RX number from the counter), appointment in consultation → completed (`applyTransition`). Audit (`encounter.sign`, `prescription.issue`, `appointment.complete`), queue event and notification after the commit. A draft prescription without items is not issued. Lab orders, invoice and follow-up reminder: TODO(Phase 6/7/8). | §4.7 step 5. |
+| D107 | 2026-09-24 | **Amendments**: `{ reason ≥ 10, changes }` over the note fields only (not the prescription); only really changed fields are recorded (422 if none); before/after snapshots per field; the note becomes `amended`, `version` +1; no time limit; own doctor only. | §6.14. |
+| D108 | 2026-09-24 | **One current prescription per encounter**: `isCurrent` + partial unique index on `encounter` replace "encounter unique" (§6.16). | Cancel + reissue creates a linked prescription for the same encounter. |
+| D109 | 2026-09-24 | **Prescription drafts** may hold incomplete items (autosave); completeness (dose, frequency or text for 'other', duration) is checked at sign/issue. The RX number is assigned on issue. | Autosave of half-filled rows. |
+| D110 | 2026-09-24 | **Reissue** (issued → cancelled + a new linked draft, one transaction; acknowledgements cleared) is editable with PUT although the note is signed and issued with `POST /prescriptions/:id/issue` (same checks as signing). Cancel/reissue/issue are not limited by the 72 h window; draft → cancelled is not allowed (§5.3); parallel reissues → one wins, 409 for the rest. | A prescription may need correcting days later. |
+| D111 | 2026-09-24 | **Reading prescriptions**: doctor – own (any status) and issued ones of related patients; patient – own issued/completed (403 `PATIENT_LINK_PENDING` while pending); receptionist – issued/completed, print view, lists only per patient/appointment/encounter; admin – never. | §2.4 "R (print only)". |
+| D112 | 2026-09-24 | **Print sheet** `GET /prescriptions/:id/print` (D, R, P; issued/completed): clinic header incl. registration number and GSTIN, doctor qualifications and registration number, patient identifiers, items with frequency labels, follow-up plan; no diagnosis – the doctor's print page adds it from the note on request (open decision 3: off by default). Client `/print/prescriptions/:id` (`PrintLayout`, A4, no app chrome); server PDFs in Phase 10. | Those fields are not public. |
+| D113 | 2026-09-24 | **Allergy check (§8.6)**: normalised whole-name match of drug, generic and formulary brand names (brand prefix fallback) against recorded substances, plus a curated class map (`data/allergyClasses.ts`); an allergy to a class member warns for the whole class. Per item `allergyWarning` with `acknowledgedBy/At`; `acknowledgeAllergy: true/false` on PUT; kept across saves of the same drug and allergy; re-checked against current allergies at sign/issue → 422 `ALLERGY_ACK_REQUIRED`. Labelled "a convenience check, not clinical decision support". | Safety without pretending to be a drug database. |
+| D114 | 2026-09-24 | **Audit of clinical records**: field names and counts only, never text or drug names; `encounter.update` and `prescription.update` debounced 5 min per user + record; error messages (logged for 4xx) never name drugs or allergies – those go in `details`. New actions `encounter.create`, `prescription.update|reissue|complete`. | §10.3–10.4. |
+| D115 | 2026-09-24 | **Formulary** (123 common Indian outpatient drugs, `data/formulary.ts`, `GET /formulary?q=` prefix match, doctors) – free text still allowed. **Completion job** daily 02:00: issued → completed when `issuedAt + max(durationDays) × 24 h` has passed. | §8.11. |
+| D116 | 2026-09-24 | **Client drafts in memory only**: `consultDraft` and `rxDraft` Redux slices (cleared on logout); autosave 2 s after typing, on blur, tab change and Ctrl/⌘+S, one request in flight, offline back-off, conflict/locked/closed stop autosave with "Reload latest"; half-typed diagnoses, incomplete prescription rows and invalid vitals are never sent. Leaving with unsaved changes asks first. | Patient data never in browser storage. |
+| D117 | 2026-09-24 | **Client pages**: consult workspace (sticky header, allergy banner announced once, tabs Vitals / Notes / Diagnosis & plan / Prescription / Follow-up – no lab or AI tabs yet, history panel), review & sign with links to fields, signed view with Amend and history, prescription editor, My patients, patient page, Notes ("Unsigned" drafts > 24 h), reception print button. | §13.4 #4. |
+| D118 | 2026-09-24 | **Seed**: ~20 note templates matched to appointment reasons; a signed note for every completed appointment through a seed-only insert (no 72 h window), ~85 % with prescriptions, ~40 % with follow-ups; allergy-safe prescribing (template alternatives) except one acknowledged demo; three amendments through the service; drafts for today's consultations. `--reset` clears notes, amendments and prescriptions. | §15.3. |
