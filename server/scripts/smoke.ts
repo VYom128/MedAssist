@@ -154,6 +154,7 @@ async function runChecks(api: string): Promise<boolean> {
   await phase2Checks(api, check, login);
   await phase3Checks(api, check, login);
   await phase4Checks(api, check, login);
+  await phase5Checks(api, check, login);
 
   for (const [name, ok, detail] of results) {
     out(`${ok ? 'PASS' : 'FAIL'}  ${name}${!ok && detail ? ` (${detail})` : ''}`);
@@ -530,6 +531,94 @@ async function phase4Checks(
   await Promise.all(
     [reception, patient].map((a) =>
       call(api, '/auth/logout', { method: 'POST', headers: a.headers }),
+    ),
+  );
+}
+
+/**
+ * Phase 5: seeded clinical notes and prescriptions – doctors read their signed notes (and the
+ * amendment history), today's consultation has a draft, patient1 sees only issued prescriptions
+ * without allergy internals, reception prints by patient, admins get 403. Read-only.
+ */
+async function phase5Checks(
+  api: string,
+  check: (name: string, ok: boolean, detail?: string) => void,
+  login: (email: string) => ReturnType<typeof call>,
+) {
+  const as = async (email: string) => {
+    const r = await login(email);
+    const token = r.body.data?.accessToken;
+    if (!token) check(`${email} logs in for Phase 5 checks`, false, `status ${r.res.status}`);
+    return token ? { Authorization: `Bearer ${token}` } : null;
+  };
+  type Item = { id: string; status?: string };
+  const list = (body: { data?: unknown }) => (body.data as Item[] | undefined) ?? [];
+
+  const doctor = await as('dr.mehta@medassist.dev');
+  const patient = await as('patient1@medassist.dev');
+  const reception = await as('reception1@medassist.dev');
+  const admin = await as('admin@medassist.dev');
+  if (!doctor || !patient || !reception || !admin) return;
+
+  const notes = await call(api, '/encounters?limit=100', { headers: doctor });
+  const signed = list(notes.body).find((e) => e.status === 'signed' || e.status === 'amended');
+  check(
+    'dr.mehta lists signed notes (no clinical text in the list)',
+    notes.res.status === 200 &&
+      Boolean(signed) &&
+      !/chiefComplaint/.test(JSON.stringify(notes.body)),
+  );
+  if (signed) {
+    const one = await call(api, `/encounters/${signed.id}`, { headers: doctor });
+    check(
+      'dr.mehta opens a signed note',
+      one.res.status === 200 &&
+        Boolean((one.body.data as { chiefComplaint?: string })?.chiefComplaint),
+    );
+    const history = await call(api, `/encounters/${signed.id}/amendments`, { headers: doctor });
+    check('the amendment history loads', history.res.status === 200);
+  }
+  const underWay = await call(api, '/appointments?status=in_consultation&from=2000-01-01', {
+    headers: doctor,
+  });
+  const current = list(underWay.body)[0];
+  if (current) {
+    const draft = await call(api, `/appointments/${current.id}/encounter`, { headers: doctor });
+    check(
+      "today's consultation has a draft note",
+      draft.res.status === 200 && (draft.body.data as Item | undefined)?.status === 'draft',
+      `status ${draft.res.status}`,
+    );
+  }
+
+  const mine = await call(api, '/prescriptions', { headers: patient });
+  const rx = list(mine.body);
+  check(
+    'patient1 sees only issued/completed prescriptions',
+    mine.res.status === 200 && rx.every((p) => p.status === 'issued' || p.status === 'completed'),
+    `status ${mine.res.status}`,
+  );
+  if (rx[0]) {
+    const one = await call(api, `/prescriptions/${rx[0].id}`, { headers: patient });
+    check(
+      "patient1's prescription has no allergy internals",
+      one.res.status === 200 && !/allergy|acknowledged/i.test(JSON.stringify(one.body)),
+    );
+  }
+  const me = await call(api, '/patients/me', { headers: patient });
+  const myId = (me.body.data as { id?: string } | undefined)?.id;
+  if (myId) {
+    const printable = await call(api, `/prescriptions?patient=${myId}`, { headers: reception });
+    check('reception lists a patient’s prescriptions for printing', printable.res.status === 200);
+  }
+  const adminDenied = await call(api, '/encounters', { headers: admin });
+  check('admins get 403 on clinical notes', adminDenied.res.status === 403);
+  const noScope = await call(api, '/prescriptions', { headers: reception });
+  check('reception must choose a patient to list prescriptions', noScope.res.status === 400);
+
+  await Promise.all(
+    [doctor, patient, reception, admin].map((h) =>
+      call(api, '/auth/logout', { method: 'POST', headers: h }),
     ),
   );
 }

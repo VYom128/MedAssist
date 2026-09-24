@@ -3,7 +3,10 @@ import { ApiError } from '../../utils/ApiError.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { parsePagination } from '../../utils/pagination.js';
 import { buildRequestMeta } from '../../utils/requestContext.js';
+import * as prescriptionsService from '../prescriptions/service.js';
+import * as amendmentService from './amendment.service.js';
 import * as encountersService from './service.js';
+import * as signService from './sign.service.js';
 import type { ListEncountersQuery } from './validation.js';
 
 const currentUser = (req: Request) => {
@@ -49,4 +52,43 @@ export async function updateEncounter(req: Request, res: Response) {
     buildRequestMeta(req),
   );
   return sendSuccess(res, { message: 'Saved', data });
+}
+
+export async function signEncounter(req: Request, res: Response) {
+  const data = await signService.signEncounter(
+    currentUser(req),
+    idOf(req),
+    req.body,
+    buildRequestMeta(req),
+  );
+  return sendSuccess(res, { message: 'Note signed', data });
+}
+
+export async function amendEncounter(req: Request, res: Response) {
+  const data = await amendmentService.amendEncounter(
+    currentUser(req),
+    idOf(req),
+    req.body,
+    buildRequestMeta(req),
+  );
+  return sendSuccess(res, { statusCode: 201, message: 'Amendment saved', data });
+}
+
+export async function listAmendments(req: Request, res: Response) {
+  const data = await amendmentService.listAmendments(
+    currentUser(req),
+    idOf(req),
+    buildRequestMeta(req),
+  );
+  return sendSuccess(res, { data });
+}
+
+export async function putPrescription(req: Request, res: Response) {
+  const data = await prescriptionsService.putDraft(
+    currentUser(req),
+    idOf(req),
+    req.body,
+    buildRequestMeta(req),
+  );
+  return sendSuccess(res, { message: 'Prescription saved', data });
 }

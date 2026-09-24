@@ -10,6 +10,7 @@ import {
   zonedDateTimeToUtc,
 } from '../src/utils/dates.js';
 import { hashToken, verifyAccessToken } from '../src/utils/tokens.js';
+import { runPrescriptionCompletionJob } from '../src/jobs/prescriptionCompletion.job.js';
 import {
   createUser,
   loginAs,
@@ -335,15 +336,39 @@ describe('audit coverage', () => {
     // encounter.create (with the start), encounter.view, encounter.update, and
     // patient.clinical_profile_update (drToday now has a care relationship with the patient)
     const note = await api().get(`/api/v1/appointments/${visit._id}/encounter`).set(drToday.auth);
+    const noteId = note.body.data.id as string;
     await api()
-      .patch(`/api/v1/encounters/${note.body.data.id}`)
+      .patch(`/api/v1/encounters/${noteId}`)
       .set(drToday.auth)
-      .send({ expectedVersion: 0, chiefComplaint: 'Headache for two days' });
+      .send({
+        expectedVersion: 0,
+        chiefComplaint: 'Headache for two days',
+        diagnoses: [{ description: 'Tension headache' }],
+      });
     await api()
       .patch(`/api/v1/patients/${patientId}/clinical-profile`)
       .set(drToday.auth)
       .send({ chronicConditions: [{ name: 'Migraine' }] });
-    await post(`/appointments/${visit._id}/complete`, drToday.auth);
+    // prescription.update, encounter.sign + prescription.issue + appointment.complete (signing)
+    const rx = await api()
+      .put(`/api/v1/encounters/${noteId}/prescription`)
+      .set(drToday.auth)
+      .send({
+        items: [{ drugName: 'Paracetamol', dose: '1 tablet', frequency: 'SOS', durationDays: 3 }],
+      });
+    await post(`/encounters/${noteId}/sign`, drToday.auth, { expectedVersion: 1 });
+    // prescription.view, encounter.amend, prescription.cancel + prescription.reissue, then the
+    // reissued draft is issued and completed by the job (prescription.complete)
+    await api().get(`/api/v1/prescriptions/${rx.body.data.id}`).set(drToday.auth);
+    await post(`/encounters/${noteId}/amendments`, drToday.auth, {
+      reason: 'Added the plan after the call',
+      changes: { plan: 'Hydration and rest' },
+    });
+    const reissued = await post(`/prescriptions/${rx.body.data.id}/reissue`, drToday.auth, {
+      reason: 'Change to a regular dose',
+    });
+    await post(`/prescriptions/${reissued.body.data.id}/issue`, drToday.auth);
+    await runPrescriptionCompletionJob(new Date(Date.now() + 10 * 86_400_000));
     const missed = await insertAppointment({
       patient: twin.body.data.id as string,
       doctor: drToday.id,

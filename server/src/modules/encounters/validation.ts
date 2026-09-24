@@ -131,6 +131,33 @@ export const updateEncounterSchema = {
     .refine((b) => Object.keys(b).some((k) => k !== 'expectedVersion'), 'Nothing to update'),
 };
 
+/** POST /encounters/:id/sign – the revision the doctor is signing (409 CONFLICT if stale). */
+export const signEncounterSchema = {
+  params: idParams,
+  body: z.strictObject({ expectedVersion }),
+};
+
+/**
+ * POST /encounters/:id/amendments – a reason and the note fields to change (not the
+ * prescription: that is cancelled or reissued).
+ */
+export const amendEncounterSchema = {
+  params: idParams,
+  body: z.strictObject({
+    reason: z
+      .string()
+      .trim()
+      .min(
+        ENCOUNTER_RULES.amendmentReasonMinLength,
+        `At least ${ENCOUNTER_RULES.amendmentReasonMinLength} characters`,
+      )
+      .max(1000, 'At most 1000 characters'),
+    changes: z
+      .strictObject(encounterFields)
+      .refine((c) => Object.values(c).some((v) => v !== undefined), 'Nothing to amend'),
+  }),
+};
+
 /** GET /encounters (doctor). `from`/`to` are clinic dates of the visit (inclusive). */
 export const listEncountersSchema = {
   query: z
@@ -150,4 +177,6 @@ export const listEncountersSchema = {
 export const encounterIdSchema = { params: idParams };
 
 export type UpdateEncounterInput = z.infer<typeof updateEncounterSchema.body>;
+export type SignEncounterInput = z.infer<typeof signEncounterSchema.body>;
+export type AmendEncounterInput = z.infer<typeof amendEncounterSchema.body>;
 export type ListEncountersQuery = z.infer<typeof listEncountersSchema.query>;

@@ -74,6 +74,16 @@ export interface Ctx {
   walkInPatientId: string;
   /** The draft encounter of `inConsultationId` (doctorId's; its documentation window is open). */
   encounterId: string;
+  /** A draft note of doctorId (another appointment in consultation) ready to sign, revision 0. */
+  signableEncounterId: string;
+  /**
+   * A signed note of doctorId with patientId (a completed appointment), with an issued
+   * prescription `prescriptionId` (patientId's own for a patient caller).
+   */
+  signedEncounterId: string;
+  prescriptionId: string;
+  /** A reissued draft prescription (replaces a cancelled one) on another signed note. */
+  reissuedDraftId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -102,6 +112,7 @@ const RECEPTION: readonly Role[] = ['receptionist'];
 const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'patient'];
 const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
+const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionist'];
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
 const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
@@ -565,7 +576,76 @@ ENDPOINTS.push(
     roles: DOCTOR,
     status: 200,
   },
+  {
+    method: 'post',
+    path: (c) => `/encounters/${c.signableEncounterId}/sign`,
+    body: () => ({ expectedVersion: 0 }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/encounters/${c.signedEncounterId}/amendments`,
+    body: (c) => ({ reason: 'Matrix amendment reason', changes: { plan: `Plan ${c.n}` } }),
+    roles: DOCTOR,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/encounters/${c.signedEncounterId}/amendments`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'put',
+    path: (c) => `/encounters/${c.encounterId}/prescription`,
+    body: () => ({
+      items: [
+        {
+          drugName: 'Paracetamol',
+          dose: '1 tablet',
+          frequency: 'TDS',
+          durationDays: 3,
+        },
+      ],
+    }),
+    roles: DOCTOR,
+    status: 200,
+  },
   { method: 'get', path: () => '/formulary?q=para', roles: DOCTOR, status: 200 },
+  // Prescriptions (spec §7.12): doctors, patients (own issued) and reception (print); never admin.
+  {
+    method: 'get',
+    path: (c) => `/prescriptions?patient=${c.patientId}`,
+    roles: PRESCRIPTION_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/prescriptions/${c.prescriptionId}`,
+    roles: PRESCRIPTION_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/prescriptions/${c.prescriptionId}/cancel`,
+    body: () => ({ reason: 'Matrix cancel reason' }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/prescriptions/${c.prescriptionId}/reissue`,
+    body: () => ({ reason: 'Matrix reissue reason' }),
+    roles: DOCTOR,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/prescriptions/${c.reissuedDraftId}/issue`,
+    roles: DOCTOR,
+    status: 200,
+  },
   // Slots and availability (spec §7.6): any logged-in user
   {
     method: 'get',
@@ -634,6 +714,10 @@ export const PATTERN_CTX = {
   inConsultationId: ':id',
   walkInPatientId: ':id',
   encounterId: ':id',
+  signableEncounterId: ':id',
+  signedEncounterId: ':id',
+  prescriptionId: ':id',
+  reissuedDraftId: ':id',
   n: 0,
 } as unknown as Ctx;
 

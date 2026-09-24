@@ -267,3 +267,81 @@ export async function startedConsultation(
     encounterId: res.body.data.encounterId as string,
   };
 }
+
+/** PATCH the note with its current revision. @returns the response body's data. */
+export async function writeNote(
+  doctor: LoggedIn,
+  encounterId: string,
+  fields: Record<string, unknown>,
+) {
+  const current = await api().get(`/api/v1/encounters/${encounterId}`).set(doctor.auth);
+  const res = await api()
+    .patch(`/api/v1/encounters/${encounterId}`)
+    .set(doctor.auth)
+    .send({ expectedVersion: current.body.data.revision, ...fields });
+  if (res.status !== 200) throw new Error(`note failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.data as { revision: number } & Record<string, unknown>;
+}
+
+/** A complete prescription item (issuable). */
+export const rxItem = (overrides: Record<string, unknown> = {}) => ({
+  drugName: 'Paracetamol',
+  genericName: 'Paracetamol',
+  strength: '650 mg',
+  form: 'tablet',
+  dose: '1 tablet',
+  route: 'oral',
+  frequency: 'TDS',
+  timing: 'after_food',
+  durationDays: 5,
+  ...overrides,
+});
+
+/** PUT the draft prescription of a note (with the draft's revision when it exists). */
+export async function putPrescription(
+  doctor: LoggedIn,
+  encounterId: string,
+  body: Record<string, unknown>,
+) {
+  return api().put(`/api/v1/encounters/${encounterId}/prescription`).set(doctor.auth).send(body);
+}
+
+/**
+ * A consultation whose note is ready to sign: chief complaint, a diagnosis and vitals, and
+ * (unless `items: []`) a draft prescription.
+ */
+export async function readyToSign(
+  options: {
+    doctor?: LoggedIn & { id: string };
+    patientId?: string;
+    items?: Record<string, unknown>[];
+    note?: Record<string, unknown>;
+  } = {},
+) {
+  const started = await startedConsultation(options.doctor, { patientId: options.patientId });
+  const note = await writeNote(started.doctor, started.encounterId, {
+    chiefComplaint: 'Fever and sore throat for 3 days',
+    diagnoses: [{ description: 'Acute pharyngitis', icd10Code: 'J02.9', isPrimary: true }],
+    vitals: { temperatureC: 38.4, pulse: 96 },
+    ...options.note,
+  });
+  const items = options.items ?? [rxItem()];
+  let prescriptionId: string | null = null;
+  if (items.length > 0) {
+    const rx = await putPrescription(started.doctor, started.encounterId, { items });
+    if (rx.status !== 200) throw new Error(`rx failed: ${rx.status} ${JSON.stringify(rx.body)}`);
+    prescriptionId = rx.body.data.id as string;
+  }
+  return { ...started, revision: note.revision, prescriptionId };
+}
+
+/** Signs a note ready to sign. @returns the sign response data. */
+export async function signNote(doctor: LoggedIn, encounterId: string) {
+  const current = await api().get(`/api/v1/encounters/${encounterId}`).set(doctor.auth);
+  const res = await api()
+    .post(`/api/v1/encounters/${encounterId}/sign`)
+    .set(doctor.auth)
+    .send({ expectedVersion: current.body.data.revision });
+  if (res.status !== 200) throw new Error(`sign failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.data;
+}

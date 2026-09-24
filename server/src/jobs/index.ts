@@ -4,6 +4,7 @@ import { config } from '../config/env.js';
 import { getSettings } from '../modules/settings/service.js';
 import { logger, serializeError } from '../utils/logger.js';
 import { runNoShowJob } from './noShow.job.js';
+import { runPrescriptionCompletionJob } from './prescriptionCompletion.job.js';
 import { runReminderJob } from './reminders.job.js';
 
 /**
@@ -13,9 +14,14 @@ import { runReminderJob } from './reminders.job.js';
  * effect after a restart.
  */
 
-const JOBS = [
-  { name: 'reminders', run: runReminderJob },
-  { name: 'no-show', run: runNoShowJob },
+export const JOBS = [
+  { name: 'reminders', rule: JOB_RULES.every15Minutes, run: runReminderJob },
+  { name: 'no-show', rule: JOB_RULES.every15Minutes, run: runNoShowJob },
+  {
+    name: 'prescription-completion',
+    rule: JOB_RULES.daily0200,
+    run: runPrescriptionCompletionJob,
+  },
 ] as const;
 
 /** Runs a job; never throws (a failing job must not take the server down). */
@@ -34,8 +40,8 @@ export async function startJobs(): Promise<() => Promise<void>> {
     return async () => undefined;
   }
   const { timezone } = await getSettings();
-  const tasks: ScheduledTask[] = JOBS.map(({ name, run }) =>
-    cron.schedule(JOB_RULES.every15Minutes, () => safely(name, run), {
+  const tasks: ScheduledTask[] = JOBS.map(({ name, rule, run }) =>
+    cron.schedule(rule, () => safely(name, run), {
       name,
       timezone,
       noOverlap: true,

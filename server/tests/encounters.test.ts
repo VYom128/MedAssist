@@ -393,8 +393,10 @@ describe('PATCH /encounters/:id (autosave)', () => {
       expect(entries[0]?.changes?.fields).toEqual(['chiefComplaint', 'diagnoses', 'vitals']);
       expect(entries[0]?.patient?.toString()).toBe(patientId);
       const stored = JSON.stringify(entries);
-      expect(stored).not.toMatch(/Chest|angina|I20|ECG|troponin|150/);
-      expect(entries[0]?.changes).not.toHaveProperty('before.chiefComplaint');
+      // Words only: ids and hashes are hex, so digits like "150" could appear by chance.
+      expect(stored).not.toMatch(/Chest|angina|I20\.9|ECG|troponin/);
+      // Field names only – no before/after values (the note's values stay in the note).
+      expect(entries[0]?.changes).toEqual({ fields: ['chiefComplaint', 'diagnoses', 'vitals'] });
 
       // 6 minutes later the next save is audited again.
       vi.useFakeTimers({ toFake: ['Date'] });

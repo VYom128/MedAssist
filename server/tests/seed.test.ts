@@ -39,6 +39,13 @@ describe('seed', () => {
         unchanged: 0,
         skipped: 0,
       }),
+      // tests/seed.encounters.test.ts checks the clinical data.
+      encounters: expect.objectContaining({
+        created: expect.any(Number),
+        unchanged: 0,
+        amended: 3,
+        acknowledgedWarnings: 1,
+      }),
     });
 
     const settings = await ClinicSettings.findOne().lean();
@@ -176,6 +183,7 @@ describe('seed', () => {
       labTests: { created: 0, updated: 0, unchanged: 15 },
       patients: { created: 0, updated: 0, unchanged: 60, portalUsers: 8, pending: 1 },
       appointments: expect.objectContaining({ created: 0, updated: 0, skipped: 0 }),
+      encounters: expect.objectContaining({ created: 0, prescriptions: 0, todayDrafts: 0 }),
     });
     const countsAfter = await Promise.all(
       [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest, Patient].map(

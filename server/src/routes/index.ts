@@ -10,6 +10,7 @@ import healthRoutes from '../modules/health/routes.js';
 import labTestRoutes from '../modules/labTests/routes.js';
 import queueRoutes from '../modules/queue/routes.js';
 import patientRoutes from '../modules/patients/routes.js';
+import prescriptionRoutes from '../modules/prescriptions/routes.js';
 import serviceRoutes from '../modules/services/routes.js';
 import settingsRoutes from '../modules/settings/routes.js';
 import userRoutes from '../modules/users/routes.js';
@@ -31,5 +32,6 @@ router.use('/appointments', appointmentRoutes);
 router.use('/queue', queueRoutes);
 router.use('/encounters', encounterRoutes);
 router.use('/formulary', formularyRoutes);
+router.use('/prescriptions', prescriptionRoutes);
 
 export default router;

@@ -201,6 +201,40 @@ export const DRUG_FREQUENCIES = Object.freeze({
 } as const);
 export type DrugFrequency = keyof typeof DRUG_FREQUENCIES;
 export const DRUG_FREQUENCY_CODES = Object.freeze(Object.keys(DRUG_FREQUENCIES) as DrugFrequency[]);
+/** Prescription statuses (spec §5.3, §6.16). */
+export const PRESCRIPTION_STATUSES = Object.freeze([
+  'draft',
+  'issued',
+  'completed',
+  'cancelled',
+] as const);
+export type PrescriptionStatus = (typeof PRESCRIPTION_STATUSES)[number];
+
+/**
+ * Prescription rules (spec §6.16, §8.6): item limits, and the shortest reason for a
+ * cancellation or reissue.
+ */
+export const PRESCRIPTION_RULES = Object.freeze({
+  maxItems: 30,
+  maxDurationDays: 365,
+  reasonMinLength: 10,
+  reasonMaxLength: 500,
+  textLimits: Object.freeze({
+    drugName: 120,
+    genericName: 120,
+    strength: 50,
+    dose: 50,
+    frequencyText: 100,
+    quantity: 50,
+    instructions: 300,
+    generalInstructions: 1000,
+  }),
+});
+
+/** Shown with every allergy warning (spec §4.7, §8.6). */
+export const ALLERGY_CHECK_NOTICE =
+  'Allergy check is a convenience name match against recorded allergies – not clinical decision support.';
+
 export const DRUG_TIMINGS = Object.freeze([
   'before_food',
   'after_food',
@@ -218,6 +252,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
   APPOINTMENT_NO_SHOW: 'appointment.no_show',
   APPOINTMENT_REMINDER: 'appointment.reminder',
   LEAVE_AFFECTS_APPOINTMENTS: 'doctor.leave_affects_appointments',
+  PRESCRIPTION_ISSUED: 'prescription.issued',
 } as const);
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -241,11 +276,13 @@ export const QUEUE_RULES = Object.freeze({ averageWindowDays: 30, boardNextToken
 
 /**
  * Background jobs (spec §8.11): reminders and no-show marking run every 15 minutes in the clinic
- * timezone. A reminder goes to appointments starting `reminderHoursBefore` from now, give or take
+ * timezone, prescription completion daily at 02:00. A reminder goes to appointments starting `reminderHoursBefore` from now, give or take
  * `reminderWindowMinutes`; each run handles at most `batchSize` appointments per job.
  */
 export const JOB_RULES = Object.freeze({
   every15Minutes: '*/15 * * * *',
+  /** Prescription completion (spec §8.11). */
+  daily0200: '0 2 * * *',
   reminderWindowMinutes: 15,
   batchSize: 500,
 });
@@ -288,6 +325,16 @@ export const STATE_MACHINES = Object.freeze({
     signed: ['amended'],
     amended: ['amended'],
   } satisfies Record<EncounterStatus, readonly EncounterStatus[]>),
+  /**
+   * Spec §5.3. Issued on signing (or POST /prescriptions/:id/issue for a reissued draft);
+   * completed by the daily job; a change after issue = cancel + a new draft (reissue).
+   */
+  prescription: Object.freeze({
+    draft: ['issued'],
+    issued: ['completed', 'cancelled'],
+    completed: [],
+    cancelled: [],
+  } satisfies Record<PrescriptionStatus, readonly PrescriptionStatus[]>),
 });
 export type StateMachine = keyof typeof STATE_MACHINES;
 
@@ -394,6 +441,14 @@ export const AUDIT_ACTIONS = Object.freeze({
   ENCOUNTER_CREATE: 'encounter.create',
   ENCOUNTER_VIEW: 'encounter.view',
   ENCOUNTER_UPDATE: 'encounter.update',
+  ENCOUNTER_SIGN: 'encounter.sign',
+  ENCOUNTER_AMEND: 'encounter.amend',
+  PRESCRIPTION_UPDATE: 'prescription.update',
+  PRESCRIPTION_ISSUE: 'prescription.issue',
+  PRESCRIPTION_CANCEL: 'prescription.cancel',
+  PRESCRIPTION_REISSUE: 'prescription.reissue',
+  PRESCRIPTION_COMPLETE: 'prescription.complete',
+  PRESCRIPTION_VIEW: 'prescription.view',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /**

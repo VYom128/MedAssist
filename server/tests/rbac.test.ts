@@ -23,6 +23,7 @@ import { addDaysToDate, clinicToday, startOfClinicDay } from '../src/utils/dates
 import { Appointment } from '../src/modules/appointments/model.js';
 import { ensureEncounterDraft } from '../src/modules/encounters/draft.js';
 import { Encounter } from '../src/modules/encounters/model.js';
+import { Prescription } from '../src/modules/prescriptions/model.js';
 import { withTransaction } from '../src/utils/transaction.js';
 import {
   ALL,
@@ -130,6 +131,72 @@ async function buildContext(role: Role): Promise<Ctx> {
   const encounter = await withTransaction((session) =>
     ensureEncounterDraft(inConsultation, { by: doctorId, year: 2026, session }),
   );
+  // Phase 5 step 2: a note ready to sign, two signed notes, an issued and a reissued prescription.
+  const note = async (appt: Parameters<typeof ensureEncounterDraft>[0], status = 'draft') => {
+    const e = await withTransaction((session) =>
+      ensureEncounterDraft(appt, { by: doctorId, year: 2026, session }),
+    );
+    await Encounter.collection.updateOne(
+      { _id: e.id },
+      {
+        $set: {
+          status,
+          chiefComplaint: 'Matrix complaint',
+          diagnoses: [{ description: 'Matrix diagnosis', type: 'provisional', isPrimary: true }],
+          ...(status === 'signed' ? { signedAt: new Date(), signedBy: doctorId } : {}),
+        },
+      },
+    );
+    return e.id;
+  };
+  const signable = await note(
+    await todays(5, 'in_consultation', { date: addDaysToDate(today, -1) }),
+  );
+  const past = (days: number) =>
+    insertAppointment({
+      patient: patient.id,
+      doctor: doctorId,
+      startAt: new Date(Date.now() - days * 86_400_000),
+      status: 'completed',
+      isSlotActive: false,
+      service: service!._id,
+    });
+  const signedAppt = await past(3);
+  const signedEncounter = await note(signedAppt, 'signed');
+  const rxItems = [
+    { drugName: 'Paracetamol', dose: '1 tablet', frequency: 'TDS', durationDays: 3 },
+  ];
+  const rxBase = {
+    patient: patient.id,
+    doctor: doctorId,
+    items: rxItems,
+  };
+  const prescription = await Prescription.create({
+    ...rxBase,
+    encounter: signedEncounter,
+    appointment: signedAppt._id,
+    status: 'issued',
+    prescriptionNumber: `RX-1999-${String(n).padStart(6, '0')}`,
+    issuedAt: new Date(),
+  });
+  const otherAppt = await past(5);
+  const otherSigned = await note(otherAppt, 'signed');
+  const [cancelledRx] = await Prescription.create([
+    {
+      ...rxBase,
+      encounter: otherSigned,
+      appointment: otherAppt._id,
+      status: 'cancelled',
+      isCurrent: false,
+      prescriptionNumber: `RX-1998-${String(n).padStart(6, '0')}`,
+    },
+  ]);
+  const reissued = await Prescription.create({
+    ...rxBase,
+    encounter: otherSigned,
+    appointment: otherAppt._id,
+    replaces: cancelledRx!._id,
+  });
   return {
     me,
     targetId: target._id.toString(),
@@ -161,6 +228,10 @@ async function buildContext(role: Role): Promise<Ctx> {
     inConsultationId: inConsultation._id.toString(),
     walkInPatientId: walkInPatient.id,
     encounterId: encounter.id.toString(),
+    signableEncounterId: signable.toString(),
+    signedEncounterId: signedEncounter.toString(),
+    prescriptionId: prescription._id.toString(),
+    reissuedDraftId: reissued._id.toString(),
     n,
   };
 }
@@ -199,6 +270,10 @@ const send = (row: Row, c: Ctx | null) => {
       inConsultationId: zero,
       walkInPatientId: zero,
       encounterId: zero,
+      signableEncounterId: zero,
+      signedEncounterId: zero,
+      prescriptionId: zero,
+      reissuedDraftId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -230,7 +305,7 @@ async function auditCount() {
 describe('RBAC matrix', () => {
   let emails: ReturnType<typeof captureEmails>;
   beforeAll(async () => {
-    await Promise.all([Appointment.init(), Encounter.init()]);
+    await Promise.all([Appointment.init(), Encounter.init(), Prescription.init()]);
     await resetDb();
     emails = captureEmails(); // welcome and reset emails are sent in the background
   });
