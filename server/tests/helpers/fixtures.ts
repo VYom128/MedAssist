@@ -16,6 +16,7 @@ import {
   zonedDateTimeToUtc,
 } from '../../src/utils/dates.js';
 import { createUser, loginAs, type LoggedIn } from './auth.js';
+import { api } from './testApp.js';
 import { letters } from './rbacMatrix.js';
 
 let n = 0;
@@ -212,4 +213,57 @@ export async function useMiddayClinicZone(): Promise<string> {
   const tz = offset === 0 ? 'Etc/GMT' : `Etc/GMT${offset > 0 ? '-' : '+'}${Math.abs(offset)}`;
   await setSettings({ timezone: tz });
   return tz;
+}
+
+// ---- Consultations and encounters (Phase 5) --------------------------------------------------
+
+let consult = 0;
+
+/**
+ * A checked-in appointment of a new patient (or `patientId`) with `doctorId`, today in the clinic
+ * timezone (call `useMiddayClinicZone()` first so "today" is safe). Each call takes the next
+ * minute after 08:00, so appointments never overlap.
+ */
+export async function checkedInToday(
+  doctorId: string,
+  { patientId, ...rest }: { patientId?: string } & Record<string, unknown> = {},
+) {
+  consult += 1;
+  const { timezone } = await getSettings();
+  const today = clinicToday(timezone);
+  const startAt = new Date(
+    zonedDateTimeToUtc(today, '08:00', timezone).getTime() + consult * 60_000,
+  );
+  const patient = patientId ?? (await createPatient()).id;
+  const appt = await insertAppointment({
+    patient,
+    doctor: doctorId,
+    startAt,
+    minutes: 1,
+    status: 'checked_in',
+    queue: { tokenNumber: consult, checkedInAt: new Date(Date.now() - 10 * 60_000) },
+    ...rest,
+  });
+  return { appointmentId: appt._id.toString(), patientId: patient.toString(), startAt };
+}
+
+/**
+ * A doctor in consultation: logs in a doctor (or uses `doctor`), checks in a patient today and
+ * starts the consultation through the API (which creates the draft encounter).
+ */
+export async function startedConsultation(
+  doctor?: LoggedIn & { id: string },
+  options: { patientId?: string } = {},
+) {
+  const me = doctor ?? (await loginAsDoctor());
+  const { appointmentId, patientId } = await checkedInToday(me.id, options);
+  const res = await api().post(`/api/v1/appointments/${appointmentId}/start`).set(me.auth);
+  if (res.status !== 200)
+    throw new Error(`start failed: ${res.status} ${JSON.stringify(res.body)}`);
+  return {
+    doctor: me,
+    appointmentId,
+    patientId,
+    encounterId: res.body.data.encounterId as string,
+  };
 }

@@ -143,8 +143,8 @@ export async function getQueue(user: AuthUser, query: QueueQuery, meta: RequestM
 
 /**
  * POST /queue/call-next (doctor) – the first waiting patient of the calling doctor today moves
- * into consultation (like start). 409 when the doctor already has a patient in consultation;
- * `null` when nobody is waiting.
+ * into consultation (like start, with the draft encounter; the response has `encounterId`).
+ * 409 when the doctor already has a patient in consultation; `null` when nobody is waiting.
  */
 export async function callNext(user: AuthUser, meta: RequestMeta) {
   const { timezone } = await getSettings();
@@ -161,8 +161,7 @@ export async function callNext(user: AuthUser, meta: RequestMeta) {
     return orderQueue(waiting)[0] ?? null;
   });
   if (!started) return null;
-  await afterConsultationStarted(user, started, meta, 'call_next');
-  return viewForRole(user.role, started);
+  return afterConsultationStarted(user, started, meta, 'call_next');
 }
 
 /**

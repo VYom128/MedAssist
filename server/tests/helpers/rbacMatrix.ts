@@ -72,6 +72,8 @@ export interface Ctx {
   inConsultationId: string;
   /** A patient with no appointments (walk-in). */
   walkInPatientId: string;
+  /** The draft encounter of `inConsultationId` (doctorId's; its documentation window is open). */
+  encounterId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -344,8 +346,8 @@ export const ENDPOINTS: Row[] = [
 ];
 
 ENDPOINTS.push(
-  // Patients (spec §7.7). Doctors pass the role check but see no patients until care
-  // relationships exist (Phase 5); patients may open only their own record (others → 404).
+  // Patients (spec §7.7). Doctors see patients they have a care relationship with – patientId,
+  // not otherPatientId (404); patients may open only their own record (others → 404).
   { method: 'get', path: () => '/patients', roles: ADMIN_DOCTOR_RECEPTION, status: 200 },
   {
     method: 'get',
@@ -400,8 +402,7 @@ ENDPOINTS.push(
     method: 'get',
     path: (c) => `/patients/${c.patientId}`,
     roles: PATIENT_READERS,
-    status: 200,
-    statusFor: { doctor: 404 },
+    status: 200, // the doctor has appointments with patientId (care relationship)
   },
   {
     method: 'get',
@@ -422,7 +423,14 @@ ENDPOINTS.push(
     path: (c) => `/patients/${c.patientId}/clinical-profile`,
     body: () => ({ chronicConditions: [{ name: 'Asthma' }] }),
     roles: DOCTOR,
-    status: 404, // no care relationship until Phase 5
+    status: 200,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/patients/${c.otherPatientId}/clinical-profile`,
+    body: () => ({ chronicConditions: [{ name: 'Asthma' }] }),
+    roles: DOCTOR,
+    status: 404, // no care relationship with otherPatientId
   },
   {
     method: 'post',
@@ -541,6 +549,23 @@ ENDPOINTS.push(
     status: 200,
   },
   { method: 'get', path: () => '/queue/my-position', roles: PATIENT, status: 200 },
+  // Encounters (spec §7.10) and the formulary: doctors only; admins and receptionists never.
+  {
+    method: 'get',
+    path: (c) => `/appointments/${c.inConsultationId}/encounter`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  { method: 'get', path: () => '/encounters', roles: DOCTOR, status: 200 },
+  { method: 'get', path: (c) => `/encounters/${c.encounterId}`, roles: DOCTOR, status: 200 },
+  {
+    method: 'patch',
+    path: (c) => `/encounters/${c.encounterId}`,
+    body: (c) => ({ expectedVersion: 0, plan: `Matrix plan ${c.n}` }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  { method: 'get', path: () => '/formulary?q=para', roles: DOCTOR, status: 200 },
   // Slots and availability (spec §7.6): any logged-in user
   {
     method: 'get',
@@ -608,6 +633,7 @@ export const PATTERN_CTX = {
   noShowId: ':id',
   inConsultationId: ':id',
   walkInPatientId: ':id',
+  encounterId: ':id',
   n: 0,
 } as unknown as Ctx;
 

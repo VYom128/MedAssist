@@ -27,11 +27,8 @@ import { api } from './helpers/testApp.js';
  * entry ever contains a password, token, hash or cookie. When a phase adds an action, add the
  * step that triggers it here.
  */
-/**
- * Actions no endpoint can trigger yet. clinical_profile_update needs a doctor with a care
- * relationship (Phase 5); patients.clinicalProfile.test.ts covers it with a stand-in policy.
- */
-const NOT_REACHABLE_YET = new Set<string>([AUDIT_ACTIONS.PATIENT_CLINICAL_PROFILE_UPDATE]);
+/** Actions no endpoint can trigger yet. */
+const NOT_REACHABLE_YET = new Set<string>([]);
 
 describe('audit coverage', () => {
   it('writes every action, with no secrets in any entry', async () => {
@@ -335,6 +332,17 @@ describe('audit coverage', () => {
       reason: 'Elderly patient',
     });
     await post(`/appointments/${visit._id}/start`, drToday.auth);
+    // encounter.create (with the start), encounter.view, encounter.update, and
+    // patient.clinical_profile_update (drToday now has a care relationship with the patient)
+    const note = await api().get(`/api/v1/appointments/${visit._id}/encounter`).set(drToday.auth);
+    await api()
+      .patch(`/api/v1/encounters/${note.body.data.id}`)
+      .set(drToday.auth)
+      .send({ expectedVersion: 0, chiefComplaint: 'Headache for two days' });
+    await api()
+      .patch(`/api/v1/patients/${patientId}/clinical-profile`)
+      .set(drToday.auth)
+      .send({ chronicConditions: [{ name: 'Migraine' }] });
     await post(`/appointments/${visit._id}/complete`, drToday.auth);
     const missed = await insertAppointment({
       patient: twin.body.data.id as string,

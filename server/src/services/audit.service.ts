@@ -245,6 +245,13 @@ export function recordRead(input: AuditEntryInput): Promise<AuditEntry | null> {
   }, input.action);
 }
 
+/**
+ * Records a write, debounced like `recordRead`: one entry per user + action + record within
+ * 5 minutes. For autosaved drafts (`encounter.update`), where one entry per save would flood the
+ * log; the entry names the changed fields only.
+ */
+export const recordDebounced = recordRead;
+
 /** Resolves when every queued audit write has finished (graceful shutdown, tests). */
 export async function flushAudit(): Promise<void> {
   await tail;

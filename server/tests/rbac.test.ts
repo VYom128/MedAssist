@@ -21,6 +21,9 @@ import {
 } from './helpers/fixtures.js';
 import { addDaysToDate, clinicToday, startOfClinicDay } from '../src/utils/dates.js';
 import { Appointment } from '../src/modules/appointments/model.js';
+import { ensureEncounterDraft } from '../src/modules/encounters/draft.js';
+import { Encounter } from '../src/modules/encounters/model.js';
+import { withTransaction } from '../src/utils/transaction.js';
 import {
   ALL,
   ENDPOINTS,
@@ -55,9 +58,10 @@ async function buildContext(role: Role): Promise<Ctx> {
     { code: `S-${n}`, name: 'Service', type: 'other', pricePaise: 100 },
     { code: `OS-${n}`, name: 'Old service', type: 'other', pricePaise: 100, isActive: false },
   ]);
-  // Doctors get their own department, so `departmentId` can still be deactivated.
+  // Doctors get their own department, so `departmentId` can still be deactivated. Each code
+  // family starts with its own letter (D…, O…, X…), so codes never collide as `n` grows.
   const doctorDepartment = (
-    await Department.create({ name: `Doctors ${n}`, code: `DR${letters(n)}` })
+    await Department.create({ name: `Doctors ${n}`, code: `X${letters(n)}` })
   )._id;
   if (role === 'doctor') await addDoctorProfile(me.user._id, { department: doctorDepartment });
   const doctorId =
@@ -123,6 +127,9 @@ async function buildContext(role: Role): Promise<Ctx> {
     date: addDaysToDate(today, -1),
   });
   const walkInPatient = await createPatient();
+  const encounter = await withTransaction((session) =>
+    ensureEncounterDraft(inConsultation, { by: doctorId, year: 2026, session }),
+  );
   return {
     me,
     targetId: target._id.toString(),
@@ -153,6 +160,7 @@ async function buildContext(role: Role): Promise<Ctx> {
     noShowId: noShow._id.toString(),
     inConsultationId: inConsultation._id.toString(),
     walkInPatientId: walkInPatient.id,
+    encounterId: encounter.id.toString(),
     n,
   };
 }
@@ -190,6 +198,7 @@ const send = (row: Row, c: Ctx | null) => {
       noShowId: zero,
       inConsultationId: zero,
       walkInPatientId: zero,
+      encounterId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -221,7 +230,7 @@ async function auditCount() {
 describe('RBAC matrix', () => {
   let emails: ReturnType<typeof captureEmails>;
   beforeAll(async () => {
-    await Appointment.init();
+    await Promise.all([Appointment.init(), Encounter.init()]);
     await resetDb();
     emails = captureEmails(); // welcome and reset emails are sent in the background
   });

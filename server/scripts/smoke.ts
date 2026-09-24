@@ -345,11 +345,31 @@ async function phase3Checks(
 
   const doctor = await as('dr.mehta@medassist.dev');
   if (doctor) {
-    const none = await call(api, '/patients', { headers: doctor });
+    // Phase 5: doctors see the patients they have a care relationship with (spec §2.3).
+    const mine = await call(api, '/patients?scope=mine&limit=100', { headers: doctor });
+    const mineItems = (mine.body.data as unknown as Item[]) ?? [];
     check(
-      'doctors see no patients until care relationships (Phase 5)',
-      none.res.status === 200 && ((none.body.data as unknown as Item[]) ?? []).length === 0,
+      'dr.mehta lists only related patients (scope=mine)',
+      mine.res.status === 200 && mineItems.length > 0,
+      `got ${mineItems.length}`,
     );
+    if (mineItems[0]) {
+      const view = await call(api, `/patients/${mineItems[0].id}`, { headers: doctor });
+      check(
+        'dr.mehta opens a related patient (doctor view: clinical, no insurance)',
+        view.res.status === 200 &&
+          JSON.stringify(view.body).includes('"chronicConditions"') &&
+          !JSON.stringify(view.body).includes('"insurance"'),
+        `status ${view.res.status}`,
+      );
+    }
+    const stranger = ((list.body.data as unknown as Item[]) ?? []).find(
+      (p) => !mineItems.some((m) => m.id === p.id),
+    );
+    if (stranger) {
+      const denied = await call(api, `/patients/${stranger.id}`, { headers: doctor });
+      check('dr.mehta gets 404 without a care relationship', denied.res.status === 404);
+    }
     await logout(doctor);
   }
   const lab = await as('lab1@medassist.dev');

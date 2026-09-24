@@ -16,6 +16,7 @@ import {
   toClinicDate,
 } from '../../utils/dates.js';
 import { withTransaction } from '../../utils/transaction.js';
+import { ensureEncounterDraft } from '../encounters/draft.js';
 import { assertPatientFree, bookingTransaction, lock, slotTaken } from './booking.service.js';
 import { bookedBetween } from './slots.service.js';
 import { assertCanViewAppointment } from '../../policies/appointmentAccess.js';
@@ -183,12 +184,19 @@ export async function checkIn(user: AuthUser, id: string, meta: RequestMeta) {
   return viewForRole(user.role, checkedIn);
 }
 
+/** A consultation that has just started: the appointment and its draft note. */
+export interface StartedConsultation {
+  appointment: AppointmentLike;
+  encounter: { id: Types.ObjectId; encounterNumber: string; created: boolean };
+}
+
 /**
  * Moves one of the doctor's checked-in appointments into consultation, in a transaction that
  * locks the doctor (bookingVersion), so a doctor is never in two consultations and two
  * "call next" clicks cannot pick two patients. 409 CONFLICT when the doctor already has a
  * patient in consultation today. `pick` chooses the appointment (null = nobody waiting).
- * TODO(Phase 5): create the encounter draft in this transaction and return its id.
+ * The draft encounter is created in the same transaction (spec §4.7 step 1, §5.1 "start"):
+ * the status change and the note commit together or not at all.
  */
 export async function beginConsultation(
   doctorId: string,
@@ -196,9 +204,10 @@ export async function beginConsultation(
   pick: (
     session: ClientSession,
   ) => Promise<{ _id: Types.ObjectId; status: string; isOverbook?: boolean | null } | null>,
-): Promise<AppointmentLike | null> {
+): Promise<StartedConsultation | null> {
   const { timezone } = await getSettings();
   const today = clinicToday(timezone);
+  const year = Number(today.slice(0, 4));
   return withTransaction(async (session) => {
     await lock(session, doctorId);
     // Today only: a consultation left open on an earlier day must not block the doctor forever.
@@ -224,7 +233,7 @@ export async function beginConsultation(
     const appt = await pick(session);
     if (!appt) return null;
     const now = new Date();
-    return applyTransition(
+    const appointment = await applyTransition(
       appt,
       'in_consultation',
       { 'queue.calledAt': now, 'queue.startedAt': now, updatedBy: by },
@@ -232,35 +241,53 @@ export async function beginConsultation(
       null,
       { session },
     );
+    const encounter = await ensureEncounterDraft(appointment, { by, year, session });
+    return { appointment, encounter };
   });
 }
 
-/** Audit + real-time events after a consultation started (start or call-next). */
+/**
+ * Audit + real-time events after a consultation started (start or call-next), and the
+ * response: the doctor's appointment view plus `encounterId` (the workspace opens it).
+ */
 export async function afterConsultationStarted(
   user: AuthUser,
-  appt: AppointmentLike,
+  { appointment, encounter }: StartedConsultation,
   meta: RequestMeta,
   via: 'start' | 'call_next',
 ) {
   await audit.record({
     action: AUDIT_ACTIONS.APPOINTMENT_START,
     actor: actorOf(user),
-    resource: resourceOf(appt),
-    patient: appt.patient._id,
+    resource: resourceOf(appointment),
+    patient: appointment.patient._id,
     request: meta,
-    metadata: { via, queueNumber: appt.queue?.tokenNumber },
+    metadata: { via, queueNumber: appointment.queue?.tokenNumber },
   });
-  void announceAppointment(appt);
+  if (encounter.created) {
+    await audit.record({
+      action: AUDIT_ACTIONS.ENCOUNTER_CREATE,
+      actor: actorOf(user),
+      resource: { type: 'encounter', id: encounter.id, number: encounter.encounterNumber },
+      patient: appointment.patient._id,
+      request: meta,
+      metadata: { appointmentId: appointment._id.toString() },
+    });
+  }
+  void announceAppointment(appointment);
+  return { ...viewForRole(user.role, appointment), encounterId: encounter.id.toString() };
 }
 
-/** POST /appointments/:id/start (doctor, own) – checked_in → in_consultation. */
+/**
+ * POST /appointments/:id/start (doctor, own) – checked_in → in_consultation, with the draft
+ * encounter; returns `encounterId`.
+ */
 export async function startConsultation(user: AuthUser, id: string, meta: RequestMeta) {
   const appt = await loadAppointment(id);
   await assertCanViewAppointment(user, appt, meta);
   assertTransition('appointment', appt.status, 'in_consultation');
   const started = (await beginConsultation(user.id, user.id, async () => appt))!;
-  await afterConsultationStarted(user, started, meta, 'start');
-  return viewForRole(user.role, started);
+  return afterConsultationStarted(user, started, meta, 'start');
 }
 
 /** POST /appointments/:id/complete (doctor, own) – in_consultation → completed. */

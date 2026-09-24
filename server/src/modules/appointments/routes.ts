@@ -5,6 +5,7 @@ import { authorize } from '../../middlewares/authorize.js';
 import { patientBookingLimiter } from '../../middlewares/rateLimiters.js';
 import { validate } from '../../middlewares/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
+import * as encountersController from '../encounters/controller.js';
 import * as appointmentsController from './controller.js';
 import {
   appointmentIdSchema,
@@ -60,6 +61,14 @@ router.get(
   authorize(ADMIN, RECEPTIONIST, DOCTOR, PATIENT),
   validate(appointmentIdSchema),
   asyncHandler(appointmentsController.getAppointment),
+);
+// The clinical note of the doctor's own appointment (consult workspace; spec §4.7).
+router.get(
+  '/:id/encounter',
+  authenticate,
+  authorize(DOCTOR),
+  validate(appointmentIdSchema),
+  asyncHandler(encountersController.getEncounterForAppointment),
 );
 router.patch(
   '/:id',

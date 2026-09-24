@@ -28,6 +28,7 @@ import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { buildPatientSearchQuery } from '../../utils/search.js';
 import { withTransaction } from '../../utils/transaction.js';
 import { getSettings } from '../settings/service.js';
+import { Appointment } from '../appointments/model.js';
 import { User } from '../users/model.js';
 import { nameKeyOf, Patient, type PatientDoc } from './model.js';
 import {
@@ -334,18 +335,13 @@ export async function getPatient(user: AuthUser, id: string, meta: RequestMeta) 
   return view;
 }
 
-/**
- * GET /patients (spec §7.7, §12.1) – search (`q`: MRN, phone or name prefixes) and filters.
- * Only active patients, except for admins filtering on `isActive`. Not audited per row.
- */
-export async function listPatients(
+/** The search and filter part of GET /patients, shared by every role's list. */
+function listConditions(
   user: AuthUser,
   query: ListPatientsQuery,
-  { page, limit, skip }: Pagination,
-) {
-  const { timezone } = await getSettings();
-  const and: FilterQuery<PatientDoc>[] = [patientListFilter(user)];
-
+  timezone: string,
+): FilterQuery<PatientDoc>[] {
+  const and: FilterQuery<PatientDoc>[] = [];
   and.push({
     isActive: user.role === ROLES.ADMIN && query.isActive !== undefined ? query.isActive : true,
   });
@@ -372,14 +368,105 @@ export async function listPatients(
       query.hasPortal ? { user: { $type: 'objectId' } } : { user: { $not: { $type: 'objectId' } } },
     );
   }
+  return and;
+}
 
-  const filter = { $and: and };
+/**
+ * GET /patients (spec §7.7, §12.1) – search (`q`: MRN, phone or name prefixes) and filters.
+ * Only active patients, except for admins filtering on `isActive`. Not audited per row.
+ * Doctors always get their own patients (`scope=mine`, see listMyPatients).
+ */
+export async function listPatients(
+  user: AuthUser,
+  query: ListPatientsQuery,
+  pagination: Pagination,
+) {
+  const { timezone } = await getSettings();
+  if (user.role === ROLES.DOCTOR) return listMyPatients(user, query, pagination, timezone);
+
+  const { page, limit, skip } = pagination;
+  const filter = {
+    $and: [await patientListFilter(user), ...listConditions(user, query, timezone)],
+  };
   const [items, total] = await Promise.all([
     Patient.find(filter).sort(query.sort).skip(skip).limit(limit).lean(),
     Patient.countDocuments(filter),
   ]);
   return {
     items: (items as PatientLike[]).map(toListItem),
+    meta: buildMeta({ page, limit, total }),
+  };
+}
+
+/** Appointment statuses that count as a visit for "last visit" (the patient was seen). */
+const VISIT_STATUSES = ['in_consultation', 'completed'];
+
+/**
+ * GET /patients?scope=mine (doctor) – the patients the doctor has a care relationship with
+ * (spec §2.3: a non-cancelled appointment), most recently seen first, each with the last visit
+ * (`lastVisitAt`: the latest appointment in consultation or completed) and the latest
+ * appointment of any kind (`lastAppointmentAt`). One aggregation: the doctor's appointments are
+ * grouped per patient (index `{ doctor, status, startAt }`), joined to the patients matching the
+ * search/filters, then sorted and paged in the database.
+ */
+async function listMyPatients(
+  user: AuthUser,
+  query: ListPatientsQuery,
+  { page, limit, skip }: Pagination,
+  timezone: string,
+) {
+  const [result] = await Appointment.aggregate<{
+    items: (PatientLike & { lastVisitAt: Date | null; lastAppointmentAt: Date })[];
+    total: { n: number }[];
+  }>([
+    { $match: { doctor: new Types.ObjectId(user.id), status: { $ne: 'cancelled' } } },
+    {
+      $group: {
+        _id: '$patient',
+        lastVisitAt: {
+          $max: { $cond: [{ $in: ['$status', VISIT_STATUSES] }, '$startAt', null] },
+        },
+        lastAppointmentAt: { $max: '$startAt' },
+      },
+    },
+    {
+      $lookup: {
+        from: Patient.collection.name,
+        localField: '_id',
+        foreignField: '_id',
+        pipeline: [{ $match: { $and: listConditions(user, query, timezone) } }],
+        as: 'patient',
+      },
+    },
+    { $unwind: '$patient' },
+    { $sort: { lastVisitAt: -1, lastAppointmentAt: -1, _id: 1 } },
+    {
+      $facet: {
+        items: [
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $replaceRoot: {
+              newRoot: {
+                $mergeObjects: [
+                  '$patient',
+                  { lastVisitAt: '$lastVisitAt', lastAppointmentAt: '$lastAppointmentAt' },
+                ],
+              },
+            },
+          },
+        ],
+        total: [{ $count: 'n' }],
+      },
+    },
+  ]);
+  const total = result?.total[0]?.n ?? 0;
+  return {
+    items: (result?.items ?? []).map((p) => ({
+      ...toListItem(p),
+      lastVisitAt: p.lastVisitAt ?? null,
+      lastAppointmentAt: p.lastAppointmentAt,
+    })),
     meta: buildMeta({ page, limit, total }),
   };
 }
@@ -398,7 +485,7 @@ export async function updatePatient(
 ) {
   await assertCanAccessPatient(user, id, 'demographics', meta);
   const { force, reason, allergies, ...fields } = input;
-  if (allergies !== undefined && !canAccessPatient(user, id, 'allergies')) {
+  if (allergies !== undefined && !(await canAccessPatient(user, id, 'allergies'))) {
     throw cannotRecordAllergies();
   }
   const before = await loadPatient(id);
@@ -447,7 +534,8 @@ export async function updatePatient(
 
 /**
  * PATCH /patients/:id/clinical-profile – allergies and chronic conditions, by a doctor with a
- * care relationship (Phase 5; until then every doctor gets 404). recordedBy/At set here.
+ * care relationship (others → 404). recordedBy/At set here; the audit entry names the changed
+ * fields only (values are '[REDACTED]').
  */
 export async function updateClinicalProfile(
   user: AuthUser,
