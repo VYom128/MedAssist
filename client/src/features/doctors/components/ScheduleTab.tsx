@@ -1,6 +1,7 @@
 import { CalendarClock, CalendarPlus } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
+import AffectedAppointmentsPanel from '../../appointments/components/AffectedAppointmentsPanel';
 import Alert from '../../../components/ui/Alert';
 import SectionCard from '../../../components/ui/SectionCard';
 import ErrorState from '../../../components/ui/ErrorState';
@@ -98,6 +99,9 @@ export default function ScheduleTab({ doctorId }: { doctorId: string }) {
         <Alert tone="info">No weekly schedule yet. Add sessions below and save.</Alert>
       )}
 
+      {result && (
+        <AffectedAppointmentsPanel items={result.affectedAppointments} context="schedule" />
+      )}
       {result && result.warnings.length > 0 && (
         <Alert tone="warning" title="Saved with warnings">
           <ul className="list-disc pl-5">

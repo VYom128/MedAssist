@@ -75,6 +75,21 @@ export function toClinicDate(instant: Date, timezone: string): string {
   return formatInTimeZone(instant, timezone, 'yyyy-MM-dd');
 }
 
+/** An instant as clinic wall-clock time 'HH:mm'. */
+export function toClinicTime(instant: Date, timezone: string): string {
+  return formatInTimeZone(instant, timezone, 'HH:mm');
+}
+
+/** An instant for people (emails): '05 Oct 2026, 9:00 AM' in the clinic timezone (spec §13.3). */
+export function formatClinicDateTime(instant: Date, timezone: string): string {
+  return formatInTimeZone(instant, timezone, 'dd MMM yyyy, h:mm a');
+}
+
+/** Whole calendar days from `from` to `to` ('YYYY-MM-DD'; negative if `to` is earlier). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((calendarDate(to).getTime() - calendarDate(from).getTime()) / 86_400_000);
+}
+
 /** Today's date in the clinic timezone. */
 export function clinicToday(timezone: string, now = new Date()): string {
   return toClinicDate(now, timezone);

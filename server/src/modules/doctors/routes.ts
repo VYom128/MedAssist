@@ -1,9 +1,11 @@
 import { Router } from 'express';
-import { ROLES } from '../../config/constants.js';
+import { ROLE_VALUES, ROLES } from '../../config/constants.js';
 import { authenticate, optionalAuthenticate } from '../../middlewares/authenticate.js';
 import { authorize } from '../../middlewares/authorize.js';
 import { validate } from '../../middlewares/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
+import * as appointmentsController from '../appointments/controller.js';
+import { availabilitySchema, slotsSchema } from '../appointments/validation.js';
 import * as leavesController from '../leaves/controller.js';
 import { createLeaveSchema, leaveIdSchema, listLeavesSchema } from '../leaves/validation.js';
 import * as schedulesController from '../schedules/controller.js';
@@ -89,6 +91,22 @@ router.post(
   authorize(ADMIN, DOCTOR),
   validate(leaveIdSchema),
   asyncHandler(leavesController.cancelLeave),
+);
+
+// Free slots and per-day availability (spec §7.6, §8.1): any logged-in user.
+router.get(
+  '/:id/slots',
+  authenticate,
+  authorize(...ROLE_VALUES),
+  validate(slotsSchema),
+  asyncHandler(appointmentsController.getSlots),
+);
+router.get(
+  '/:id/availability',
+  authenticate,
+  authorize(...ROLE_VALUES),
+  validate(availabilitySchema),
+  asyncHandler(appointmentsController.getAvailability),
 );
 
 export default router;

@@ -199,6 +199,11 @@ export const listPatientsSchema = {
   query: z
     .object({
       ...paginationQuery,
+      /**
+       * `mine` (doctors): the patients with a care relationship, most recently seen first – what
+       * doctors always get. Other roles list every patient their role may see.
+       */
+      scope: z.enum(['mine']).optional(),
       q: z.string().trim().min(1).max(100).optional(),
       gender: z.enum(GENDERS).optional(),
       ageMin: age.optional(),

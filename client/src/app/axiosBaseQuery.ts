@@ -28,8 +28,18 @@ interface RefreshPayload {
   user: CurrentUser;
 }
 
-/** Endpoints where a 401 means "wrong credentials/token", not "access token expired". */
-const NO_REFRESH = ['/auth/login', '/auth/register', '/auth/refresh', '/auth/reset-password'];
+/**
+ * Endpoints where a 401 means "wrong credentials/token", not "access token expired". The queue
+ * board's 401 is a wrong kiosk key: refreshing (and then logging out, which resets the cache and
+ * refetches) would loop forever.
+ */
+const NO_REFRESH = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/auth/reset-password',
+  '/queue/board',
+];
 
 let refreshing: Promise<boolean> | null = null;
 

@@ -218,7 +218,7 @@ const linkPending = () =>
   );
 
 /** The caller's linked record id: 403 PATIENT_LINK_PENDING while pending, 404 if none. */
-async function myPatientId(user: AuthUser): Promise<string> {
+export async function resolveMyPatientId(user: AuthUser): Promise<string> {
   if (user.patientId) return user.patientId;
   const account = await User.findById(user.id).select('patientLinkStatus').lean();
   if (account?.patientLinkStatus === 'pending_verification') throw linkPending();
@@ -227,7 +227,7 @@ async function myPatientId(user: AuthUser): Promise<string> {
 
 /** GET /patients/me – audited as `patient.view` (debounced). */
 export async function getMyRecord(user: AuthUser, meta: RequestMeta) {
-  const id = await myPatientId(user);
+  const id = await resolveMyPatientId(user);
   await assertCanAccessPatient(user, id, 'demographics', meta);
   const p = await loadPatient(id);
   await getSettings();
@@ -251,7 +251,7 @@ export async function updateMyRecord(
   input: UpdateMyRecordInput,
   meta: RequestMeta,
 ) {
-  const id = await myPatientId(user);
+  const id = await resolveMyPatientId(user);
   await assertCanAccessPatient(user, id, 'demographics', meta);
   const before = await loadPatient(id);
   const { consent, ...fields } = input;

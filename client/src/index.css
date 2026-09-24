@@ -169,3 +169,14 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Printing (Phase 5): A4 sheets from layouts/PrintLayout; controls carry `print:hidden`. */
+@page {
+  size: A4;
+  margin: 14mm;
+}
+@media print {
+  body {
+    background: #ffffff;
+  }
+}

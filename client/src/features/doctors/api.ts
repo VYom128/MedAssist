@@ -1,6 +1,7 @@
 import { apiSlice } from '../../app/apiSlice';
 import type { LeaveType } from '../../constants/catalog';
 import { toPaged, type ApiSuccess, type Paged } from '../../utils/http';
+import type { AffectedAppointment } from '../appointments/api';
 
 /** Public doctor view (spec §7.6). `id` is the doctor's User id. */
 export interface PublicDoctor {
@@ -82,7 +83,7 @@ export interface ScheduleView {
 
 export interface ScheduleSaveResult extends ScheduleView {
   warnings: { weekday: number; message: string }[];
-  affectedAppointments: unknown[];
+  affectedAppointments: AffectedAppointment[];
 }
 
 export interface ScheduleInput {
@@ -167,7 +168,12 @@ export const doctorsApi = apiSlice.injectEndpoints({
     replaceSchedule: build.mutation<ScheduleSaveResult, { id: string; body: ScheduleInput }>({
       query: ({ id, body }) => ({ url: `/doctors/${id}/schedule`, method: 'PUT', data: body }),
       transformResponse: (res: ApiSuccess<ScheduleSaveResult>) => res.data,
-      invalidatesTags: (_r, _e, { id }) => [{ type: 'Schedule', id }, 'AuditLog'],
+      invalidatesTags: (_r, _e, { id }) => [
+        { type: 'Schedule', id },
+        'AuditLog',
+        'Slots',
+        'Availability',
+      ],
     }),
     listLeaves: build.query<Paged<Leave>, { id: string; params: LeaveListParams }>({
       query: ({ id, params }) => ({ url: `/doctors/${id}/leaves`, params }),
@@ -175,13 +181,19 @@ export const doctorsApi = apiSlice.injectEndpoints({
       providesTags: (_r, _e, { id }) => [{ type: 'Leave', id }],
     }),
     createLeave: build.mutation<
-      { leave: Leave; affectedAppointments: unknown[] },
+      { leave: Leave; affectedAppointments: AffectedAppointment[] },
       { id: string; body: LeaveInput }
     >({
       query: ({ id, body }) => ({ url: `/doctors/${id}/leaves`, method: 'POST', data: body }),
-      transformResponse: (res: ApiSuccess<{ leave: Leave; affectedAppointments: unknown[] }>) =>
-        res.data,
-      invalidatesTags: (_r, _e, { id }) => [{ type: 'Leave', id }, 'AuditLog'],
+      transformResponse: (
+        res: ApiSuccess<{ leave: Leave; affectedAppointments: AffectedAppointment[] }>,
+      ) => res.data,
+      invalidatesTags: (_r, _e, { id }) => [
+        { type: 'Leave', id },
+        'AuditLog',
+        'Slots',
+        'Availability',
+      ],
     }),
     cancelLeave: build.mutation<Leave, { id: string; leaveId: string }>({
       query: ({ id, leaveId }) => ({

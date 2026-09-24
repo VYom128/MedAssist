@@ -26,6 +26,8 @@ const PUBLIC = new Set([
   'GET /services/:id',
   'GET /doctors',
   'GET /doctors/:id',
+  // Kiosk queue board: checks the kiosk key itself, no user login (spec §7.9)
+  'GET /queue/board',
 ]);
 
 /** Mount prefixes whose every route is admin-only. */

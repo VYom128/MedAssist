@@ -7,7 +7,7 @@ import Code from '../../../components/ui/Code';
 import { formatCalendarDate } from '../../../utils/dates';
 import { formatPhone } from '../../../utils/phone';
 import type { DuplicateMatch } from '../api';
-import ReasonDialog from './ReasonDialog';
+import ReasonDialog from '../../../components/ui/ReasonDialog';
 
 const MATCHED_ON = {
   phone_dob: 'same phone and date of birth',

@@ -21,9 +21,9 @@ import {
 
 /**
  * /patients (spec §7.7). Which patients a caller may see is decided by policies/patientAccess:
- * doctors pass the role check for list/read/clinical profile but see nothing until care
- * relationships exist (Phase 5); patients may open only their own record (others → 404).
- * Lab technicians have no patient endpoints until Phase 6.
+ * doctors list, read and update the clinical profile of patients they have a care relationship
+ * with (others → 404); patients may open only their own record (others → 404). Lab
+ * technicians have no patient endpoints until Phase 6.
  */
 const router = Router();
 const { ADMIN, RECEPTIONIST, DOCTOR, PATIENT } = ROLES;

@@ -153,6 +153,8 @@ async function runChecks(api: string): Promise<boolean> {
 
   await phase2Checks(api, check, login);
   await phase3Checks(api, check, login);
+  await phase4Checks(api, check, login);
+  await phase5Checks(api, check, login);
 
   for (const [name, ok, detail] of results) {
     out(`${ok ? 'PASS' : 'FAIL'}  ${name}${!ok && detail ? ` (${detail})` : ''}`);
@@ -344,11 +346,31 @@ async function phase3Checks(
 
   const doctor = await as('dr.mehta@medassist.dev');
   if (doctor) {
-    const none = await call(api, '/patients', { headers: doctor });
+    // Phase 5: doctors see the patients they have a care relationship with (spec §2.3).
+    const mine = await call(api, '/patients?scope=mine&limit=100', { headers: doctor });
+    const mineItems = (mine.body.data as unknown as Item[]) ?? [];
     check(
-      'doctors see no patients until care relationships (Phase 5)',
-      none.res.status === 200 && ((none.body.data as unknown as Item[]) ?? []).length === 0,
+      'dr.mehta lists only related patients (scope=mine)',
+      mine.res.status === 200 && mineItems.length > 0,
+      `got ${mineItems.length}`,
     );
+    if (mineItems[0]) {
+      const view = await call(api, `/patients/${mineItems[0].id}`, { headers: doctor });
+      check(
+        'dr.mehta opens a related patient (doctor view: clinical, no insurance)',
+        view.res.status === 200 &&
+          JSON.stringify(view.body).includes('"chronicConditions"') &&
+          !JSON.stringify(view.body).includes('"insurance"'),
+        `status ${view.res.status}`,
+      );
+    }
+    const stranger = ((list.body.data as unknown as Item[]) ?? []).find(
+      (p) => !mineItems.some((m) => m.id === p.id),
+    );
+    if (stranger) {
+      const denied = await call(api, `/patients/${stranger.id}`, { headers: doctor });
+      check('dr.mehta gets 404 without a care relationship', denied.res.status === 404);
+    }
     await logout(doctor);
   }
   const lab = await as('lab1@medassist.dev');
@@ -358,6 +380,247 @@ async function phase3Checks(
     await logout(lab);
   }
   await Promise.all([logout(patient), logout(reception), logout(admin)]);
+}
+
+/**
+ * Phase 4: seeded appointments, a live booking race on one free slot (exactly one wins; the
+ * winner is cancelled again, reason "Smoke test"), a queue.updated socket event with ids only,
+ * the kiosk board (no patient data; wrong key refused) and patients limited to their own.
+ */
+async function phase4Checks(
+  api: string,
+  check: (name: string, ok: boolean, detail?: string) => void,
+  login: (email: string) => ReturnType<typeof call>,
+) {
+  const as = async (email: string) => {
+    const r = await login(email);
+    const token = r.body.data?.accessToken;
+    if (!token) check(`${email} logs in for Phase 4 checks`, false, `status ${r.res.status}`);
+    return token ? { token, headers: { Authorization: `Bearer ${token}` } } : null;
+  };
+  const reception = await as('reception1@medassist.dev');
+  const patient = await as('patient1@medassist.dev');
+  if (!reception || !patient) return;
+  const get = async (path: string, headers: Record<string, string>) => {
+    const res = await fetch(`${api}${path}`, { headers });
+    return { res, raw: await res.text() };
+  };
+  const json = <T>(raw: string) => JSON.parse(raw) as { data: T; meta?: { total: number } };
+
+  const all = await get('/appointments?limit=1&from=2000-01-01', reception.headers);
+  const total = json<unknown[]>(all.raw).meta?.total ?? 0;
+  check('at least 250 seeded appointments', total >= 250, `got ${total}`);
+
+  // A free slot of dr.mehta 10–13 days ahead (few seeded bookings there).
+  const doctors = json<Item[]>((await get('/doctors?q=Mehta', reception.headers)).raw).data;
+  const doctorId = doctors[0]?.id;
+  const clinic = json<{ timezone: string }>((await get('/settings/public', {})).raw).data;
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: clinic.timezone }).format(new Date());
+  const addDays = (d: string, n: number) => {
+    const t = new Date(`${d}T00:00:00Z`);
+    t.setUTCDate(t.getUTCDate() + n);
+    return t.toISOString().slice(0, 10);
+  };
+  let slot: { startAt: string } | undefined;
+  let slotDate = '';
+  for (let d = 13; d >= 10 && !slot && doctorId; d -= 1) {
+    slotDate = addDays(today, d);
+    const slots = json<{ slots: { startAt: string }[] }>(
+      (await get(`/doctors/${doctorId}/slots?date=${slotDate}`, reception.headers)).raw,
+    ).data.slots;
+    slot = slots.at(-1);
+  }
+  const patients = json<Item[]>(
+    (await get('/patients?limit=40&sort=mrn', reception.headers)).raw,
+  ).data;
+  const services = json<(Item & { code: string })[]>(
+    (await get('/services?limit=100', {})).raw,
+  ).data;
+  const serviceId = services.find((s) => s.code === 'CONS-GEN')?.id;
+  if (!slot || !doctorId || !serviceId || patients.length < 40) {
+    check('a free slot for the booking race', false, `slot ${Boolean(slot)}`);
+    return;
+  }
+
+  // Two receptionists book the same slot at once (patients unlikely to be busy then).
+  const book = (patientId: string) =>
+    call(api, '/appointments', {
+      method: 'POST',
+      headers: reception.headers,
+      body: JSON.stringify({ patientId, doctorId, serviceId, startAt: slot.startAt }),
+    });
+  const race = await Promise.all([book(patients[38]!.id), book(patients[39]!.id)]);
+  const statuses = race.map((r) => r.res.status).sort();
+  const winner = race.find((r) => r.res.status === 201)?.body.data as Item | undefined;
+  const loserCode = race.find((r) => r.res.status !== 201)?.body.error?.code;
+  check(
+    'two parallel bookings of one slot: exactly one wins, the other gets SLOT_UNAVAILABLE',
+    statuses.join() === '201,409' && loserCode === 'SLOT_UNAVAILABLE',
+    `${statuses.join()} ${loserCode ?? ''}`,
+  );
+
+  if (winner) {
+    // The cancel is announced over Socket.IO to the doctor's queue room, with ids only.
+    const { io } = await import('socket.io-client');
+    const socket = io(api.replace(/\/api\/v1$/, ''), {
+      auth: { token: reception.token },
+      transports: ['websocket'],
+      reconnection: false,
+    });
+    const event = new Promise<unknown>((resolve) => {
+      socket.on('queue.updated', resolve);
+      setTimeout(() => resolve(null), 5000);
+    });
+    const joined = await new Promise<boolean>((resolve) => {
+      socket.on('connect', () =>
+        socket.emit('queue:subscribe', { doctorId, date: slotDate }, (r: { ok: boolean }) =>
+          resolve(r.ok),
+        ),
+      );
+      socket.on('connect_error', () => resolve(false));
+    });
+    const cancel = await call(api, `/appointments/${winner.id}/cancel`, {
+      method: 'POST',
+      headers: reception.headers,
+      body: JSON.stringify({ reason: 'Smoke test' }),
+    });
+    const payload = await event;
+    socket.disconnect();
+    check('smoke booking cancelled again', cancel.res.status === 200);
+    check(
+      'queue.updated arrives over Socket.IO with ids only',
+      joined && JSON.stringify(payload) === JSON.stringify({ doctorId, date: slotDate }),
+      JSON.stringify(payload),
+    );
+  }
+
+  const queue = await get(`/queue?doctor=${doctorId}&date=${today}`, reception.headers);
+  check('reception sees a doctor queue', queue.res.status === 200, `status ${queue.res.status}`);
+
+  const key = process.env.KIOSK_KEY;
+  if (key) {
+    const board = await get(`/queue/board?key=${encodeURIComponent(key)}`, {});
+    check(
+      'queue board: public with the kiosk key, no patient data',
+      board.res.status === 200 && !/firstName|lastName|mrn|patient|MRN-/i.test(board.raw),
+    );
+    const wrong = await get('/queue/board?key=wrong-kiosk-key-000000000000', {});
+    check('queue board refuses a wrong key', wrong.res.status === 401);
+  } else {
+    check('KIOSK_KEY is set in server/.env', false, 'the queue board is switched off');
+  }
+
+  // patient1 cannot open someone else's appointment.
+  const others = json<Item[]>(
+    (
+      await get(
+        `/appointments?patient=${patients[20]!.id}&limit=1&from=2000-01-01`,
+        reception.headers,
+      )
+    ).raw,
+  ).data;
+  if (others[0]) {
+    const denied = await get(`/appointments/${others[0].id}`, patient.headers);
+    check("patient1 gets 404 on someone else's appointment", denied.res.status === 404);
+  }
+  const mine = await get('/appointments?limit=100&from=2000-01-01', patient.headers);
+  check(
+    'patient1 lists only their own appointments (no patient details)',
+    mine.res.status === 200 && !/"patient"/.test(mine.raw),
+  );
+  await Promise.all(
+    [reception, patient].map((a) =>
+      call(api, '/auth/logout', { method: 'POST', headers: a.headers }),
+    ),
+  );
+}
+
+/**
+ * Phase 5: seeded clinical notes and prescriptions – doctors read their signed notes (and the
+ * amendment history), today's consultation has a draft, patient1 sees only issued prescriptions
+ * without allergy internals, reception prints by patient, admins get 403. Read-only.
+ */
+async function phase5Checks(
+  api: string,
+  check: (name: string, ok: boolean, detail?: string) => void,
+  login: (email: string) => ReturnType<typeof call>,
+) {
+  const as = async (email: string) => {
+    const r = await login(email);
+    const token = r.body.data?.accessToken;
+    if (!token) check(`${email} logs in for Phase 5 checks`, false, `status ${r.res.status}`);
+    return token ? { Authorization: `Bearer ${token}` } : null;
+  };
+  type Item = { id: string; status?: string };
+  const list = (body: { data?: unknown }) => (body.data as Item[] | undefined) ?? [];
+
+  const doctor = await as('dr.mehta@medassist.dev');
+  const patient = await as('patient1@medassist.dev');
+  const reception = await as('reception1@medassist.dev');
+  const admin = await as('admin@medassist.dev');
+  if (!doctor || !patient || !reception || !admin) return;
+
+  const notes = await call(api, '/encounters?limit=100', { headers: doctor });
+  const signed = list(notes.body).find((e) => e.status === 'signed' || e.status === 'amended');
+  check(
+    'dr.mehta lists signed notes (no clinical text in the list)',
+    notes.res.status === 200 &&
+      Boolean(signed) &&
+      !/chiefComplaint/.test(JSON.stringify(notes.body)),
+  );
+  if (signed) {
+    const one = await call(api, `/encounters/${signed.id}`, { headers: doctor });
+    check(
+      'dr.mehta opens a signed note',
+      one.res.status === 200 &&
+        Boolean((one.body.data as { chiefComplaint?: string })?.chiefComplaint),
+    );
+    const history = await call(api, `/encounters/${signed.id}/amendments`, { headers: doctor });
+    check('the amendment history loads', history.res.status === 200);
+  }
+  const underWay = await call(api, '/appointments?status=in_consultation&from=2000-01-01', {
+    headers: doctor,
+  });
+  const current = list(underWay.body)[0];
+  if (current) {
+    const draft = await call(api, `/appointments/${current.id}/encounter`, { headers: doctor });
+    check(
+      "today's consultation has a draft note",
+      draft.res.status === 200 && (draft.body.data as Item | undefined)?.status === 'draft',
+      `status ${draft.res.status}`,
+    );
+  }
+
+  const mine = await call(api, '/prescriptions', { headers: patient });
+  const rx = list(mine.body);
+  check(
+    'patient1 sees only issued/completed prescriptions',
+    mine.res.status === 200 && rx.every((p) => p.status === 'issued' || p.status === 'completed'),
+    `status ${mine.res.status}`,
+  );
+  if (rx[0]) {
+    const one = await call(api, `/prescriptions/${rx[0].id}`, { headers: patient });
+    check(
+      "patient1's prescription has no allergy internals",
+      one.res.status === 200 && !/allergy|acknowledged/i.test(JSON.stringify(one.body)),
+    );
+  }
+  const me = await call(api, '/patients/me', { headers: patient });
+  const myId = (me.body.data as { id?: string } | undefined)?.id;
+  if (myId) {
+    const printable = await call(api, `/prescriptions?patient=${myId}`, { headers: reception });
+    check('reception lists a patient’s prescriptions for printing', printable.res.status === 200);
+  }
+  const adminDenied = await call(api, '/encounters', { headers: admin });
+  check('admins get 403 on clinical notes', adminDenied.res.status === 403);
+  const noScope = await call(api, '/prescriptions', { headers: reception });
+  check('reception must choose a patient to list prescriptions', noScope.res.status === 400);
+
+  await Promise.all(
+    [doctor, patient, reception, admin].map((h) =>
+      call(api, '/auth/logout', { method: 'POST', headers: h }),
+    ),
+  );
 }
 
 async function main() {

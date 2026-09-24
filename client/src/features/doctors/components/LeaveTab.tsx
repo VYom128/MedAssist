@@ -12,6 +12,8 @@ import { addDaysToDate, clinicDate } from '../../../utils/dates';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { useCancelLeaveMutation, useListLeavesQuery, type Leave } from '../api';
 import { formatLeave } from '../leaveFormat';
+import type { AffectedAppointment } from '../../appointments/api';
+import AffectedAppointmentsPanel from '../../appointments/components/AffectedAppointmentsPanel';
 import AddLeaveModal from './AddLeaveModal';
 
 function LeaveList({ items, onCancel }: { items: Leave[]; onCancel?: (l: Leave) => void }) {
@@ -78,6 +80,7 @@ export default function LeaveTab({ doctorId }: { doctorId: string }) {
   const [cancelling, setCancelling] = useState<Leave | null>(null);
   const [cancelLeave, { isLoading: busy }] = useCancelLeaveMutation();
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [affected, setAffected] = useState<AffectedAppointment[]>([]);
 
   // A leave that started before today but is still running shows in both lists: keep it upcoming.
   const upcomingIds = new Set(upcoming.data?.items.map((l) => l.id));
@@ -97,6 +100,7 @@ export default function LeaveTab({ doctorId }: { doctorId: string }) {
 
   return (
     <div className="space-y-6">
+      <AffectedAppointmentsPanel items={affected} context="leave" />
       <SectionCard
         title="Upcoming leave"
         description="Includes leave that is happening now."
@@ -136,7 +140,12 @@ export default function LeaveTab({ doctorId }: { doctorId: string }) {
         {pastItems.length > 0 && <LeaveList items={pastItems} />}
       </SectionCard>
 
-      <AddLeaveModal doctorId={doctorId} open={adding} onClose={() => setAdding(false)} />
+      <AddLeaveModal
+        doctorId={doctorId}
+        open={adding}
+        onClose={() => setAdding(false)}
+        onSaved={setAffected}
+      />
       <ConfirmDialog
         open={cancelling !== null}
         title="Cancel this leave?"

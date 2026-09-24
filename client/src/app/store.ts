@@ -1,9 +1,14 @@
 import { combineReducers, configureStore, createListenerMiddleware } from '@reduxjs/toolkit';
 import authReducer, { loggedOut } from '../features/auth/authSlice';
+import consultDraftReducer from '../features/encounters/consultDraftSlice';
+import rxDraftReducer from '../features/prescriptions/rxDraftSlice';
 import { apiSlice } from './apiSlice';
 
 const rootReducer = combineReducers({
   auth: authReducer,
+  /** Unsaved clinical note edits – memory only (spec §13.2). */
+  consultDraft: consultDraftReducer,
+  rxDraft: rxDraftReducer,
   [apiSlice.reducerPath]: apiSlice.reducer,
 });
 

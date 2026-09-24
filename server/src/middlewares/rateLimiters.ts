@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import { ipKeyGenerator, rateLimit, type Options } from 'express-rate-limit';
+import { ROLES } from '../config/constants.js';
 import { config } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 
@@ -44,6 +45,23 @@ export const createRegisterLimiter = (options: Partial<Options> = {}) =>
 export const createPasswordResetLimiter = (options: Partial<Options> = {}) =>
   createRateLimiter({ windowMs: 60 * MINUTE, limit: 5, ...options });
 
+/**
+ * Patient bookings and reschedules: 20 / hour per user (Phase 4). Staff are not limited here.
+ * Mount after `authenticate`.
+ */
+export const createPatientBookingLimiter = (options: Partial<Options> = {}) =>
+  createRateLimiter({
+    windowMs: 60 * MINUTE,
+    limit: 20,
+    keyGenerator: (req) => `user:${req.user?.id ?? ''}`,
+    ...options,
+    skip: (req, res) => req.user?.role !== ROLES.PATIENT || (options.skip?.(req, res) ?? false),
+  });
+
+/** Kiosk queue board: 60 / minute per IP (a board polls every 15 s; limits key guessing). */
+export const createBoardLimiter = (options: Partial<Options> = {}) =>
+  createRateLimiter({ windowMs: MINUTE, limit: 60, ...options });
+
 // App instances are off in tests; tests build their own with the factories above.
 const skipInTest = () => config.isTest;
 export const loginLimiter = createLoginLimiter({ skip: skipInTest });
@@ -51,3 +69,5 @@ export const registerLimiter = createRegisterLimiter({ skip: skipInTest });
 /** Separate budgets so asking for a link does not use up the attempts to set the password. */
 export const forgotPasswordLimiter = createPasswordResetLimiter({ skip: skipInTest });
 export const resetPasswordLimiter = createPasswordResetLimiter({ skip: skipInTest });
+export const patientBookingLimiter = createPatientBookingLimiter({ skip: skipInTest });
+export const boardLimiter = createBoardLimiter({ skip: skipInTest });

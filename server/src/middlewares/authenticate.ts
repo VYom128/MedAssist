@@ -3,6 +3,7 @@ import { isValidObjectId } from 'mongoose';
 import { ERROR_CODES } from '../config/constants.js';
 import { Session } from '../modules/sessions/model.js';
 import { User } from '../modules/users/model.js';
+import type { AuthUser } from '../types/express.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { AccessTokenError, verifyAccessToken, type AccessTokenClaims } from '../utils/tokens.js';
@@ -43,66 +44,76 @@ async function isSessionLive(session: {
 }
 
 /**
- * Verifies the Bearer access token and sets `req.user` (spec §10.1). Beyond the JWT it checks,
- * on every request: the session (`sid`) is live → 401 SESSION_REVOKED; the user is active →
- * 403 ACCOUNT_INACTIVE; the token is not older than the last password change → 401
- * SESSION_REVOKED. So logout, password change and deactivation take effect immediately.
+ * Resolves an access token to the caller (spec §10.1). Beyond the JWT it checks: the session
+ * (`sid`) is live → 401 SESSION_REVOKED; the user is active → 403 ACCOUNT_INACTIVE; the token is
+ * not older than the last password change → 401 SESSION_REVOKED; unless allowed, a pending
+ * password change → 403 PASSWORD_CHANGE_REQUIRED. Used by `authenticate` and the Socket.IO
+ * handshake, so both apply the same rules.
  */
+export async function resolveAccessToken(
+  token: string | undefined,
+  { allowPendingPasswordChange = false }: { allowPendingPasswordChange?: boolean } = {},
+): Promise<AuthUser> {
+  const claims = readClaims(token ? `Bearer ${token}` : undefined);
+  if (!isValidObjectId(claims.sub) || !isValidObjectId(claims.sid)) {
+    throw ApiError.unauthorized('Invalid access token');
+  }
+
+  const [user, session] = await Promise.all([
+    User.findById(claims.sub).lean(),
+    Session.findById(claims.sid, {
+      user: 1,
+      family: 1,
+      revokedAt: 1,
+      revokedReason: 1,
+      expiresAt: 1,
+    }).lean(),
+  ]);
+
+  if (!session || !session.user.equals(claims.sub) || !(await isSessionLive(session))) {
+    throw sessionRevoked();
+  }
+  if (!user || user.role !== claims.role) throw ApiError.unauthorized('Invalid access token');
+  if (!user.isActive) {
+    throw new ApiError(403, 'This account has been deactivated', ERROR_CODES.ACCOUNT_INACTIVE);
+  }
+  // passwordChangedAt is stored 1 s early, so tokens issued right after the change pass.
+  if (user.passwordChangedAt && claims.iat * 1000 < user.passwordChangedAt.getTime()) {
+    throw sessionRevoked();
+  }
+  if (user.mustChangePassword && !allowPendingPasswordChange) {
+    throw new ApiError(
+      403,
+      'You must change your password before continuing',
+      ERROR_CODES.PASSWORD_CHANGE_REQUIRED,
+    );
+  }
+
+  return {
+    id: user._id.toString(),
+    role: user.role,
+    sessionId: claims.sid,
+    sessionFamily: session.family,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    mustChangePassword: user.mustChangePassword,
+    // Only a confirmed link grants access to the record (spec §4.4): a self-registered user
+    // waiting for reception's identity check points at a Patient but must not see it.
+    patientId: user.patientLinkStatus === 'linked' ? (user.patient?.toString() ?? null) : null,
+  };
+}
+
+/** Verifies the Bearer access token (`resolveAccessToken`) and sets `req.user`. */
 function createAuthenticate({
   allowPendingPasswordChange,
 }: {
   allowPendingPasswordChange: boolean;
 }) {
   return asyncHandler(async (req, _res, next) => {
-    const claims = readClaims(req.get('authorization'));
-    if (!isValidObjectId(claims.sub) || !isValidObjectId(claims.sid)) {
-      throw ApiError.unauthorized('Invalid access token');
-    }
-
-    const [user, session] = await Promise.all([
-      User.findById(claims.sub).lean(),
-      Session.findById(claims.sid, {
-        user: 1,
-        family: 1,
-        revokedAt: 1,
-        revokedReason: 1,
-        expiresAt: 1,
-      }).lean(),
-    ]);
-
-    if (!session || !session.user.equals(claims.sub) || !(await isSessionLive(session))) {
-      throw sessionRevoked();
-    }
-    if (!user || user.role !== claims.role) throw ApiError.unauthorized('Invalid access token');
-    if (!user.isActive) {
-      throw new ApiError(403, 'This account has been deactivated', ERROR_CODES.ACCOUNT_INACTIVE);
-    }
-    // passwordChangedAt is stored 1 s early, so tokens issued right after the change pass.
-    if (user.passwordChangedAt && claims.iat * 1000 < user.passwordChangedAt.getTime()) {
-      throw sessionRevoked();
-    }
-
-    req.user = {
-      id: user._id.toString(),
-      role: user.role,
-      sessionId: claims.sid,
-      sessionFamily: session.family,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      mustChangePassword: user.mustChangePassword,
-      // Only a confirmed link grants access to the record (spec §4.4): a self-registered user
-      // waiting for reception's identity check points at a Patient but must not see it.
-      patientId: user.patientLinkStatus === 'linked' ? (user.patient?.toString() ?? null) : null,
-    };
-
-    if (user.mustChangePassword && !allowPendingPasswordChange) {
-      throw new ApiError(
-        403,
-        'You must change your password before continuing',
-        ERROR_CODES.PASSWORD_CHANGE_REQUIRED,
-      );
-    }
+    const match = req.get('authorization')?.match(/^Bearer ([A-Za-z0-9._-]+)$/);
+    if (!match?.[1]) throw ApiError.unauthorized();
+    req.user = await resolveAccessToken(match[1], { allowPendingPasswordChange });
     next();
   });
 }

@@ -36,12 +36,13 @@ describe('/settings', () => {
         timezone: 'Asia/Kolkata',
         currency: 'INR',
         workingDays: [1, 2, 3, 4, 5, 6],
-        appointment: { allowPatientSelfBooking: true, bookingWindowDays: 30 },
+        appointment: { allowPatientSelfBooking: true, bookingWindowDays: 30, minCancelHours: 2 },
         ai: { explanationLanguages: ['en', 'hi'] },
       });
       expect(Object.keys(res.body.data.appointment).sort()).toEqual([
         'allowPatientSelfBooking',
         'bookingWindowDays',
+        'minCancelHours',
       ]);
       expect(JSON.stringify(res.body)).not.toMatch(/gstin|invoicePrefix|requireDualVerification/);
       expect(await ClinicSettings.countDocuments()).toBe(1);

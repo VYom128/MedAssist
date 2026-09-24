@@ -1,8 +1,11 @@
 import {
   Building2,
   CalendarClock,
+  CalendarDays,
+  FileText,
   FlaskConical,
   IdCard,
+  ListOrdered,
   LayoutDashboard,
   Receipt,
   ScrollText,
@@ -66,6 +69,90 @@ export const APP_ROUTES: AppRoute[] = [
     '/patient/dashboard',
     () => import('../features/dashboards/pages/PatientDashboard'),
   ),
+  {
+    path: '/reception/appointments',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/appointments/pages/ReceptionAppointmentsPage'),
+    nav: { label: 'Appointments', icon: CalendarDays },
+  },
+  {
+    path: '/reception/appointments/:id',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/appointments/pages/AppointmentDetailPage'),
+  },
+  {
+    path: '/reception/queue',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/queue/pages/ReceptionQueuePage'),
+    nav: { label: 'Queue', icon: ListOrdered },
+  },
+  {
+    path: '/doctor/queue',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/queue/pages/DoctorQueuePage'),
+    nav: { label: 'My queue', icon: ListOrdered },
+  },
+  {
+    path: '/doctor/appointments',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/appointments/pages/DoctorAppointmentsPage'),
+    nav: { label: 'Appointments', icon: CalendarDays },
+  },
+  {
+    path: '/doctor/appointments/:id',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/appointments/pages/AppointmentDetailPage'),
+  },
+  {
+    path: '/doctor/patients',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/doctorPatients/pages/MyPatientsPage'),
+    nav: { label: 'My patients', icon: UserRound },
+  },
+  {
+    path: '/doctor/patients/:id',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/doctorPatients/pages/DoctorPatientPage'),
+  },
+  {
+    path: '/doctor/notes',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/doctorPatients/pages/NotesPage'),
+    nav: { label: 'Notes', icon: FileText },
+  },
+  {
+    path: '/doctor/consult/:appointmentId',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/encounters/pages/ConsultWorkspacePage'),
+  },
+  {
+    path: '/doctor/encounters/:id',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/encounters/pages/EncounterPage'),
+  },
+
+  {
+    path: '/patient/appointments',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/appointments/pages/MyAppointmentsPage'),
+    nav: { label: 'Appointments', icon: CalendarDays },
+  },
+  {
+    path: '/patient/appointments/book',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/appointments/pages/BookAppointmentPage'),
+  },
+  {
+    path: '/admin/appointments',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/appointments/pages/AdminAppointmentsPage'),
+    nav: { label: 'Appointments', icon: CalendarDays },
+  },
+  {
+    path: '/admin/appointments/:id',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/appointments/pages/AppointmentDetailPage'),
+  },
   {
     path: '/reception/patients',
     roles: [ROLES.RECEPTIONIST],

@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
-import Alert from '../../../components/ui/Alert';
-import Button from '../../../components/ui/Button';
-import Modal from '../../../components/ui/Modal';
-import Textarea from '../../../components/ui/Textarea';
+import Alert from './Alert';
+import Button from './Button';
+import Modal from './Modal';
+import Textarea from './Textarea';
 
 /**
- * Asks for a reason before an audited action (duplicate override, rejected link, deactivation).
+ * Asks for a reason before an audited action (duplicate override, rejected link, deactivation,
+ * rescheduling or cancelling an appointment).
  * The reason is stored in the audit log.
  */
 export default function ReasonDialog({

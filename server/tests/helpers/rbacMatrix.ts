@@ -1,4 +1,5 @@
 import { ROLE_VALUES, type Role } from '../../src/config/constants.js';
+import { config } from '../../src/config/env.js';
 import { addDaysToDate, clinicToday } from '../../src/utils/dates.js';
 import type { LoggedIn } from './auth.js';
 import { TEST_PASSWORD } from './auth.js';
@@ -49,6 +50,40 @@ export interface Ctx {
   /** A self-registered user waiting for verification against `pendingPatientId`. */
   pendingUserId: string;
   pendingPatientId: string;
+  /**
+   * A scheduled appointment of `patientId` with `doctorId` (own for a doctor or patient caller),
+   * days ahead; `doctorId` works 09:00–13:00 every day and `serviceId` is bookable.
+   */
+  appointmentId: string;
+  /** Clinic date of the appointment, and free slots for booking and rescheduling. */
+  appointmentDate: string;
+  bookStartAt: string;
+  rescheduleStartAt: string;
+  /**
+   * Today's appointments of `doctorId` (clinic time): scheduled and already started (check-in,
+   * no-show), checked in (start, priority, call-next; the patient is `patientId`), no-show (undo),
+   * and yesterday's still in consultation (complete). `queueAppointmentId` = `checkedInId` for
+   * the /queue/:appointmentId routes.
+   */
+  todayScheduledId: string;
+  checkedInId: string;
+  queueAppointmentId: string;
+  noShowId: string;
+  inConsultationId: string;
+  /** A patient with no appointments (walk-in). */
+  walkInPatientId: string;
+  /** The draft encounter of `inConsultationId` (doctorId's; its documentation window is open). */
+  encounterId: string;
+  /** A draft note of doctorId (another appointment in consultation) ready to sign, revision 0. */
+  signableEncounterId: string;
+  /**
+   * A signed note of doctorId with patientId (a completed appointment), with an issued
+   * prescription `prescriptionId` (patientId's own for a patient caller).
+   */
+  signedEncounterId: string;
+  prescriptionId: string;
+  /** A reissued draft prescription (replaces a cancelled one) on another signed note. */
+  reissuedDraftId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -75,6 +110,9 @@ const DOCTOR: readonly Role[] = ['doctor'];
 const PATIENT: readonly Role[] = ['patient'];
 const RECEPTION: readonly Role[] = ['receptionist'];
 const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'patient'];
+const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
+const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
+const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionist'];
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
 const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
@@ -319,8 +357,8 @@ export const ENDPOINTS: Row[] = [
 ];
 
 ENDPOINTS.push(
-  // Patients (spec §7.7). Doctors pass the role check but see no patients until care
-  // relationships exist (Phase 5); patients may open only their own record (others → 404).
+  // Patients (spec §7.7). Doctors see patients they have a care relationship with – patientId,
+  // not otherPatientId (404); patients may open only their own record (others → 404).
   { method: 'get', path: () => '/patients', roles: ADMIN_DOCTOR_RECEPTION, status: 200 },
   {
     method: 'get',
@@ -375,8 +413,7 @@ ENDPOINTS.push(
     method: 'get',
     path: (c) => `/patients/${c.patientId}`,
     roles: PATIENT_READERS,
-    status: 200,
-    statusFor: { doctor: 404 },
+    status: 200, // the doctor has appointments with patientId (care relationship)
   },
   {
     method: 'get',
@@ -397,7 +434,14 @@ ENDPOINTS.push(
     path: (c) => `/patients/${c.patientId}/clinical-profile`,
     body: () => ({ chronicConditions: [{ name: 'Asthma' }] }),
     roles: DOCTOR,
-    status: 404, // no care relationship until Phase 5
+    status: 200,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/patients/${c.otherPatientId}/clinical-profile`,
+    body: () => ({ chronicConditions: [{ name: 'Asthma' }] }),
+    roles: DOCTOR,
+    status: 404, // no care relationship with otherPatientId
   },
   {
     method: 'post',
@@ -415,6 +459,215 @@ ENDPOINTS.push(
   },
 );
 
+ENDPOINTS.push(
+  // Appointments (spec §7.8). Doctors and patients act on their own appointment (the context's).
+  { method: 'get', path: () => '/appointments', roles: PATIENT_READERS, status: 200 },
+  {
+    method: 'get',
+    path: (c) => `/appointments/calendar?from=${c.appointmentDate}&to=${c.appointmentDate}`,
+    roles: ADMIN_DOCTOR_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: () => '/appointments',
+    body: (c) => ({
+      patientId: c.patientId,
+      doctorId: c.doctorId,
+      serviceId: c.serviceId,
+      startAt: c.bookStartAt,
+    }),
+    roles: APPOINTMENT_BOOKERS,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/appointments/${c.appointmentId}`,
+    roles: PATIENT_READERS,
+    status: 200,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/appointments/${c.appointmentId}`,
+    body: (c) => ({ priority: 'priority', reason: `Matrix ${c.n}` }),
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.appointmentId}/reschedule`,
+    body: (c) => ({ startAt: c.rescheduleStartAt, reason: 'Matrix reschedule' }),
+    roles: APPOINTMENT_BOOKERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.appointmentId}/cancel`,
+    body: () => ({ reason: 'Matrix cancel' }),
+    roles: PATIENT_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: () => '/appointments/walk-in',
+    body: (c) => ({ patientId: c.walkInPatientId, doctorId: c.doctorId, serviceId: c.serviceId }),
+    roles: RECEPTION_ONLY,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.todayScheduledId}/check-in`,
+    roles: RECEPTION_ONLY,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.checkedInId}/start`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.inConsultationId}/complete`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.todayScheduledId}/no-show`,
+    roles: RECEPTION_ONLY,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.noShowId}/undo-no-show`,
+    roles: RECEPTION_ONLY,
+    status: 200,
+  },
+  // Queue (spec §7.9); GET /queue/board is in PUBLIC_ENDPOINTS
+  {
+    method: 'get',
+    path: (c) => `/queue?doctor=${c.doctorId}`,
+    roles: ADMIN_DOCTOR_RECEPTION,
+    status: 200,
+  },
+  { method: 'post', path: () => '/queue/call-next', roles: DOCTOR, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/queue/${c.queueAppointmentId}/priority`,
+    body: () => ({ priority: 'emergency', reason: 'Matrix priority' }),
+    roles: RECEPTION_ONLY,
+    status: 200,
+  },
+  { method: 'get', path: () => '/queue/my-position', roles: PATIENT, status: 200 },
+  // Encounters (spec §7.10) and the formulary: doctors only; admins and receptionists never.
+  {
+    method: 'get',
+    path: (c) => `/appointments/${c.inConsultationId}/encounter`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  { method: 'get', path: () => '/encounters', roles: DOCTOR, status: 200 },
+  { method: 'get', path: (c) => `/encounters/${c.encounterId}`, roles: DOCTOR, status: 200 },
+  {
+    method: 'patch',
+    path: (c) => `/encounters/${c.encounterId}`,
+    body: (c) => ({ expectedVersion: 0, plan: `Matrix plan ${c.n}` }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/encounters/${c.signableEncounterId}/sign`,
+    body: () => ({ expectedVersion: 0 }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/encounters/${c.signedEncounterId}/amendments`,
+    body: (c) => ({ reason: 'Matrix amendment reason', changes: { plan: `Plan ${c.n}` } }),
+    roles: DOCTOR,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/encounters/${c.signedEncounterId}/amendments`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'put',
+    path: (c) => `/encounters/${c.encounterId}/prescription`,
+    body: () => ({
+      items: [
+        {
+          drugName: 'Paracetamol',
+          dose: '1 tablet',
+          frequency: 'TDS',
+          durationDays: 3,
+        },
+      ],
+    }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  { method: 'get', path: () => '/formulary?q=para', roles: DOCTOR, status: 200 },
+  // Prescriptions (spec §7.12): doctors, patients (own issued) and reception (print); never admin.
+  {
+    method: 'get',
+    path: (c) => `/prescriptions?patient=${c.patientId}`,
+    roles: PRESCRIPTION_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/prescriptions/${c.prescriptionId}`,
+    roles: PRESCRIPTION_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/prescriptions/${c.prescriptionId}/print`,
+    roles: PRESCRIPTION_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/prescriptions/${c.prescriptionId}/cancel`,
+    body: () => ({ reason: 'Matrix cancel reason' }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/prescriptions/${c.prescriptionId}/reissue`,
+    body: () => ({ reason: 'Matrix reissue reason' }),
+    roles: DOCTOR,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/prescriptions/${c.reissuedDraftId}/issue`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  // Slots and availability (spec §7.6): any logged-in user
+  {
+    method: 'get',
+    path: (c) => `/doctors/${c.doctorId}/slots?date=${c.appointmentDate}`,
+    roles: ALL,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) =>
+      `/doctors/${c.doctorId}/availability?from=${c.appointmentDate}&to=${c.appointmentDate}`,
+    roles: ALL,
+    status: 200,
+  },
+);
+
 /**
  * Public reads (no token needed). rbac.test.ts checks every role and an anonymous caller get
  * `status`; routeInventory.test.ts checks each is in its PUBLIC list.
@@ -427,6 +680,13 @@ export const PUBLIC_ENDPOINTS: Row[] = [
   { method: 'get', path: (c) => `/services/${c.serviceId}`, roles: ALL, status: 200 },
   { method: 'get', path: () => '/doctors', roles: ALL, status: 200 },
   { method: 'get', path: (c) => `/doctors/${c.doctorId}`, roles: ALL, status: 200 },
+  // Queue board: public with the kiosk key (spec §7.9)
+  {
+    method: 'get',
+    path: () => `/queue/board?key=${encodeURIComponent(config.kiosk.key ?? '')}`,
+    roles: ALL,
+    status: 200,
+  },
 ];
 
 /** Placeholder context: turns a row's `path` into the Express pattern (`/users/:id`). */
@@ -449,6 +709,21 @@ export const PATTERN_CTX = {
   invitablePatientId: ':id',
   pendingUserId: ':userId',
   pendingPatientId: ':id',
+  appointmentId: ':id',
+  appointmentDate: '',
+  bookStartAt: '',
+  rescheduleStartAt: '',
+  todayScheduledId: ':id',
+  checkedInId: ':id',
+  queueAppointmentId: ':appointmentId',
+  noShowId: ':id',
+  inConsultationId: ':id',
+  walkInPatientId: ':id',
+  encounterId: ':id',
+  signableEncounterId: ':id',
+  signedEncounterId: ':id',
+  prescriptionId: ':id',
+  reissuedDraftId: ':id',
   n: 0,
 } as unknown as Ctx;
 

@@ -2,8 +2,15 @@ import { AUDIT_ACTIONS } from '../src/config/constants.js';
 import { AuditLog } from '../src/modules/audit/model.js';
 import { Session } from '../src/modules/sessions/model.js';
 import { flushAudit } from '../src/services/audit.service.js';
-import { addDaysToDate, clinicToday } from '../src/utils/dates.js';
+import {
+  addDaysToDate,
+  clinicToday,
+  startOfClinicDay,
+  weekdayOf,
+  zonedDateTimeToUtc,
+} from '../src/utils/dates.js';
 import { hashToken, verifyAccessToken } from '../src/utils/tokens.js';
+import { runPrescriptionCompletionJob } from '../src/jobs/prescriptionCompletion.job.js';
 import {
   createUser,
   loginAs,
@@ -13,6 +20,7 @@ import {
   TEST_PASSWORD,
 } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
+import { insertAppointment, loginAsDoctor } from './helpers/fixtures.js';
 import { api } from './helpers/testApp.js';
 
 /**
@@ -20,11 +28,8 @@ import { api } from './helpers/testApp.js';
  * entry ever contains a password, token, hash or cookie. When a phase adds an action, add the
  * step that triggers it here.
  */
-/**
- * Actions no endpoint can trigger yet. clinical_profile_update needs a doctor with a care
- * relationship (Phase 5); patients.clinicalProfile.test.ts covers it with a stand-in policy.
- */
-const NOT_REACHABLE_YET = new Set<string>([AUDIT_ACTIONS.PATIENT_CLINICAL_PROFILE_UPDATE]);
+/** Actions no endpoint can trigger yet. */
+const NOT_REACHABLE_YET = new Set<string>([]);
 
 describe('audit coverage', () => {
   it('writes every action, with no secrets in any entry', async () => {
@@ -276,6 +281,102 @@ describe('audit coverage', () => {
       .post(`/api/v1/patients/${twin.body.data.id}/confirm-link`)
       .set(reception.auth)
       .send({ userId: sunitaAgain.body.data.user.id });
+
+    // appointment.create, appointment.update, appointment.reschedule, appointment.cancel:
+    // Dr Iyer works Mondays 09:00–13:00 from `soon` (schedule above).
+    let monday = soon;
+    while (weekdayOf(monday) !== 1) monday = addDaysToDate(monday, 1);
+    const appt = await api()
+      .post('/api/v1/appointments')
+      .set(reception.auth)
+      .send({
+        patientId,
+        doctorId: drId,
+        serviceId: svcId,
+        startAt: zonedDateTimeToUtc(monday, '09:00', 'Asia/Kolkata'),
+      });
+    const apptId = appt.body.data.id as string;
+    await api()
+      .patch(`/api/v1/appointments/${apptId}`)
+      .set(reception.auth)
+      .send({ priority: 'priority' });
+    await api()
+      .post(`/api/v1/appointments/${apptId}/reschedule`)
+      .set(reception.auth)
+      .send({
+        startAt: zonedDateTimeToUtc(monday, '09:30', 'Asia/Kolkata'),
+        reason: 'Patient asked',
+      });
+    await api()
+      .post(`/api/v1/appointments/${apptId}/cancel`)
+      .set(reception.auth)
+      .send({ reason: 'Patient called' });
+
+    // appointment.check_in, .priority_change, .start, .complete, .no_show, .undo_no_show:
+    // today's appointments (one minute each, just after clinic midnight, so already started).
+    const drToday = await loginAsDoctor();
+    keep(drToday.token, drToday.refreshToken);
+    const today = clinicToday('Asia/Kolkata');
+    const minute = (m: number) =>
+      new Date(startOfClinicDay(today, 'Asia/Kolkata').getTime() + m * 60_000);
+    const visit = await insertAppointment({
+      patient: patientId,
+      doctor: drToday.id,
+      startAt: minute(1),
+      minutes: 1,
+    });
+    const post = (path: string, auth: { Authorization: string }, body: object = {}) =>
+      api().post(`/api/v1${path}`).set(auth).send(body);
+    await post(`/appointments/${visit._id}/check-in`, reception.auth);
+    await post(`/queue/${visit._id}/priority`, reception.auth, {
+      priority: 'priority',
+      reason: 'Elderly patient',
+    });
+    await post(`/appointments/${visit._id}/start`, drToday.auth);
+    // encounter.create (with the start), encounter.view, encounter.update, and
+    // patient.clinical_profile_update (drToday now has a care relationship with the patient)
+    const note = await api().get(`/api/v1/appointments/${visit._id}/encounter`).set(drToday.auth);
+    const noteId = note.body.data.id as string;
+    await api()
+      .patch(`/api/v1/encounters/${noteId}`)
+      .set(drToday.auth)
+      .send({
+        expectedVersion: 0,
+        chiefComplaint: 'Headache for two days',
+        diagnoses: [{ description: 'Tension headache' }],
+      });
+    await api()
+      .patch(`/api/v1/patients/${patientId}/clinical-profile`)
+      .set(drToday.auth)
+      .send({ chronicConditions: [{ name: 'Migraine' }] });
+    // prescription.update, encounter.sign + prescription.issue + appointment.complete (signing)
+    const rx = await api()
+      .put(`/api/v1/encounters/${noteId}/prescription`)
+      .set(drToday.auth)
+      .send({
+        items: [{ drugName: 'Paracetamol', dose: '1 tablet', frequency: 'SOS', durationDays: 3 }],
+      });
+    await post(`/encounters/${noteId}/sign`, drToday.auth, { expectedVersion: 1 });
+    // prescription.view, encounter.amend, prescription.cancel + prescription.reissue, then the
+    // reissued draft is issued and completed by the job (prescription.complete)
+    await api().get(`/api/v1/prescriptions/${rx.body.data.id}`).set(drToday.auth);
+    await post(`/encounters/${noteId}/amendments`, drToday.auth, {
+      reason: 'Added the plan after the call',
+      changes: { plan: 'Hydration and rest' },
+    });
+    const reissued = await post(`/prescriptions/${rx.body.data.id}/reissue`, drToday.auth, {
+      reason: 'Change to a regular dose',
+    });
+    await post(`/prescriptions/${reissued.body.data.id}/issue`, drToday.auth);
+    await runPrescriptionCompletionJob(new Date(Date.now() + 10 * 86_400_000));
+    const missed = await insertAppointment({
+      patient: twin.body.data.id as string,
+      doctor: drToday.id,
+      startAt: minute(2),
+      minutes: 1,
+    });
+    await post(`/appointments/${missed._id}/no-show`, reception.auth);
+    await post(`/appointments/${missed._id}/undo-no-show`, reception.auth);
     emails.restore();
 
     await flushAudit();

@@ -92,3 +92,220 @@ export const ALLERGY_SEVERITIES = ['mild', 'moderate', 'severe'] as const;
 export type AllergySeverity = (typeof ALLERGY_SEVERITIES)[number];
 export const PATIENT_LANGUAGES = EXPLANATION_LANGUAGES;
 export type PatientLanguage = ExplanationLanguage;
+
+// ---- Appointments (Phase 4, server config/constants.ts) --------------------------------------
+
+export const APPOINTMENT_STATUSES = [
+  'scheduled',
+  'checked_in',
+  'in_consultation',
+  'completed',
+  'cancelled',
+  'no_show',
+] as const;
+export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
+export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
+  scheduled: 'Scheduled',
+  checked_in: 'Checked in',
+  in_consultation: 'In consultation',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  no_show: 'No-show',
+};
+
+export const APPOINTMENT_TYPES = ['new', 'follow_up', 'walk_in'] as const;
+export type AppointmentType = (typeof APPOINTMENT_TYPES)[number];
+export const APPOINTMENT_TYPE_LABELS: Record<AppointmentType, string> = {
+  new: 'New visit',
+  follow_up: 'Follow-up',
+  walk_in: 'Walk-in',
+};
+
+export const APPOINTMENT_SOURCES = ['reception', 'patient_portal', 'walk_in', 'doctor'] as const;
+export type AppointmentSource = (typeof APPOINTMENT_SOURCES)[number];
+export const APPOINTMENT_SOURCE_LABELS: Record<AppointmentSource, string> = {
+  reception: 'Reception',
+  patient_portal: 'Patient portal',
+  walk_in: 'Walk-in',
+  doctor: 'Doctor',
+};
+
+/** Most urgent first (spec §8.4). */
+export const APPOINTMENT_PRIORITIES = ['emergency', 'priority', 'normal'] as const;
+export type AppointmentPriority = (typeof APPOINTMENT_PRIORITIES)[number];
+export const APPOINTMENT_PRIORITY_LABELS: Record<AppointmentPriority, string> = {
+  emergency: 'Emergency',
+  priority: 'Priority',
+  normal: 'Normal',
+};
+
+/** Staff reasons for rescheduling or cancelling: at least this many characters (server rule). */
+export const APPOINTMENT_REASON_MIN = 3;
+
+// ---- Clinical notes and prescriptions (Phase 5, server config/constants.ts) -------------------
+
+export const ENCOUNTER_STATUSES = ['draft', 'signed', 'amended'] as const;
+export type EncounterStatus = (typeof ENCOUNTER_STATUSES)[number];
+export const DIAGNOSIS_TYPES = ['provisional', 'final'] as const;
+export type DiagnosisType = (typeof DIAGNOSIS_TYPES)[number];
+export const DIAGNOSIS_TYPE_LABELS: Record<DiagnosisType, string> = {
+  provisional: 'Provisional',
+  final: 'Final',
+};
+
+export const VITAL_KEYS = [
+  'bpSystolic',
+  'bpDiastolic',
+  'pulse',
+  'temperatureC',
+  'respiratoryRate',
+  'spo2',
+  'weightKg',
+  'heightCm',
+] as const;
+export type VitalKey = (typeof VITAL_KEYS)[number];
+
+/**
+ * Vitals: label, unit, the server's accepted range (§6.13, input validation) and a usual adult
+ * range (display hint only – values outside it are highlighted, never blocked).
+ */
+export const VITALS: Record<
+  VitalKey,
+  { label: string; unit: string; min: number; max: number; step: number; usual?: [number, number] }
+> = {
+  bpSystolic: { label: 'BP systolic', unit: 'mmHg', min: 50, max: 260, step: 1, usual: [90, 139] },
+  bpDiastolic: { label: 'BP diastolic', unit: 'mmHg', min: 30, max: 160, step: 1, usual: [60, 89] },
+  pulse: { label: 'Pulse', unit: '/min', min: 20, max: 250, step: 1, usual: [60, 100] },
+  temperatureC: {
+    label: 'Temperature',
+    unit: '°C',
+    min: 30,
+    max: 45,
+    step: 0.1,
+    usual: [36.1, 37.5],
+  },
+  respiratoryRate: {
+    label: 'Respiratory rate',
+    unit: '/min',
+    min: 5,
+    max: 60,
+    step: 1,
+    usual: [12, 20],
+  },
+  spo2: { label: 'SpO₂', unit: '%', min: 50, max: 100, step: 1, usual: [95, 100] },
+  weightKg: { label: 'Weight', unit: 'kg', min: 0.5, max: 400, step: 0.1 },
+  heightCm: { label: 'Height', unit: 'cm', min: 30, max: 250, step: 0.1 },
+};
+/** Usual adult BMI range (display hint). */
+export const BMI_USUAL: [number, number] = [18.5, 24.9];
+
+/** Text limits of the note fields (server ENCOUNTER_RULES.textLimits). */
+export const NOTE_TEXT_LIMITS = {
+  chiefComplaint: 1000,
+  historyOfPresentIllness: 5000,
+  pastHistory: 3000,
+  examination: 5000,
+  assessment: 3000,
+  plan: 3000,
+  adviceToPatient: 2000,
+  followUpInstructions: 1000,
+  diagnosisDescription: 300,
+} as const;
+export const MAX_DIAGNOSES = 20;
+export const MAX_FOLLOW_UP_DAYS = 365;
+export const AMENDMENT_REASON_MIN = 10;
+/** Late documentation window (hours after the consultation was completed). */
+export const DOCUMENTATION_WINDOW_HOURS = 72;
+/** ICD-10 format such as J06.9 (the code list is not checked). */
+export const ICD10_PATTERN = /^[A-Z]\d{2}(\.[A-Z0-9]{1,4})?$/;
+
+/** The note fields a doctor edits and amends, with their labels. */
+export const NOTE_FIELD_LABELS = {
+  vitals: 'Vitals',
+  chiefComplaint: 'Chief complaint',
+  historyOfPresentIllness: 'History of present illness',
+  pastHistory: 'Past history',
+  examination: 'Examination',
+  diagnoses: 'Diagnoses',
+  assessment: 'Assessment',
+  plan: 'Plan',
+  adviceToPatient: 'Advice to patient',
+  followUp: 'Follow-up',
+} as const;
+export type NoteField = keyof typeof NOTE_FIELD_LABELS;
+
+export const PRESCRIPTION_STATUSES = ['draft', 'issued', 'completed', 'cancelled'] as const;
+export type PrescriptionStatus = (typeof PRESCRIPTION_STATUSES)[number];
+export const DRUG_FREQUENCY_LABELS = {
+  OD: 'Once a day',
+  BD: 'Twice a day',
+  TDS: 'Three times a day',
+  QID: 'Four times a day',
+  HS: 'At bedtime',
+  SOS: 'Only when needed',
+  STAT: 'Immediately',
+  weekly: 'Once a week',
+  other: 'Other',
+} as const;
+export type DrugFrequency = keyof typeof DRUG_FREQUENCY_LABELS;
+export const DRUG_TIMING_LABELS = {
+  before_food: 'Before food',
+  after_food: 'After food',
+  with_food: 'With food',
+  empty_stomach: 'Empty stomach',
+  any: 'Any time',
+} as const;
+export type DrugTiming = keyof typeof DRUG_TIMING_LABELS;
+
+export const DRUG_FORMS = [
+  'tablet',
+  'capsule',
+  'syrup',
+  'injection',
+  'drops',
+  'cream',
+  'ointment',
+  'inhaler',
+  'other',
+] as const;
+export type DrugForm = (typeof DRUG_FORMS)[number];
+export const DRUG_ROUTES = [
+  'oral',
+  'topical',
+  'iv',
+  'im',
+  'sc',
+  'inhalation',
+  'ophthalmic',
+  'otic',
+  'nasal',
+  'other',
+] as const;
+export type DrugRoute = (typeof DRUG_ROUTES)[number];
+export const DRUG_ROUTE_LABELS: Record<DrugRoute, string> = {
+  oral: 'Oral',
+  topical: 'Topical',
+  iv: 'IV',
+  im: 'IM',
+  sc: 'SC',
+  inhalation: 'Inhalation',
+  ophthalmic: 'Eye',
+  otic: 'Ear',
+  nasal: 'Nasal',
+  other: 'Other',
+};
+export const DRUG_FREQUENCIES = Object.keys(DRUG_FREQUENCY_LABELS) as DrugFrequency[];
+export const MAX_PRESCRIPTION_ITEMS = 30;
+export const MAX_DURATION_DAYS = 365;
+/** Prescription item text limits (server PRESCRIPTION_RULES.textLimits). */
+export const RX_TEXT_LIMITS = {
+  drugName: 120,
+  genericName: 120,
+  strength: 50,
+  dose: 50,
+  frequencyText: 100,
+  quantity: 50,
+  instructions: 300,
+  generalInstructions: 1000,
+} as const;
+export const PRESCRIPTION_REASON_MIN = 10;

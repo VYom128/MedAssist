@@ -36,3 +36,11 @@ export function formatNumber(
   const digits = String(seq).padStart(pad, '0');
   return year === undefined ? `${prefix}-${digits}` : `${prefix}-${year}-${digits}`;
 }
+
+/**
+ * Raises the sequence for `key` to at least `value` (never lowers it). The seed uses it after
+ * inserting today's queue with tokens, so the next check-in continues from the last token.
+ */
+export async function ensureSequenceAtLeast(key: string, value: number): Promise<void> {
+  await Counter.updateOne({ _id: key }, { $max: { seq: value } }, { upsert: true });
+}

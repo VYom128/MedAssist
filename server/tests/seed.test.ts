@@ -32,6 +32,20 @@ describe('seed', () => {
       doctors: { created: 8, updated: 0, unchanged: 0, schedules: 8, leaves: 2 },
       labTests: { created: 15, updated: 0, unchanged: 0 },
       patients: { created: 60, updated: 0, unchanged: 0, portalUsers: 8, pending: 1 },
+      // Counts depend on the clinic date (tests/seed.appointments.test.ts checks the data).
+      appointments: expect.objectContaining({
+        created: expect.any(Number),
+        updated: 0,
+        unchanged: 0,
+        skipped: 0,
+      }),
+      // tests/seed.encounters.test.ts checks the clinical data.
+      encounters: expect.objectContaining({
+        created: expect.any(Number),
+        unchanged: 0,
+        amended: 3,
+        acknowledgedWarnings: 1,
+      }),
     });
 
     const settings = await ClinicSettings.findOne().lean();
@@ -168,6 +182,8 @@ describe('seed', () => {
       doctors: { created: 0, updated: 0, unchanged: 8, schedules: 0, leaves: 0 },
       labTests: { created: 0, updated: 0, unchanged: 15 },
       patients: { created: 0, updated: 0, unchanged: 60, portalUsers: 8, pending: 1 },
+      appointments: expect.objectContaining({ created: 0, updated: 0, skipped: 0 }),
+      encounters: expect.objectContaining({ created: 0, prescriptions: 0, todayDrafts: 0 }),
     });
     const countsAfter = await Promise.all(
       [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest, Patient].map(
@@ -241,6 +257,7 @@ describe('seed', () => {
       'doctor.leave_create',
       'lab_test.create',
       'patient.create',
+      'appointment.create',
     ]) {
       expect(actions.has(action as never), action).toBe(true);
     }

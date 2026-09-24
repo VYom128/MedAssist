@@ -1,37 +1,31 @@
-import type * as PatientAccess from '../src/policies/patientAccess.js';
-import type { AuthUser } from '../src/types/express.js';
 import { auditEntries, loginAs, resetDb } from './helpers/auth.js';
-import { createPatient } from './helpers/fixtures.js';
+import { createPatient, insertAppointment } from './helpers/fixtures.js';
 import { api } from './helpers/testApp.js';
 
 /**
- * PATCH /patients/:id/clinical-profile for a doctor WITH a care relationship. Care relationships
- * arrive in Phase 5, so this file stands one in: the policy grants doctors access to
- * `relatedPatientId` only.
+ * PATCH /patients/:id/clinical-profile (spec §7.7) – doctors with a care relationship (a
+ * non-cancelled appointment with the patient, spec §2.3) record allergies and chronic
+ * conditions; everyone else gets 404 or 403.
  */
-let relatedPatientId = '';
-vi.mock('../src/policies/patientAccess.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof PatientAccess>();
-  const related = (user: Pick<AuthUser, 'role'>, id: unknown) =>
-    user.role === 'doctor' && String(id) === relatedPatientId;
-  return {
-    ...actual,
-    canAccessPatient: (user: AuthUser, id: string, scope: never) =>
-      related(user, id) || actual.canAccessPatient(user, id, scope),
-    assertCanAccessPatient: async (user: AuthUser, id: string, scope: never, meta: never) =>
-      related(user, id) ? undefined : actual.assertCanAccessPatient(user, id, scope, meta),
-  };
-});
+async function relate(doctorId: string, patientId: string, status = 'completed') {
+  await insertAppointment({
+    patient: patientId,
+    doctor: doctorId,
+    startAt: new Date(Date.now() - 3 * 86_400_000 + Math.floor(Math.random() * 1e6)),
+    status,
+    isSlotActive: false,
+  });
+}
 
-describe('clinical profile with a (stand-in) care relationship', () => {
+describe('clinical profile (doctor with a care relationship)', () => {
   beforeEach(resetDb);
 
   it('records allergies and chronic conditions with recordedBy/At, audited without values', async () => {
     const { id } = await createPatient({
       allergies: [{ substance: 'Dust', severity: 'mild', recordedAt: new Date(0) }],
     });
-    relatedPatientId = id;
     const doctor = await loginAs('doctor');
+    await relate(doctor.user._id.toString(), id);
     const current = await api().get(`/api/v1/patients/${id}`).set(doctor.auth);
     expect(current.status).toBe(200);
     expect(current.body.data).not.toHaveProperty('adminNotes');
@@ -63,13 +57,29 @@ describe('clinical profile with a (stand-in) care relationship', () => {
     expect(JSON.stringify(entry)).not.toMatch(/diabetes|metformin/i);
   });
 
-  it('a doctor without the relationship still gets 404', async () => {
+  it('a doctor without the relationship gets 404 (audited) and nothing changes', async () => {
     const { id } = await createPatient();
-    relatedPatientId = 'someone-else';
+    const other = await loginAs('doctor');
+    await relate(other.user._id.toString(), id);
+    const doctor = await loginAs('doctor');
+    await relate(doctor.user._id.toString(), id, 'cancelled'); // cancelled only: no relationship
     const res = await api()
       .patch(`/api/v1/patients/${id}/clinical-profile`)
-      .set((await loginAs('doctor')).auth)
-      .send({ chronicConditions: [] });
+      .set(doctor.auth)
+      .send({ chronicConditions: [{ name: 'Asthma' }] });
     expect(res.status).toBe(404);
+    expect((await auditEntries('access.denied'))[0]?.patient?.toString()).toBe(id);
+    expect(await auditEntries('patient.clinical_profile_update')).toHaveLength(0);
+  });
+
+  it('admins and receptionists cannot use it (403)', async () => {
+    const { id } = await createPatient();
+    for (const role of ['admin', 'receptionist'] as const) {
+      const res = await api()
+        .patch(`/api/v1/patients/${id}/clinical-profile`)
+        .set((await loginAs(role)).auth)
+        .send({ chronicConditions: [] });
+      expect(res.status).toBe(403);
+    }
   });
 });

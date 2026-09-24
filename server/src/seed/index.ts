@@ -1,13 +1,17 @@
 import { fileURLToPath } from 'node:url';
 import { connectDB, disconnectDB } from '../config/db.js';
 import { config } from '../config/env.js';
+import { Appointment } from '../modules/appointments/model.js';
 import { AuditLog } from '../modules/audit/model.js';
 import { Counter } from '../modules/counters/model.js';
 import { Department } from '../modules/departments/model.js';
 import { DoctorProfile } from '../modules/doctors/model.js';
+import { NoteAmendment } from '../modules/encounters/amendment.model.js';
+import { Encounter } from '../modules/encounters/model.js';
 import { LabTest } from '../modules/labTests/model.js';
 import { DoctorLeave } from '../modules/leaves/model.js';
 import { Patient } from '../modules/patients/model.js';
+import { Prescription } from '../modules/prescriptions/model.js';
 import { DoctorSchedule } from '../modules/schedules/model.js';
 import { Service } from '../modules/services/model.js';
 import { Session } from '../modules/sessions/model.js';
@@ -16,7 +20,9 @@ import { clearSettingsCache } from '../modules/settings/service.js';
 import { User } from '../modules/users/model.js';
 import * as audit from '../services/audit.service.js';
 import { logger, serializeError } from '../utils/logger.js';
+import { seedAppointments } from './appointments.js';
 import { seedDepartments } from './departments.js';
+import { seedEncounters } from './encounters.js';
 import { doctorLogins, seedDoctors } from './doctors.js';
 import { seedLabTests } from './labTests.js';
 import { patientLogins, seedPatients } from './patients.js';
@@ -37,9 +43,14 @@ const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = 
   { name: 'doctors', run: seedDoctors },
   { name: 'labTests', run: seedLabTests },
   { name: 'patients', run: seedPatients },
+  { name: 'appointments', run: seedAppointments },
+  { name: 'encounters', run: seedEncounters },
 ];
 
-/** Collections `--reset` empties (raw driver for audit logs: Mongoose blocks those deletes). */
+/**
+ * Collections `--reset` empties (raw driver for audit logs, notes, amendments and prescriptions:
+ * Mongoose blocks those deletes).
+ */
 async function resetData() {
   await Promise.all([
     User.deleteMany({}),
@@ -53,7 +64,11 @@ async function resetData() {
     DoctorLeave.deleteMany({}),
     LabTest.deleteMany({}),
     Patient.deleteMany({}),
-    Counter.deleteMany({}),
+    Appointment.deleteMany({}),
+    Encounter.collection.deleteMany({}),
+    NoteAmendment.collection.deleteMany({}),
+    Prescription.collection.deleteMany({}),
+    Counter.deleteMany({}), // MRN, appointment, ENC and RX numbers and queue tokens
   ]);
   clearSettingsCache();
 }
@@ -108,7 +123,10 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
 
   if (reset) {
     await resetData();
-    logger.info('Wiped users, sessions, audit logs, clinic setup data, patients and counters');
+    logger.info(
+      'Wiped users, sessions, audit logs, clinic setup data, patients, appointments, clinical ' +
+        'notes, prescriptions and counters',
+    );
   }
   const summary: Record<string, Record<string, number>> = {};
   for (const seeder of SEEDERS) summary[seeder.name] = await seeder.run();
@@ -123,6 +141,11 @@ async function main() {
     logger.info(`Seed complete:\n${summaryTable(summary)}`);
     // Demo-only shared password, shown on purpose (spec §15.3).
     logger.info(`Demo logins:\n${demoLoginTable()}`);
+    logger.info(
+      config.kiosk.key
+        ? `Queue board (kiosk): ${config.clientUrl}/queue-board?key=${encodeURIComponent(config.kiosk.key)}`
+        : 'Queue board: set KIOSK_KEY in server/.env to enable /queue-board',
+    );
   } finally {
     await disconnectDB();
   }

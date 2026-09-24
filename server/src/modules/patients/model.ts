@@ -110,6 +110,8 @@ const patientSchema = new Schema(
     isActive: { type: Boolean, default: true },
     mergedInto: { type: ObjectId, ref: 'Patient' }, // stretch: duplicate merge
     registeredBy: { type: ObjectId, ref: 'User' },
+    /** Bumped inside booking/reschedule transactions (the patient's booking lock). */
+    bookingVersion: { type: Number, default: 0 },
     updatedBy: { type: ObjectId, ref: 'User' },
   },
   {

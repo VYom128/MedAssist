@@ -83,7 +83,7 @@ describe('patient field visibility (spec §2.5)', () => {
     expect(missing.body.message).toBe(res.body.message);
   });
 
-  it('doctors get 404 until a care relationship exists (Phase 5)', async () => {
+  it('a doctor without a care relationship gets 404', async () => {
     const { id } = await fullPatient();
     const res = await get(await loginAs('doctor'), id);
     expect(res.status).toBe(404);

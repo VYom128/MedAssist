@@ -8,6 +8,9 @@ import {
   CircleDashed,
   CircleMinus,
   Clock,
+  FileCheck2,
+  FileClock,
+  FilePen,
   Link2,
   Lock,
   Mail,
@@ -19,6 +22,8 @@ import {
   UserCheck,
   UserX,
   ArrowUp,
+  Layers,
+  Minus,
   type LucideIcon,
 } from 'lucide-react';
 import type { LeaveType } from '../../constants/catalog';
@@ -123,8 +128,26 @@ export const STATUS_STYLES = {
     cancelled: { tone: 'neutral', label: 'Cancelled', icon: Ban },
     no_show: { tone: 'danger', label: 'No-show', icon: UserX },
   },
+  /** Appointment flags shown next to the status. */
+  appointmentFlag: {
+    overbook: { tone: 'warning', label: 'Overbooked', icon: Layers },
+  },
+  /** Clinical note (Phase 5, spec §5.2). */
+  encounter: {
+    draft: { tone: 'warning', label: 'Draft', icon: FilePen },
+    signed: { tone: 'success', label: 'Signed', icon: FileCheck2 },
+    amended: { tone: 'info', label: 'Amended', icon: FileClock },
+  },
+  /** Prescription (Phase 5, spec §5.3). */
+  prescription: {
+    draft: { tone: 'warning', label: 'Draft', icon: FilePen },
+    issued: { tone: 'success', label: 'Issued', icon: FileCheck2 },
+    completed: { tone: 'neutral', label: 'Completed', icon: CircleCheck },
+    cancelled: { tone: 'neutral', label: 'Cancelled', icon: Ban },
+  },
   /** Queue priority and clinical flags. */
   priority: {
+    normal: { tone: 'neutral', label: 'Normal', icon: Minus },
     priority: { tone: 'warning', label: 'Priority', icon: ArrowUp },
     emergency: { tone: 'danger', label: 'Emergency', icon: Siren },
     critical: { tone: 'danger', label: 'Critical', icon: TriangleAlert },

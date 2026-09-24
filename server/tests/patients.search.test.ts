@@ -150,7 +150,7 @@ describe('GET /patients (search and filters)', () => {
     expect(res.body.data).toHaveLength(1);
   });
 
-  it('doctors get an empty list until care relationships exist (Phase 5)', async () => {
+  it('a doctor without care relationships gets an empty list', async () => {
     const doctor = await loginAs('doctor');
     const res = await list({}, doctor);
     expect(res.status).toBe(200);

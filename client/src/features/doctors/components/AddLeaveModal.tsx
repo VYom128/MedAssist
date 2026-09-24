@@ -14,6 +14,7 @@ import { clinicDate } from '../../../utils/dates';
 import { getClinicTimezone } from '../../../utils/clinicTimezone';
 import { applyServerFieldErrors } from '../../../utils/forms';
 import { getQueryErrorMessage } from '../../../utils/http';
+import type { AffectedAppointment } from '../../appointments/api';
 import { useCreateLeaveMutation } from '../api';
 import { leaveFormSchema, toLeaveInput, type LeaveFormValues } from '../schemas';
 
@@ -39,10 +40,13 @@ export default function AddLeaveModal({
   doctorId,
   open,
   onClose,
+  onSaved,
 }: {
   doctorId: string;
   open: boolean;
   onClose: () => void;
+  /** Gets the booked appointments the leave affects (spec §4.13). */
+  onSaved?: (affected: AffectedAppointment[]) => void;
 }) {
   const [createLeave, { isLoading }] = useCreateLeaveMutation();
   const {
@@ -64,8 +68,9 @@ export default function AddLeaveModal({
 
   const onSubmit = handleSubmit(async (values) => {
     try {
-      await createLeave({ id: doctorId, body: toLeaveInput(values) }).unwrap();
+      const saved = await createLeave({ id: doctorId, body: toLeaveInput(values) }).unwrap();
       toast.success('Leave recorded');
+      onSaved?.(saved.affectedAppointments);
       onClose();
     } catch (err) {
       const fields = ['date', 'endDate', 'startTime', 'endTime', 'type', 'reason'] as const;

@@ -15,9 +15,9 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | 1 | Authentication, RBAC and audit logging | ✅ Done |
 | 2 | Admin setup data | ✅ Done |
 | 3 | Patients | ✅ Done |
-| 4 | Appointments and queue | 🟡 In progress |
-| 5 | Visit notes and prescriptions | ⬜ Not started |
-| 6 | Lab workflow and documents | ⬜ Not started |
+| 4 | Appointments and queue | ✅ Done |
+| 5 | Visit notes and prescriptions | ✅ Done |
+| 6 | Lab workflow and documents | 🟡 In progress |
 | 7 | Billing | ⬜ Not started |
 | 8 | Patient timeline, portal and follow-ups | ⬜ Not started |
 | 9 | AI features | ⬜ Not started |
@@ -215,20 +215,67 @@ Patient:
 **Goal:** conflict-free booking and a live queue.
 **Spec:** §4.5–4.6, §4.13, §5.1, §6.12, §7.8–7.9, §8.1–8.4, §8.11
 
-- [ ] Slot generation (schedules, leave, existing bookings, timezone)
-- [ ] Booking with transaction + partial unique index (doctor clash, patient clash, limits)
-- [ ] Reschedule, cancel (with policy), walk-ins with overbook allowance
-- [ ] Appointment state machine + action endpoints
-- [ ] Check-in, tokens, queue ordering, call next
-- [ ] Socket.IO for queue updates; queue board (no names)
-- [ ] Jobs: reminders, no-show marking
-- [ ] Doctor leave → affected appointments
-- [ ] UI: reception calendar (drag to reschedule), booking modal, patient booking wizard, queue screens
-- [ ] Tests: slot generation, concurrent booking race, invalid transitions, cancellation window
+- [x] Slot generation (schedules, leave, existing bookings, timezone)
+- [x] Booking with transaction + partial unique index (doctor clash, patient clash, limits)
+- [x] Reschedule, cancel (with policy), walk-ins with overbook allowance
+- [x] Appointment state machine + action endpoints
+- [x] Check-in, tokens, queue ordering, call next
+- [x] Socket.IO for queue updates; queue board (no names)
+- [x] Jobs: reminders, no-show marking
+- [x] Doctor leave → affected appointments
+- [x] UI: reception calendar (drag to reschedule), booking modal, patient booking wizard, queue screens
+- [x] Tests: slot generation, concurrent booking race, invalid transitions, cancellation window
 
 **Done when:** two people cannot book the same slot, and the queue updates live on the doctor's and reception's screens.
+Verified 2026-09-24: race tests (10 parallel bookings of one slot → one 201; a 30-min and an overlapping 15-min service; one patient with two doctors; two reschedules into one slot; booking vs cancel) run 5 × in a row, all green. `npm run seed -- --reset` then `npm run seed` (second run creates nothing: 309 appointments unchanged). `npm run smoke` against the running dev API: 40+ checks incl. two real parallel bookings of one slot (one 201, one 409 `SLOT_UNAVAILABLE`), a real `queue.updated` Socket.IO event with ids only, the kiosk board (no patient data, wrong key 401), patient1 404 on someone else's appointment. Live queue updates are covered by server socket tests (events after commit, room rules) and a client test (a socket event refreshes the queue columns). **Not yet checked in a real browser** – see the manual test script below.
 
-**Notes / decisions:**
+**Notes / decisions:** (recorded as D79–D96 in spec §20 "Decisions made")
+- **Booking lock (D79–D80):** every booking/reschedule/walk-in/undo runs in `withTransaction` and bumps `bookingVersion` on the doctor and the patient first; overlapping transactions conflict and the driver's retry sees the first booking. The partial unique index `{ doctor, startAt }` stays as the last guard. Leave and schedule writes take the same lock. Patient clashes count open appointments only; the 15-min lead time applies to everyone; clinic working days apply on top of schedules.
+- **State machine (D81):** `STATE_MACHINES` in constants, `assertTransition()` in `utils/stateMachine.ts`; every status change goes through `applyTransition()` (conditional update, `statusHistory`, `isSlotActive` – the model refuses status updates without it). New audit actions `appointment.update`, `appointment.undo_no_show`, `appointment.priority_change`.
+- **Error codes (D82):** `SELF_BOOKING_DISABLED` 403, `OUTSIDE_BOOKING_WINDOW` 422, `OVERBOOK_LIMIT_REACHED` 422.
+- **Scope (D83):** start only changes the status (`TODO(Phase 5)` encounter draft); cancel does not touch billing (`TODO(Phase 7)`). One consultation per doctor per clinic day.
+- **Walk-ins, no-shows, priority, tokens (D84–D86):** next free slot of the running session, else an overbook place (settings limit); manual no-show only after the start; undo same day, flagged `noShowUndoneAt` for the job; queue priority with a reason in `priorityHistory`; tokens from `token:<doctorId>:<date>` inside the transaction (audit key `queueNumber`).
+- **Queue, board, sockets (D87–D88):** ordering and estimated wait per §8.4; board with `KIOSK_KEY` (unset = off), tokens/doctors/rooms only, rate-limited; Socket.IO handshake with the access token (`resolveAccessToken`) or the kiosk key, rooms per doctor/date, ids-only events after commit.
+- **Notifications and jobs (D89–D90):** `notify()` sends email only until Phase 10 (number + time + clinic, no clinical details); reception is emailed about leave impact; reminders ± 15 min, never twice; node-cron jobs only with `JOBS_ENABLED=true`, exported as `runReminderJob(now)` / `runNoShowJob(now)`.
+- **Access (D91–D92):** reception acts on all appointments; admins view only (UI); doctors see their own with a minimal patient view and may start/complete; patients their own (others → 404), cancelling/rescheduling online only outside `minCancelHours` (now in the public settings).
+- **Leave impact (D93):** leave and schedule responses list affected appointments; leave over appointments in consultation or completed → 409; reception emailed.
+- **Seed (D94):** ~310 appointments (history, today's live queue, upcoming incl. patient1), prints the kiosk URL; `--reset` clears appointments and token counters.
+- **Client (D95):** reception calendar (react-big-calendar with clinic "wall dates", drag to reschedule, resource columns) and list; booking modal; appointment details/drawer with status-aware actions; reception and doctor queue screens; walk-ins; patient appointments, booking wizard and token card; public kiosk board; admin read-only list; leave-impact panel. Found and fixed: a wrong kiosk key made the app loop refresh → logout → refetch (the board is now excluded from the 401 refresh).
+- **Rate limits (D96):** patient bookings/reschedules 20/h per user; board 60/min per IP.
+- New packages: `socket.io`, `node-cron` (server), `socket.io-client` (client; server dev for tests), `react-big-calendar` + `@types/react-big-calendar` (client).
+- **You must set in `server/.env`:** `KIOSK_KEY` (≥ 24 random characters; the board is off without it) and `JOBS_ENABLED=true` on the one API instance that should run the reminder/no-show jobs. Restart the API after changing `.env`.
+- `npm audit`: 2 moderate advisories in React Router (open redirect in `<Link>`/`navigate` with backslashes; SSR hydration) – fixed only in v7 (breaking); not addressed yet.
+- Tests: 1301 server (was 948) + 148 client (was 106). Phase 4 complete 2026-09-24.
+
+<details>
+<summary>Phase 4 manual test script (seeded DB, password <code>Password@123</code>; restart <code>npm run dev</code> after editing <code>.env</code>)</summary>
+
+Live queue – two windows side by side (use a private window for the second login):
+1. Window A: `reception1@medassist.dev` → Queue → the doctor tab of `dr.mehta@medassist.dev`. Window B: `dr.mehta@medassist.dev` → My queue.
+2. B: if someone is "With you now", click Complete → confirm. A: within a second the card moves to Done (short entrance animation), without reloading.
+3. B: Call next. A: the emergency token (the seed puts one in the queue) moves to In consultation. B: Call next is now disabled ("with you now" shows the patient).
+4. A: on a waiting card, Change priority → Emergency with a reason; B: the waiting list reorders at once.
+5. A: Walk-in → search a patient (e.g. "amit") → General Medicine → Anil Mehta → priority Normal → Check in walk-in. The toast shows the token; B shows the new patient at the end of the waiting list.
+6. A: under "Today's appointments", Check in a scheduled patient → a token appears in both windows.
+
+Same slot from two windows at once:
+7. Both windows as receptionists (`reception1` and `reception2`): Appointments → Book appointment, the same doctor, the same date and the same time, different patients. Click "Book appointment" in both as close together as you can: one succeeds; the other shows "This slot was just taken…", the times reload without that slot, and the patient/doctor/date stay filled in.
+8. Appointments → Calendar (day view, all doctors): drag a scheduled appointment to another time → give a reason → it moves. Drag one onto a time that is taken → it snaps back with the error.
+
+Patient:
+9. `patient1@medassist.dev` → Dashboard: "Your token" (the seed puts patient1 in the queue of the first doctor working today – dr.mehta on Mon–Sat) with patients ahead and the estimated wait; Next appointment.
+10. Appointments → Book appointment: General Medicine → a doctor card (fee, languages) → a date with free times → a time → a reason → Confirm. It appears under Upcoming.
+11. On that appointment: Change time → another date/time → saved; then Cancel → confirm → it moves to Past as Cancelled. An appointment less than 2 hours away shows "please call the clinic" instead of the buttons.
+12. Admin → Settings → Appointments: turn off patient self-booking → as patient1, Book appointment shows "Online booking is turned off" (turn it back on).
+
+Kiosk board:
+13. Open the URL the seed prints (`http://localhost:5173/queue-board?key=…`): full screen, clinic clock, one tile per doctor with room, "Now" and the next tokens – no names. Repeat step 3 in window B: the board updates within a second (or 15 s if the socket is blocked). Change one character of the key → "The kiosk key is not valid."
+
+Other roles and sizes:
+14. Doctor → Appointments: own calendar (read-only; no dragging); open an appointment – only Start/Complete buttons. Admin → Appointments: list and details with no action buttons.
+15. At 360 px (dev tools): Appointments opens as a list, the queue columns stack, the booking wizard and the board fit without sideways scrolling.
+</details>
+
 
 ---
 
@@ -236,19 +283,60 @@ Patient:
 **Goal:** doctors document consultations and prescribe safely.
 **Spec:** §4.7, §5.2–5.3, §6.13–6.16, §7.10, §7.12, §8.5–8.6
 
-- [ ] Encounter model (draft → signed → amended), created on consultation start
-- [ ] Vitals (BMI auto), notes, diagnoses, plan, follow-up plan
-- [ ] Autosave with optimistic concurrency
-- [ ] Sign transaction (issue prescription, complete appointment)
-- [ ] Amendments with reason and versions
-- [ ] Prescriptions with allergy warning + acknowledgement; cancel/reissue
-- [ ] Care-relationship checks in `canAccessPatient`
-- [ ] Consult workspace UI (patient header, allergy banner, tabs, sign)
-- [ ] Tests: locked after sign, amendments, access without care relationship → 404
+- [x] Encounter model (draft → signed → amended), created on consultation start
+- [x] Vitals (BMI auto), notes, diagnoses, plan, follow-up plan
+- [x] Autosave with optimistic concurrency
+- [x] Sign transaction (issue prescription, complete appointment)
+- [x] Amendments with reason and versions
+- [x] Prescriptions with allergy warning + acknowledgement; cancel/reissue
+- [x] Care-relationship checks in `canAccessPatient`
+- [x] Consult workspace UI (patient header, allergy banner, tabs, sign)
+- [x] Tests: locked after sign, amendments, access without care relationship → 404
 
 **Done when:** a doctor completes a full consultation from queue to signed note and issued prescription.
+Verified 2026-09-24 (automated): `npm run lint`, `npm run format:check` and `npm test` three times in a row – 1544 server + 179 client tests, all green each run. `npm run seed -- --reset` then `npm run seed` (second run: 0 notes, 0 prescriptions created; "users 5 updated" is the existing demo-account repair). The full flow queue → start → autosaved note → allergy-acknowledged prescription → sign (note signed, RX issued, appointment completed in one transaction) → print → amend is covered end to end by server tests (`encounters.*`, `prescriptions.test.ts`, `phase5.security.test.ts`) and client tests (`ConsultWorkspace`, `Prescriptions`, `DoctorPages`). **Not yet checked in a real browser** – see the manual test script below.
 
-**Notes / decisions:**
+**Notes / decisions:** (recorded as D97–D118 in spec §20 "Decisions made")
+- **Care relationship (D97–D98):** `CARE_RELATIONSHIP_CHECKS` in `policies/patientAccess.ts` – for now "a non-cancelled appointment with the patient" (no-shows count). A doctor with a relationship gets demographics, clinical, lab and allergies (not billing); otherwise 404 + `access.denied`. `canAccessPatient` is async and cached per request (WeakMap keyed by the `AuthUser` object). Break-glass is not built.
+- **Doctor patient endpoints (D99):** `GET /patients?scope=mine` (one aggregation: last visit, `hasAllergies`), `GET /patients/:id` (doctor view), `PATCH /patients/:id/clinical-profile`.
+- **Encounters (D100–D104):** draft created in the start / call-next transaction (idempotent, unique per appointment; responses carry `encounterId`); `GET /appointments/:id/encounter`; `visitAt` added to §6.13; editing with `expectedVersion` = `__v` (API field `revision`) → 409 CONFLICT; documentation window: in consultation or ≤ 72 h after completion, else 422 `DOCUMENTATION_WINDOW_CLOSED`; drafts are private to their author, other related doctors see signed notes only; list rows carry no clinical text except the primary diagnosis in one patient's history (audited read); `GET /encounters?mine=true`.
+- **Immutability (D105):** Mongoose hooks refuse every update of a signed/amended note unless the amendment service passes its internal token (`amendmentWriteOptions`); notes and prescriptions are never deleted; issued prescriptions allow status bookkeeping only; `note_amendments` is append-only with unique `{ encounter, version }`.
+- **Signing (D106–D107):** `POST /encounters/:id/sign` needs `expectedVersion`; 422 `SIGN_VALIDATION_FAILED` / `ALLERGY_ACK_REQUIRED` with `details`; one transaction: note signed, draft prescription (with items) issued with its RX number, appointment in consultation → completed; audit + queue event after commit; empty vitals = warning. TODO(Phase 6/7/8) markers for lab orders, invoice and follow-up reminder.
+- **Prescriptions (D108–D112):** `isCurrent` + partial unique index replaces "unique encounter"; number on issue; drafts may hold incomplete items (checked at sign/issue); reissue = cancel + a linked draft (acknowledgements cleared), editable although the note is signed, issued with `POST /prescriptions/:id/issue`; cancel/reissue/issue are not limited by the 72 h window; draft → cancelled not allowed; reception lists prescriptions only per patient/appointment/encounter (issued/completed); `GET /prescriptions/:id/print` (clinic registration/GSTIN, doctor registration, follow-up; no diagnosis).
+- **Allergy check (D113):** whole-name match of drug, generic and formulary brand names against recorded allergies plus `data/allergyClasses.ts` (penicillins, cephalosporins, sulfonamides, NSAIDs, macrolides, quinolones, …); an allergy to one member warns for its class; acknowledgement stored per item, kept across autosaves of the same drug, re-checked against current allergies at sign/issue. Labelled a convenience check everywhere.
+- **Audit (D114):** new actions `encounter.create|view|update|sign|amend`, `prescription.update|issue|cancel|reissue|complete|view`; clinical records audit field names and counts only; autosaves (`encounter.update`, `prescription.update`) debounced 5 min per user + record; 4xx messages never name drugs or allergies (details only).
+- **Formulary + job (D115):** 123 drugs in `data/formulary.ts`, `GET /formulary?q=` (prefix of name or generic, doctors); `runPrescriptionCompletionJob` daily 02:00 (24-hour days from `issuedAt`).
+- **Client (D116–D117):** consult workspace `/doctor/consult/:appointmentId` (sticky header, allergy banner announced once, tabs, history side panel/drawer), autosave (2 s debounce, blur, tab change, Ctrl/⌘+S, one request in flight, offline back-off, conflict banner with "Reload latest") in memory-only `consultDraft` / `rxDraft` slices; review & sign dialog with links to fields; amend modal; prescription editor (formulary combobox, allergy acknowledgement, preview; incomplete rows never sent); `/print/prescriptions/:id` without app chrome (`PrintLayout`, A4, diagnosis toggle for doctors only); My patients, patient page, Notes (drafts > 24 h "Unsigned").
+- **Seed (D118):** ~20 note templates; a signed note for every completed appointment (seed-only path skipping the 72 h window), ~85 % prescriptions, ~40 % follow-ups, allergy-safe prescribing except one acknowledged demo, 3 amendments, drafts for today's consultations.
+- Fixed on the way: a latent department-code collision in the RBAC matrix; a vital typed past its range left the last valid keystroke pending.
+- No new packages.
+- Tests: 1544 server (was 1301) + 179 client (was 148). Phase 5 complete 2026-09-24.
+
+<details>
+<summary>Phase 5 manual test script (seeded DB, password <code>Password@123</code>)</summary>
+
+Seed data used: **Rahul Verma** (MRN-000002, penicillin allergy, portal login `patient2@medassist.dev`) is checked in with `dr.mehta` today; `dr.saini` has no appointment with him. (Today's queue depends on the clinic date – re-seed with `--reset` if it looks different.)
+
+Doctor (`dr.mehta@medassist.dev`):
+1. My queue → "With you now" shows a seeded patient already in consultation → Open consultation → a partly written draft (chief complaint, vitals). Review & sign → it lists "Add at least one diagnosis" as a link → the link opens Diagnosis & plan with the focus in place → add a diagnosis → Review & sign → Sign note. The success card offers "Call next patient".
+2. Call next patient → the workspace of the next waiting patient opens (the header shows allergies in red or "No known allergies"). To reach Rahul: My queue → Appointments → Rahul's appointment → Start consultation (or repeat 1–2 until he is called).
+3. Rahul's workspace: the red banner reads "Allergies: Penicillin (severe)". Vitals: weight 70, height 175 → BMI 22.9 appears; pulse 400 → "Between 20 and 250" (not saved). Notes: type a chief complaint, stop typing → header "Saving…" → "Saved hh:mm".
+4. Second tab: open the same URL, change the plan there and wait for "Saved". Back in the first tab, type in any field → after 2 s the red banner "This note was changed in another tab or window" appears, Review & sign is disabled → Reload latest → confirm → the other tab's text shows.
+5. Diagnosis & plan: add "Acute tonsillitis" (J03.9, primary). Prescription: Add drug → type "amox" → pick Amoxicillin (generic, strength, dose and TDS fill in). The row turns red: "Matches the recorded allergy “Penicillin” (Penicillins)". Review & sign → blocked with the allergy item listed. Tick "I have reviewed this allergy warning" → Review & sign → Sign note.
+6. Print prescription → the print page (no sidebar): clinic header with registration/GSTIN (if set in Settings), doctor qualifications + registration no., "Three times a day", "After food", no diagnosis line; "Show diagnosis" adds it. Print → the browser's A4 preview shows only the sheet.
+7. The signed note: "Signed by Dr Anil Mehta on …", Version 1 → Amend → tick Plan → change it → reason "short" is refused, a 10+ character reason saves → Version 2, the Amendment history shows before/after. Prescription: Reissue with a reason → a new draft opens → change the frequency → Issue prescription → a new RX number.
+8. Notes (sidebar): drafts older than 24 h show "Unsigned". My patients: Rahul has the allergy flag; his page lets you edit allergies/conditions.
+
+Reception (`reception1@medassist.dev`):
+9. Appointments → Rahul's (now completed) appointment → Print prescription → the same sheet without the diagnosis toggle. Opening `/doctor/consult/<id>` directly shows the 403 page.
+
+Other doctor (`dr.saini@medassist.dev`):
+10. Open `/doctor/patients/<Rahul's patient id>` (copy it from dr.mehta's URL) → "Patient not found"; `/doctor/encounters/<note id>` → not found. My patients does not list him.
+
+Patient (`patient2@medassist.dev`): 11. `/print/prescriptions/<RX id>` shows his own prescription (portal pages come in Phase 8).
+
+At 360 px: the history panel is a drawer ("Patient history" button), prescription rows stack, nothing scrolls sideways.
+</details>
 
 ---
 

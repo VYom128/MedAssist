@@ -94,3 +94,16 @@ export function patientRecordsLinkedEmail(name: string, link: string): EmailTemp
     links: [link],
   };
 }
+
+/**
+ * A notification email (notification.service): a title, a short plain-text body and a link to
+ * log in. Callers keep the body free of clinical details (spec §10.3, §11).
+ */
+export function notificationEmail(title: string, body: string, link?: string): EmailTemplate {
+  return {
+    subject: title,
+    text: link ? `${body}\n\nLog in to MedAssist to see the details: ${link}` : body,
+    html: layout(`<p>${escapeHtml(body)}</p>` + (link ? button(link, 'Open MedAssist') : '')),
+    links: link ? [link] : [],
+  };
+}
