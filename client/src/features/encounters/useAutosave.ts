@@ -15,12 +15,12 @@ import {
   type SaveStatus,
 } from './consultDraftSlice';
 
-type FailedStatus = Exclude<SaveStatus, 'idle' | 'saving' | 'saved'>;
+export type FailedStatus = Exclude<SaveStatus, 'idle' | 'saving' | 'saved'>;
 import { splitSendable, toBody } from './fields';
 import type { NoteChanges } from './api';
 
 /** How a failed save is shown and whether autosave carries on (see useAutosave). */
-function classify(err: unknown): { status: FailedStatus; message?: string } {
+export function classify(err: unknown): { status: FailedStatus; message?: string } {
   const status = isApiQueryError(err) ? err.status : 0;
   const code = isApiQueryError(err) ? err.code : '';
   const message = isApiQueryError(err) ? err.message : undefined;

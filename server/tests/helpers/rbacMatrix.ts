@@ -627,6 +627,12 @@ ENDPOINTS.push(
     status: 200,
   },
   {
+    method: 'get',
+    path: (c) => `/prescriptions/${c.prescriptionId}/print`,
+    roles: PRESCRIPTION_READERS,
+    status: 200,
+  },
+  {
     method: 'post',
     path: (c) => `/prescriptions/${c.prescriptionId}/cancel`,
     body: () => ({ reason: 'Matrix cancel reason' }),

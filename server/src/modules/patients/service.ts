@@ -464,6 +464,8 @@ async function listMyPatients(
   return {
     items: (result?.items ?? []).map((p) => ({
       ...toListItem(p),
+      // Safety flag for the doctor's list (allergies are in the doctor's scope).
+      hasAllergies: (p.allergies ?? []).length > 0,
       lastVisitAt: p.lastVisitAt ?? null,
       lastAppointmentAt: p.lastAppointmentAt,
     })),

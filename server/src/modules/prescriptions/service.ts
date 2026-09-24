@@ -19,12 +19,19 @@ import { formatNumber, nextSequence } from '../../services/counter.service.js';
 import { notify } from '../../services/notification.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
-import { clinicToday, endOfClinicDay, startOfClinicDay } from '../../utils/dates.js';
+import {
+  calendarDateString,
+  clinicToday,
+  endOfClinicDay,
+  startOfClinicDay,
+} from '../../utils/dates.js';
 import { buildMeta, type Pagination } from '../../utils/pagination.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { assertTransition, invalidTransition } from '../../utils/stateMachine.js';
 import { withTransaction } from '../../utils/transaction.js';
 import { assertDocumentationOpen, loadEncounter } from '../encounters/service.js';
+import { DoctorProfile } from '../doctors/model.js';
+import { Encounter } from '../encounters/model.js';
 import { Patient } from '../patients/model.js';
 import { resolveMyPatientId } from '../patients/portal.service.js';
 import { getSettings } from '../settings/service.js';
@@ -639,5 +646,73 @@ export async function listPrescriptions(
   return {
     items: (items as unknown as PrescriptionLike[]).map((p) => toListItem(p, { withPatient })),
     meta: buildMeta({ page, limit, total }),
+  };
+}
+
+// ---- Print sheet -----------------------------------------------------------------------------
+
+/**
+ * GET /prescriptions/:id/print (spec §12.3) – what the printed prescription shows: the clinic
+ * header (incl. registration number and GSTIN), the doctor (qualifications, registration number),
+ * the patient's identifiers, the drugs, general instructions and the visit's follow-up plan.
+ * Same readers as GET /prescriptions/:id; issued or completed prescriptions only. No diagnosis:
+ * the doctor's print page adds it from the note when they choose to (§20 open decision 3).
+ * Audited as `prescription.view` (debounced).
+ */
+export async function getPrintSheet(user: AuthUser, id: string, meta: RequestMeta) {
+  if (user.role === ROLES.PATIENT) await resolveMyPatientId(user);
+  const p = await loadPrescription(id);
+  await assertCanReadPrescription(user, p, meta);
+  if (!(ISSUED_STATUSES as readonly string[]).includes(p.status)) {
+    throw ApiError.unprocessable('Only issued prescriptions can be printed');
+  }
+  const [settings, profile, encounter] = await Promise.all([
+    getSettings(),
+    DoctorProfile.findOne({ user: p.doctor._id })
+      .select('qualifications registrationNumber specialization')
+      .lean(),
+    Encounter.findById(p.encounter).select('followUp visitAt').lean(),
+  ]);
+  await audit.recordRead({
+    action: AUDIT_ACTIONS.PRESCRIPTION_VIEW,
+    actor: actorOf(user),
+    resource: resourceOf(p),
+    patient: patientIdOf(p),
+    request: meta,
+    metadata: { print: true },
+  });
+  const f = encounter?.followUp;
+  const a = settings.address;
+  return {
+    ...toPrintView(p),
+    clinic: {
+      name: settings.name,
+      address: {
+        line1: a?.line1 ?? null,
+        line2: a?.line2 ?? null,
+        city: a?.city ?? null,
+        state: a?.state ?? null,
+        postalCode: a?.postalCode ?? null,
+        country: a?.country ?? null,
+      },
+      phone: settings.phone ?? null,
+      email: settings.email ?? null,
+      registrationNumber: settings.registrationNumber ?? null,
+      gstin: settings.gstin ?? null,
+    },
+    doctor: {
+      id: p.doctor._id.toString(),
+      name: `${p.doctor.firstName} ${p.doctor.lastName}`,
+      qualifications: profile?.qualifications ?? [],
+      specialization: profile?.specialization ?? null,
+      registrationNumber: profile?.registrationNumber ?? null,
+    },
+    visitAt: encounter?.visitAt ?? null,
+    followUp: {
+      required: f?.required ?? false,
+      afterDays: f?.afterDays ?? null,
+      date: f?.date ? calendarDateString(f.date) : null,
+      instructions: f?.instructions ?? null,
+    },
   };
 }

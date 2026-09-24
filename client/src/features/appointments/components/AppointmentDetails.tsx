@@ -19,6 +19,7 @@ import { formatPhone } from '../../../utils/phone';
 import { selectCurrentUser } from '../../auth/authSlice';
 import { ageSex, patientsBase } from '../../patients/paths';
 import type { Appointment } from '../api';
+import PrintPrescriptionLink from '../../prescriptions/components/PrintPrescriptionLink';
 import AppointmentActions from './AppointmentActions';
 import PriorityPill from './PriorityPill';
 
@@ -46,6 +47,9 @@ export default function AppointmentDetails({ appointment: a }: { appointment: Ap
               {a.status === 'in_consultation' ? 'Open consultation' : 'Open visit note'}
             </Link>
           )}
+        {user?.role === ROLES.RECEPTIONIST && a.status === 'completed' && (
+          <PrintPrescriptionLink appointmentId={a.id} />
+        )}
       </div>
 
       <DescriptionList

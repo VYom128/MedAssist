@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { Appointment } from '../src/modules/appointments/model.js';
 import { Encounter } from '../src/modules/encounters/model.js';
+import { DoctorProfile } from '../src/modules/doctors/model.js';
 import { Prescription } from '../src/modules/prescriptions/model.js';
 import { auditEntries, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
@@ -11,6 +12,7 @@ import {
   putPrescription,
   readyToSign,
   rxItem,
+  setSettings,
   signNote,
   startedConsultation,
   useMiddayClinicZone,
@@ -476,6 +478,51 @@ describe('cancel, reissue and issue', () => {
     expect(first.status).toBe(422);
     const issuedTwice = await post(`/prescriptions/${c.prescriptionId}/issue`, c.doctor);
     expectErrorShape(issuedTwice.body, 'INVALID_STATUS_TRANSITION');
+  });
+});
+
+describe('GET /prescriptions/:id/print', () => {
+  it('the printed sheet: clinic, doctor registration, patient, drugs, follow-up – no diagnosis', async () => {
+    await setSettings({ registrationNumber: 'KA-CLINIC-77', gstin: '29ABCDE1234F1Z5' });
+    const c = await issued({
+      note: {
+        followUp: { required: true, afterDays: 5, instructions: 'Review if fever persists' },
+      },
+    });
+    await DoctorProfile.updateOne(
+      { user: c.doctor.id },
+      { $set: { qualifications: ['MBBS', 'MD (Medicine)'] } },
+    );
+    const patient = await patientLogin(c.patientId);
+    for (const who of [c.doctor, patient, await loginAs('receptionist')]) {
+      const res = await get(`/prescriptions/${c.prescriptionId}/print`, who);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      expect(res.body.data).toMatchObject({
+        prescriptionNumber: expect.stringMatching(/^RX-/),
+        clinic: { registrationNumber: 'KA-CLINIC-77', gstin: '29ABCDE1234F1Z5' },
+        doctor: {
+          qualifications: ['MBBS', 'MD (Medicine)'],
+          registrationNumber: expect.any(String),
+        },
+        patient: { id: c.patientId, mrn: expect.any(String) },
+        followUp: { required: true, afterDays: 5, instructions: 'Review if fever persists' },
+      });
+      expect(res.body.data.items[0]).toMatchObject({ frequencyLabel: 'Three times a day' });
+      expect(JSON.stringify(res.body.data)).not.toMatch(/pharyngitis|J02|diagnos|allergy/i);
+    }
+    expect((await auditEntries('prescription.view'))[0]?.metadata).toMatchObject({ print: true });
+  });
+
+  it('drafts cannot be printed; strangers 404; admins 403', async () => {
+    const draft = await readyToSign();
+    const res = await get(`/prescriptions/${draft.prescriptionId}/print`, draft.doctor);
+    expect(res.status).toBe(422);
+    const c = await issued();
+    const stranger = await patientLogin((await createPatient()).id);
+    expect((await get(`/prescriptions/${c.prescriptionId}/print`, stranger)).status).toBe(404);
+    expect(
+      (await get(`/prescriptions/${c.prescriptionId}/print`, await loginAs('admin'))).status,
+    ).toBe(403);
   });
 });
 

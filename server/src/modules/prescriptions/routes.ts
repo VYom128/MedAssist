@@ -16,7 +16,8 @@ import {
  * /prescriptions (spec §7.12). Reads are scoped by policies/prescriptionAccess: doctors their
  * own and issued prescriptions of related patients; patients their own issued/completed ones;
  * receptionists issued/completed ones for printing. Changes: the prescribing doctor only.
- * The draft is edited through PUT /encounters/:id/prescription. PDFs come in Phase 10, patient
+ * GET /:id/print is the printed sheet. The draft is edited through PUT
+ * /encounters/:id/prescription. PDFs come in Phase 10, patient
  * explanations in Phase 9.
  */
 const router = Router();
@@ -35,6 +36,12 @@ router.get(
   ...readers,
   validate(prescriptionIdSchema),
   asyncHandler(prescriptionsController.getPrescription),
+);
+router.get(
+  '/:id/print',
+  ...readers,
+  validate(prescriptionIdSchema),
+  asyncHandler(prescriptionsController.getPrintSheet),
 );
 router.post(
   '/:id/cancel',

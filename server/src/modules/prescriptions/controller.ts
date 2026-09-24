@@ -65,3 +65,12 @@ export async function issuePrescription(req: Request, res: Response) {
   );
   return sendSuccess(res, { message: 'Prescription issued', data });
 }
+
+export async function getPrintSheet(req: Request, res: Response) {
+  const data = await prescriptionsService.getPrintSheet(
+    currentUser(req),
+    idOf(req),
+    buildRequestMeta(req),
+  );
+  return sendSuccess(res, { data });
+}

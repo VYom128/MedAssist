@@ -37,7 +37,10 @@ import PrescriptionTab from '../components/PrescriptionTab';
 import SignDialog from '../components/SignDialog';
 import SignedNoteView from '../components/SignedNoteView';
 import VitalsFields from '../components/VitalsFields';
-import { applyChanges, closed, discarded, opened } from '../consultDraftSlice';
+import { rxClosed } from '../../prescriptions/rxDraftSlice';
+import { usePrescriptionDraft } from '../../prescriptions/usePrescriptionDraft';
+import { combineSaves } from '../autosaveLabel';
+import { applyChanges, closed, discarded, hasChanges, opened } from '../consultDraftSlice';
 import { CONSULT_TABS, fieldTarget, type ConsultTab } from '../fields';
 import { useAutosave } from '../useAutosave';
 
@@ -95,17 +98,37 @@ function DraftWorkspace({
   const [reloadAsk, setReloadAsk] = useState(false);
   const { entry, change, saveNow, dirty } = useAutosave(id);
   const current = useCurrentPrescription(id);
+  const rx = usePrescriptionDraft(id, current.prescription, !current.isLoading);
 
   useEffect(() => {
     dispatch(opened({ id, revision: encounter.revision }));
   }, [dispatch, id, encounter.revision]);
   // Leaving the note (after the unsaved-changes prompt) forgets its local edits.
-  useEffect(() => () => void dispatch(closed({ id })), [dispatch, id]);
+  useEffect(
+    () => () => {
+      dispatch(closed({ id }));
+      dispatch(rxClosed({ id }));
+    },
+    [dispatch, id],
+  );
 
-  const leaveGuard = useUnsavedChanges(dirty);
+  const leaveGuard = useUnsavedChanges(dirty || rx.dirty);
   const note = applyChanges(encounter, entry);
   const blocked = entry?.status === 'conflict' || entry?.status === 'locked';
+  const rxBlocked = rx.entry?.status === 'conflict' || rx.entry?.status === 'locked';
   const save = () => void saveNow();
+  const saveAll = () => {
+    void saveNow();
+    void rx.saveNow();
+  };
+  const summary = combineSaves(
+    entry && { status: entry.status, savedAt: entry.savedAt, dirty: hasChanges(entry.edits) },
+    rx.entry && { status: rx.entry.status, savedAt: rx.entry.savedAt, dirty: rx.dirty },
+  );
+  /** Rows the prescription cannot be saved with – they block signing too. */
+  const rxProblems = Object.entries(rx.problems).flatMap(([i, fields]) =>
+    Object.values(fields).map((message) => ({ field: `prescription.items.${i}`, message })),
+  );
 
   const goTo = (field: string) => {
     const target = fieldTarget(field);
@@ -124,9 +147,9 @@ function DraftWorkspace({
       <ConsultHeader
         patient={patient}
         appointment={appointment}
-        status={<AutosaveStatus entry={entry} />}
+        status={<AutosaveStatus summary={summary} />}
         actions={
-          <Button onClick={() => setSignOpen(true)} disabled={blocked}>
+          <Button onClick={() => setSignOpen(true)} disabled={blocked || rxBlocked}>
             <FileSignature className="h-4 w-4" aria-hidden="true" /> Review &amp; sign
           </Button>
         }
@@ -146,6 +169,28 @@ function DraftWorkspace({
               </div>
             </Alert>
           )}
+          {rxBlocked && (
+            <Alert tone="error" title="The prescription was changed in another tab or window">
+              <p>Autosave of the prescription has stopped so nothing is overwritten.</p>
+              <div className="mt-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    rx.discard(current.prescription?.revision ?? null);
+                    current.refetch();
+                  }}
+                >
+                  Reload prescription
+                </Button>
+              </div>
+            </Alert>
+          )}
+          {rx.entry?.status === 'error' && rx.entry.message && (
+            <Alert tone="error" title="Prescription not saved">
+              {rx.entry.message}
+            </Alert>
+          )}
           {entry?.status === 'closed' && (
             <Alert tone="error" title="Editing closed">
               {entry.message ?? 'The documentation window for this visit has closed.'}
@@ -162,7 +207,7 @@ function DraftWorkspace({
               tabs={CONSULT_TABS}
               value={tab}
               onChange={(next) => {
-                save();
+                saveAll();
                 setTab(next as ConsultTab);
               }}
             >
@@ -218,7 +263,7 @@ function DraftWorkspace({
                     />
                   </>
                 )}
-                {tab === 'prescription' && <PrescriptionTab current={current} />}
+                {tab === 'prescription' && <PrescriptionTab current={current} draft={rx} />}
                 {tab === 'followup' && (
                   <FollowUpFields followUp={note.followUp} onChange={change} onBlur={save} />
                 )}
@@ -235,13 +280,15 @@ function DraftWorkspace({
         open={signOpen}
         note={note}
         prescription={current.prescription}
-        flush={saveNow}
+        flush={async () => (await saveNow()) && (await rx.saveNow())}
+        extraProblems={rxProblems}
         revision={() => entry?.revision ?? encounter.revision}
         onClose={() => setSignOpen(false)}
         onGoTo={goTo}
         onSigned={(result) => {
           setSignOpen(false);
           dispatch(closed({ id }));
+          dispatch(rxClosed({ id }));
           onSigned(result);
         }}
       />
@@ -291,7 +338,7 @@ function SignedNext({ result }: { result: SignResult }) {
         </Button>
         {result.prescription && (
           <Link
-            to={`/doctor/prescriptions/${result.prescription.id}/print`}
+            to={`/print/prescriptions/${result.prescription.id}`}
             className={buttonClass('secondary', 'sm')}
           >
             <Printer className="h-4 w-4" aria-hidden="true" /> Print prescription

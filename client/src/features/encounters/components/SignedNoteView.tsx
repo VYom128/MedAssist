@@ -1,18 +1,15 @@
-import { FilePen, FileText, Pill, Printer } from 'lucide-react';
+import { FilePen, FileText } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
 import Badge from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
-import { buttonClass } from '../../../components/ui/buttonClass';
 import SectionCard from '../../../components/ui/SectionCard';
 import StatusPill from '../../../components/ui/StatusPill';
 import { formatDateTime } from '../../../utils/dates';
-import { useCurrentPrescription } from '../../prescriptions/useCurrentPrescription';
+import SignedPrescription from '../../prescriptions/components/SignedPrescription';
 import type { Encounter } from '../api';
 import AmendmentHistory from './AmendmentHistory';
 import AmendModal from './AmendModal';
 import EncounterReadView from './EncounterReadView';
-import PrescriptionTab from './PrescriptionTab';
 
 /**
  * A signed or amended note, read-only (spec §5.2): who signed it and when, the version, the
@@ -26,8 +23,6 @@ export default function SignedNoteView({
   canAmend: boolean;
 }) {
   const [amending, setAmending] = useState(false);
-  const current = useCurrentPrescription(e.id);
-  const rx = current.prescription;
   return (
     <div className="space-y-6">
       <SectionCard
@@ -55,23 +50,7 @@ export default function SignedNoteView({
       >
         <EncounterReadView encounter={e} />
       </SectionCard>
-      <SectionCard
-        title="Prescription"
-        icon={Pill}
-        iconTone="primary"
-        actions={
-          rx && rx.status !== 'draft' ? (
-            <Link
-              to={`/doctor/prescriptions/${rx.id}/print`}
-              className={buttonClass('secondary', 'sm')}
-            >
-              <Printer className="h-4 w-4" aria-hidden="true" /> Print
-            </Link>
-          ) : undefined
-        }
-      >
-        <PrescriptionTab current={current} />
-      </SectionCard>
+      <SignedPrescription encounterId={e.id} canChange={canAmend} />
       <AmendmentHistory encounterId={e.id} />
       {canAmend && <AmendModal encounter={e} open={amending} onClose={() => setAmending(false)} />}
     </div>

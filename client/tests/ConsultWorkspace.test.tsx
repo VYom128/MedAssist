@@ -305,7 +305,7 @@ describe('Review & sign', () => {
     expect(screen.getByText(/Prescription RX-2026-000009 issued/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Print prescription/ })).toHaveAttribute(
       'href',
-      '/doctor/prescriptions/rx1/print',
+      '/print/prescriptions/rx1',
     );
     expect(await screen.findByText(/Signed by Dr Anil Mehta/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Call next patient/ }));
@@ -364,6 +364,8 @@ describe('Signed note', () => {
     await user.click(screen.getByRole('button', { name: 'Amend' }));
     const dialog = await screen.findByRole('dialog', { name: 'Amend signed note' });
     await user.click(within(dialog).getByRole('checkbox', { name: 'Advice to patient' }));
+    // Chosen but left unchanged: not sent.
+    await user.click(within(dialog).getByRole('checkbox', { name: 'Plan' }));
     await user.type(
       within(dialog).getByRole('textbox', { name: 'Advice to patient' }),
       'Drink fluids',

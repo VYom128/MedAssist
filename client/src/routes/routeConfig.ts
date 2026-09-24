@@ -2,6 +2,7 @@ import {
   Building2,
   CalendarClock,
   CalendarDays,
+  FileText,
   FlaskConical,
   IdCard,
   ListOrdered,
@@ -103,6 +104,23 @@ export const APP_ROUTES: AppRoute[] = [
     load: () => import('../features/appointments/pages/AppointmentDetailPage'),
   },
   {
+    path: '/doctor/patients',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/doctorPatients/pages/MyPatientsPage'),
+    nav: { label: 'My patients', icon: UserRound },
+  },
+  {
+    path: '/doctor/patients/:id',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/doctorPatients/pages/DoctorPatientPage'),
+  },
+  {
+    path: '/doctor/notes',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/doctorPatients/pages/NotesPage'),
+    nav: { label: 'Notes', icon: FileText },
+  },
+  {
     path: '/doctor/consult/:appointmentId',
     roles: [ROLES.DOCTOR],
     load: () => import('../features/encounters/pages/ConsultWorkspacePage'),
@@ -112,11 +130,7 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.DOCTOR],
     load: () => import('../features/encounters/pages/EncounterPage'),
   },
-  {
-    path: '/doctor/prescriptions/:id/print',
-    roles: [ROLES.DOCTOR],
-    load: () => import('../features/prescriptions/pages/PrescriptionPrintPage'),
-  },
+
   {
     path: '/patient/appointments',
     roles: [ROLES.PATIENT],

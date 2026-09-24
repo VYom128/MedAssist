@@ -1,6 +1,5 @@
-import { CircleAlert, CloudOff, Loader2, Check, PencilLine } from 'lucide-react';
-import { autosaveLabel } from '../autosaveLabel';
-import { hasChanges, type DraftEntry } from '../consultDraftSlice';
+import { Check, CircleAlert, CloudOff, Loader2, PencilLine } from 'lucide-react';
+import { autosaveLabel, type SaveSummary } from '../autosaveLabel';
 
 const ICONS = {
   saving: Loader2,
@@ -11,11 +10,12 @@ const ICONS = {
   error: CircleAlert,
 };
 
-export default function AutosaveStatus({ entry }: { entry: DraftEntry | undefined }) {
-  const { text, tone } = autosaveLabel(entry);
+/** The autosave indicator in the workspace header (announced politely). */
+export default function AutosaveStatus({ summary }: { summary: SaveSummary | undefined }) {
+  const { text, tone } = autosaveLabel(summary);
   const Icon =
-    (entry && ICONS[entry.status as keyof typeof ICONS]) ??
-    (entry && hasChanges(entry.edits) ? PencilLine : Check);
+    (summary && ICONS[summary.status as keyof typeof ICONS]) ??
+    (summary?.dirty ? PencilLine : Check);
   return (
     <p
       role="status"
@@ -24,7 +24,7 @@ export default function AutosaveStatus({ entry }: { entry: DraftEntry | undefine
     >
       {text && (
         <Icon
-          className={`h-4 w-4 ${entry?.status === 'saving' ? 'motion-safe:animate-spin' : ''}`}
+          className={`h-4 w-4 ${summary?.status === 'saving' ? 'motion-safe:animate-spin' : ''}`}
           aria-hidden="true"
         />
       )}

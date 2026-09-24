@@ -138,6 +138,8 @@ describe('GET /encounters', () => {
     expect(JSON.stringify(res.body.data)).not.toMatch(/Cough|chiefComplaint|diagnoses|vitals/);
     expect(await auditEntries('encounter.view')).toHaveLength(0);
 
+    const own = await get('/encounters?mine=true', mine.doctor);
+    expect(own.body.data.map((e: { id: string }) => e.id)).toEqual([mine.encounterId]);
     const drafts = await get('/encounters?status=draft', mine.doctor);
     expect(drafts.body.data.map((e: { id: string }) => e.id)).toEqual([mine.encounterId]);
   });

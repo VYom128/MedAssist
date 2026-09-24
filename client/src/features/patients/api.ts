@@ -17,6 +17,8 @@ export interface PatientListItem {
   hasPortal: boolean;
   /** Doctors' list (`scope=mine`): last visit (in consultation or completed) and last booking. */
   lastVisitAt?: string | null;
+  /** Doctors' list: the patient has recorded allergies. */
+  hasAllergies?: boolean;
   lastAppointmentAt?: string;
 }
 

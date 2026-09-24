@@ -1,4 +1,4 @@
-import type { FilterQuery, Types } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import { AUDIT_ACTIONS, ENCOUNTER_RULES, ERROR_CODES } from '../../config/constants.js';
 import { assertCanViewAppointment } from '../../policies/appointmentAccess.js';
 import {
@@ -138,6 +138,7 @@ export async function listEncounters(
 ) {
   if (query.patient) await assertCanAccessPatient(user, query.patient, 'clinical', meta);
   const and: FilterQuery<EncounterDoc>[] = [await encounterListFilter(user, query.patient)];
+  if (query.mine) and.push({ doctor: new Types.ObjectId(user.id) });
   if (query.status) and.push({ status: query.status });
   if (query.from || query.to) {
     const { timezone } = await getSettings();

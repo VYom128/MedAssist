@@ -57,6 +57,7 @@ export default function SignDialog({
   note,
   prescription,
   flush,
+  extraProblems = [],
   revision,
   onClose,
   onGoTo,
@@ -67,6 +68,8 @@ export default function SignDialog({
   prescription: Prescription | null;
   /** Saves pending edits; false when that failed. */
   flush: () => Promise<boolean>;
+  /** Problems found outside the note (e.g. incomplete prescription rows). */
+  extraProblems?: Problem[];
   revision: () => number;
   onClose: () => void;
   onGoTo: (field: string) => void;
@@ -75,7 +78,9 @@ export default function SignDialog({
   const [sign, signing] = useSignEncounterMutation();
   const [serverProblems, setServerProblems] = useState<Problem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { problems, warnings } = signCheck(note, prescription);
+  const check = signCheck(note, prescription);
+  const problems = [...check.problems, ...extraProblems];
+  const { warnings } = check;
   const drugs = prescription?.status === 'draft' ? prescription.items : [];
 
   const close = () => {

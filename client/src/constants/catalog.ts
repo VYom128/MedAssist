@@ -256,3 +256,56 @@ export const DRUG_TIMING_LABELS = {
   any: 'Any time',
 } as const;
 export type DrugTiming = keyof typeof DRUG_TIMING_LABELS;
+
+export const DRUG_FORMS = [
+  'tablet',
+  'capsule',
+  'syrup',
+  'injection',
+  'drops',
+  'cream',
+  'ointment',
+  'inhaler',
+  'other',
+] as const;
+export type DrugForm = (typeof DRUG_FORMS)[number];
+export const DRUG_ROUTES = [
+  'oral',
+  'topical',
+  'iv',
+  'im',
+  'sc',
+  'inhalation',
+  'ophthalmic',
+  'otic',
+  'nasal',
+  'other',
+] as const;
+export type DrugRoute = (typeof DRUG_ROUTES)[number];
+export const DRUG_ROUTE_LABELS: Record<DrugRoute, string> = {
+  oral: 'Oral',
+  topical: 'Topical',
+  iv: 'IV',
+  im: 'IM',
+  sc: 'SC',
+  inhalation: 'Inhalation',
+  ophthalmic: 'Eye',
+  otic: 'Ear',
+  nasal: 'Nasal',
+  other: 'Other',
+};
+export const DRUG_FREQUENCIES = Object.keys(DRUG_FREQUENCY_LABELS) as DrugFrequency[];
+export const MAX_PRESCRIPTION_ITEMS = 30;
+export const MAX_DURATION_DAYS = 365;
+/** Prescription item text limits (server PRESCRIPTION_RULES.textLimits). */
+export const RX_TEXT_LIMITS = {
+  drugName: 120,
+  genericName: 120,
+  strength: 50,
+  dose: 50,
+  frequencyText: 100,
+  quantity: 50,
+  instructions: 300,
+  generalInstructions: 1000,
+} as const;
+export const PRESCRIPTION_REASON_MIN = 10;

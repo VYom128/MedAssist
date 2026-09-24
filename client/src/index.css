@@ -170,19 +170,13 @@
   }
 }
 
-/* Printing (Phase 5): only a `.print-area` sheet is printed, without the app shell. */
+/* Printing (Phase 5): A4 sheets from layouts/PrintLayout; controls carry `print:hidden`. */
+@page {
+  size: A4;
+  margin: 14mm;
+}
 @media print {
-  body * {
-    visibility: hidden;
-  }
-  .print-area,
-  .print-area * {
-    visibility: visible;
-  }
-  .print-area {
-    position: absolute;
-    inset: 0 0 auto 0;
-    border: 0;
-    box-shadow: none;
+  body {
+    background: #ffffff;
   }
 }

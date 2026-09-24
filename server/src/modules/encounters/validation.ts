@@ -6,7 +6,14 @@ import {
   type VitalKey,
 } from '../../config/constants.js';
 import { calendarDate, clinicToday } from '../../utils/dates.js';
-import { dateOnly, idParams, objectId, optionalText, paginationQuery } from '../../utils/zod.js';
+import {
+  booleanQuery,
+  dateOnly,
+  idParams,
+  objectId,
+  optionalText,
+  paginationQuery,
+} from '../../utils/zod.js';
 import { cachedTimezone } from '../settings/service.js';
 
 const { vitals: RANGES, textLimits: LIMITS } = ENCOUNTER_RULES;
@@ -164,6 +171,8 @@ export const listEncountersSchema = {
     .object({
       ...paginationQuery,
       patient: objectId.optional(),
+      /** Only the caller's own notes (the doctor's "Notes" page). */
+      mine: booleanQuery,
       status: z.enum(ENCOUNTER_STATUSES).optional(),
       from: dateOnly.optional(),
       to: dateOnly.optional(),

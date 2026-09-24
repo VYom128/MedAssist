@@ -104,6 +104,8 @@ export interface AmendmentHistory {
 
 export interface EncounterListParams {
   patient?: string;
+  /** Only the caller's own notes. */
+  mine?: boolean;
   status?: EncounterStatus;
   from?: string;
   to?: string;

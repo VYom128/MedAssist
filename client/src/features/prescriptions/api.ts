@@ -153,7 +153,16 @@ export const prescriptionsApi = apiSlice.injectEndpoints({
         data: body,
       }),
       transformResponse: data<Prescription>,
-      invalidatesTags: (result) => [LIST, ...(result ? [one(result.id)] : [])],
+      invalidatesTags: [LIST],
+      // The saved draft goes straight into the cache (no refetch while the doctor edits).
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          const { data: saved } = await queryFulfilled;
+          dispatch(prescriptionsApi.util.upsertQueryData('getPrescription', saved.id, saved));
+        } catch {
+          // The caller handles the error.
+        }
+      },
     }),
     cancelPrescription: build.mutation<Prescription, { id: string; reason: string }>({
       query: ({ id, reason }) => ({
@@ -199,3 +208,48 @@ export const {
   useIssuePrescriptionMutation,
   useSearchFormularyQuery,
 } = prescriptionsApi;
+
+/** GET /prescriptions/:id/print – the printed sheet (spec §12.3). */
+export interface PrintSheet extends Omit<Prescription, 'doctor'> {
+  clinic: {
+    name: string;
+    address: {
+      line1: string | null;
+      line2: string | null;
+      city: string | null;
+      state: string | null;
+      postalCode: string | null;
+      country: string | null;
+    };
+    phone: string | null;
+    email: string | null;
+    registrationNumber: string | null;
+    gstin: string | null;
+  };
+  doctor: {
+    id: string;
+    name: string;
+    qualifications: string[];
+    specialization: string | null;
+    registrationNumber: string | null;
+  };
+  visitAt: string | null;
+  followUp: {
+    required: boolean;
+    afterDays: number | null;
+    date: string | null;
+    instructions: string | null;
+  };
+}
+
+const printApi = prescriptionsApi.injectEndpoints({
+  endpoints: (build) => ({
+    getPrintSheet: build.query<PrintSheet, string>({
+      query: (id) => ({ url: `/prescriptions/${id}/print` }),
+      transformResponse: (res: ApiSuccess<PrintSheet>) => res.data,
+      providesTags: (_r, _e, id) => [{ type: 'Prescription', id }],
+    }),
+  }),
+});
+
+export const { useGetPrintSheetQuery } = printApi;

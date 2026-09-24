@@ -15,6 +15,7 @@ import HomeRedirect from './HomeRedirect';
 import ProtectedRoute from './ProtectedRoute';
 import PublicOnlyRoute from './PublicOnlyRoute';
 import RoleRoute from './RoleRoute';
+import { ROLES } from '../constants/roles';
 import { APP_ROUTES } from './routeConfig';
 
 /** Role pages from routeConfig, each behind RoleRoute and lazy-loaded. */
@@ -54,6 +55,19 @@ export const routes: RouteObject[] = [
           { path: '/change-password', element: <ChangePasswordPage /> },
           { path: '/403', element: <ForbiddenPage /> },
           ...rolePages,
+        ],
+      },
+      // Printable sheets: no app shell (layouts/PrintLayout).
+      {
+        element: <RoleRoute roles={[ROLES.DOCTOR, ROLES.RECEPTIONIST, ROLES.PATIENT]} />,
+        children: [
+          {
+            path: '/print/prescriptions/:id',
+            lazy: async () => ({
+              Component: (await import('../features/prescriptions/pages/PrintPrescriptionPage'))
+                .default,
+            }),
+          },
         ],
       },
     ],

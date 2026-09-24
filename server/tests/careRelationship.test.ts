@@ -121,6 +121,11 @@ describe('GET /patients?scope=mine', () => {
     ]);
     expect(res.body.meta).toEqual({ page: 1, limit: 20, total: 3, totalPages: 1 });
     const [first, second, third] = res.body.data;
+    expect(res.body.data.map((p: { hasAllergies: boolean }) => p.hasAllergies)).toEqual([
+      false,
+      false,
+      false,
+    ]);
     expect(first).toMatchObject({ fullName: 'Asha Rao', mrn: expect.stringMatching(/^MRN-/) });
     expect(first.lastVisitAt).toBe(last.startAt.toISOString());
     expect(second.lastVisitAt).toBe(olderVisit.startAt.toISOString()); // the no-show is no visit
@@ -130,6 +135,14 @@ describe('GET /patients?scope=mine', () => {
     expect(JSON.stringify(res.body.data)).not.toMatch(/allergies|chronicConditions|insurance/);
     // Doctors get their own patients with or without the scope.
     expect((await get('/patients')).body.meta.total).toBe(3);
+  });
+
+  it('flags patients with allergies (no allergy details in the list)', async () => {
+    const allergic = await createPatient({ allergies: [{ substance: 'Sulfa', severity: 'mild' }] });
+    await visit(allergic.id, daysAgo(1));
+    const res = await get('/patients?scope=mine');
+    expect(res.body.data[0]).toMatchObject({ id: allergic.id, hasAllergies: true });
+    expect(JSON.stringify(res.body.data)).not.toContain('Sulfa');
   });
 
   it('searches (q) and paginates within the related patients only', async () => {
