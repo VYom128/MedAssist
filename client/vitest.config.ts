@@ -9,6 +9,6 @@ export default defineConfig({
     include: ['tests/**/*.test.{ts,tsx}'],
     setupFiles: ['./tests/setup.ts'],
     // The API base URL the handlers in tests/msw answer on.
-    env: { VITE_API_URL: 'http://localhost:5001/api/v1' },
+    env: { VITE_API_URL: 'http://localhost:5001/api/v1', VITE_REALTIME: 'off' },
   },
 });

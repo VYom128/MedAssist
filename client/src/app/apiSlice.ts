@@ -20,6 +20,13 @@ export const apiSlice = createApi({
     'Patient',
     'PatientList',
     'PendingLink',
+    'Appointment',
+    'AppointmentList',
+    'Calendar',
+    'Slots',
+    'Availability',
+    'Queue',
+    'QueueBoard',
   ],
   endpoints: () => ({}),
 });

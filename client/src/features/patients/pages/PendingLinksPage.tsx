@@ -20,7 +20,7 @@ import {
   useRejectLinkMutation,
   type PendingLink,
 } from '../api';
-import ReasonDialog from '../components/ReasonDialog';
+import ReasonDialog from '../../../components/ui/ReasonDialog';
 
 const PAGE_SIZE = 20;
 

@@ -4,6 +4,7 @@ import { useAppSelector } from '../app/hooks';
 import { ROLE_HOME } from '../constants/roles';
 import { useLogoutMutation } from '../features/auth/api';
 import { selectCurrentUser } from '../features/auth/authSlice';
+import { useSocketInvalidation } from '../hooks/useSocketInvalidation';
 import { navItemsFor, type NavItem } from '../routes/routeConfig';
 import { ACCOUNT_LINKS } from './accountLinks';
 import MobileNav from './MobileNav';
@@ -37,6 +38,7 @@ export default function AppLayout() {
   const [menuOpenedAt, setMenuOpenedAt] = useState<string | null>(null);
   const menuOpen = menuOpenedAt === location.pathname;
   const pageRef = usePageTransition<HTMLDivElement>();
+  useSocketInvalidation();
 
   if (!user) return null;
   const forced = user.mustChangePassword;

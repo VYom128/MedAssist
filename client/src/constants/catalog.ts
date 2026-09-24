@@ -92,3 +92,52 @@ export const ALLERGY_SEVERITIES = ['mild', 'moderate', 'severe'] as const;
 export type AllergySeverity = (typeof ALLERGY_SEVERITIES)[number];
 export const PATIENT_LANGUAGES = EXPLANATION_LANGUAGES;
 export type PatientLanguage = ExplanationLanguage;
+
+// ---- Appointments (Phase 4, server config/constants.ts) --------------------------------------
+
+export const APPOINTMENT_STATUSES = [
+  'scheduled',
+  'checked_in',
+  'in_consultation',
+  'completed',
+  'cancelled',
+  'no_show',
+] as const;
+export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
+export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
+  scheduled: 'Scheduled',
+  checked_in: 'Checked in',
+  in_consultation: 'In consultation',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+  no_show: 'No-show',
+};
+
+export const APPOINTMENT_TYPES = ['new', 'follow_up', 'walk_in'] as const;
+export type AppointmentType = (typeof APPOINTMENT_TYPES)[number];
+export const APPOINTMENT_TYPE_LABELS: Record<AppointmentType, string> = {
+  new: 'New visit',
+  follow_up: 'Follow-up',
+  walk_in: 'Walk-in',
+};
+
+export const APPOINTMENT_SOURCES = ['reception', 'patient_portal', 'walk_in', 'doctor'] as const;
+export type AppointmentSource = (typeof APPOINTMENT_SOURCES)[number];
+export const APPOINTMENT_SOURCE_LABELS: Record<AppointmentSource, string> = {
+  reception: 'Reception',
+  patient_portal: 'Patient portal',
+  walk_in: 'Walk-in',
+  doctor: 'Doctor',
+};
+
+/** Most urgent first (spec §8.4). */
+export const APPOINTMENT_PRIORITIES = ['emergency', 'priority', 'normal'] as const;
+export type AppointmentPriority = (typeof APPOINTMENT_PRIORITIES)[number];
+export const APPOINTMENT_PRIORITY_LABELS: Record<AppointmentPriority, string> = {
+  emergency: 'Emergency',
+  priority: 'Priority',
+  normal: 'Normal',
+};
+
+/** Staff reasons for rescheduling or cancelling: at least this many characters (server rule). */
+export const APPOINTMENT_REASON_MIN = 3;

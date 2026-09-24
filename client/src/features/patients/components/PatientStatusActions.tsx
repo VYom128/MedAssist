@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import Button from '../../../components/ui/Button';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { useSetPatientActiveMutation, type Patient } from '../api';
-import ReasonDialog from './ReasonDialog';
+import ReasonDialog from '../../../components/ui/ReasonDialog';
 
 /** Admin: deactivate / reactivate a patient record, with a reason (audited). */
 export default function PatientStatusActions({ patient }: { patient: Patient }) {

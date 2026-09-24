@@ -1,6 +1,7 @@
 import {
   Building2,
   CalendarClock,
+  CalendarDays,
   FlaskConical,
   IdCard,
   LayoutDashboard,
@@ -66,6 +67,28 @@ export const APP_ROUTES: AppRoute[] = [
     '/patient/dashboard',
     () => import('../features/dashboards/pages/PatientDashboard'),
   ),
+  {
+    path: '/reception/appointments',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/appointments/pages/ReceptionAppointmentsPage'),
+    nav: { label: 'Appointments', icon: CalendarDays },
+  },
+  {
+    path: '/reception/appointments/:id',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/appointments/pages/AppointmentDetailPage'),
+  },
+  // Detail pages for admins and doctors (links from leave impact; doctor calendar later in Phase 4).
+  {
+    path: '/admin/appointments/:id',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/appointments/pages/AppointmentDetailPage'),
+  },
+  {
+    path: '/doctor/appointments/:id',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/appointments/pages/AppointmentDetailPage'),
+  },
   {
     path: '/reception/patients',
     roles: [ROLES.RECEPTIONIST],

@@ -19,6 +19,8 @@ import {
   UserCheck,
   UserX,
   ArrowUp,
+  Layers,
+  Minus,
   type LucideIcon,
 } from 'lucide-react';
 import type { LeaveType } from '../../constants/catalog';
@@ -123,8 +125,13 @@ export const STATUS_STYLES = {
     cancelled: { tone: 'neutral', label: 'Cancelled', icon: Ban },
     no_show: { tone: 'danger', label: 'No-show', icon: UserX },
   },
+  /** Appointment flags shown next to the status. */
+  appointmentFlag: {
+    overbook: { tone: 'warning', label: 'Overbooked', icon: Layers },
+  },
   /** Queue priority and clinical flags. */
   priority: {
+    normal: { tone: 'neutral', label: 'Normal', icon: Minus },
     priority: { tone: 'warning', label: 'Priority', icon: ArrowUp },
     emergency: { tone: 'danger', label: 'Emergency', icon: Siren },
     critical: { tone: 'danger', label: 'Critical', icon: TriangleAlert },
