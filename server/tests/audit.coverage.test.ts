@@ -2,7 +2,7 @@ import { AUDIT_ACTIONS } from '../src/config/constants.js';
 import { AuditLog } from '../src/modules/audit/model.js';
 import { Session } from '../src/modules/sessions/model.js';
 import { flushAudit } from '../src/services/audit.service.js';
-import { addDaysToDate, clinicToday } from '../src/utils/dates.js';
+import { addDaysToDate, clinicToday, weekdayOf, zonedDateTimeToUtc } from '../src/utils/dates.js';
 import { hashToken, verifyAccessToken } from '../src/utils/tokens.js';
 import {
   createUser,
@@ -276,6 +276,36 @@ describe('audit coverage', () => {
       .post(`/api/v1/patients/${twin.body.data.id}/confirm-link`)
       .set(reception.auth)
       .send({ userId: sunitaAgain.body.data.user.id });
+
+    // appointment.create, appointment.update, appointment.reschedule, appointment.cancel:
+    // Dr Iyer works Mondays 09:00–13:00 from `soon` (schedule above).
+    let monday = soon;
+    while (weekdayOf(monday) !== 1) monday = addDaysToDate(monday, 1);
+    const appt = await api()
+      .post('/api/v1/appointments')
+      .set(reception.auth)
+      .send({
+        patientId,
+        doctorId: drId,
+        serviceId: svcId,
+        startAt: zonedDateTimeToUtc(monday, '09:00', 'Asia/Kolkata'),
+      });
+    const apptId = appt.body.data.id as string;
+    await api()
+      .patch(`/api/v1/appointments/${apptId}`)
+      .set(reception.auth)
+      .send({ priority: 'priority' });
+    await api()
+      .post(`/api/v1/appointments/${apptId}/reschedule`)
+      .set(reception.auth)
+      .send({
+        startAt: zonedDateTimeToUtc(monday, '09:30', 'Asia/Kolkata'),
+        reason: 'Patient asked',
+      });
+    await api()
+      .post(`/api/v1/appointments/${apptId}/cancel`)
+      .set(reception.auth)
+      .send({ reason: 'Patient called' });
     emails.restore();
 
     await flushAudit();

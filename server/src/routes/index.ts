@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import appointmentRoutes from '../modules/appointments/routes.js';
 import auditRoutes from '../modules/audit/routes.js';
 import authRoutes from '../modules/auth/routes.js';
 import departmentRoutes from '../modules/departments/routes.js';
@@ -23,5 +24,6 @@ router.use('/services', serviceRoutes);
 router.use('/doctors', doctorRoutes);
 router.use('/lab-tests', labTestRoutes);
 router.use('/patients', patientRoutes);
+router.use('/appointments', appointmentRoutes);
 
 export default router;

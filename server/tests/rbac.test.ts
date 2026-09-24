@@ -10,7 +10,17 @@ import { flushAudit } from '../src/services/audit.service.js';
 import { verifyAccessToken } from '../src/utils/tokens.js';
 import { createUser, loginAs, resetDb, TEST_PASSWORD } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
-import { addDoctorProfile, createDoctor, createPatient } from './helpers/fixtures.js';
+import {
+  addDoctorProfile,
+  at,
+  createDoctor,
+  createPatient,
+  createSchedule,
+  insertAppointment,
+  nextWeekday,
+} from './helpers/fixtures.js';
+import { addDaysToDate } from '../src/utils/dates.js';
+import { Appointment } from '../src/modules/appointments/model.js';
 import {
   ALL,
   ENDPOINTS,
@@ -82,6 +92,15 @@ async function buildContext(role: Role): Promise<Ctx> {
     );
     await Patient.updateOne({ _id: patient.id }, { $set: { user: me.user._id } });
   }
+  // A bookable doctor (09:00–13:00 daily) and a scheduled appointment of `patient` with them.
+  await createSchedule(doctorId);
+  const appointmentDate = nextWeekday(2, 3); // a Tuesday
+  const appointment = await insertAppointment({
+    patient: patient.id,
+    doctor: doctorId,
+    startAt: at(appointmentDate, '09:00'),
+    service: service!._id,
+  });
   return {
     me,
     targetId: target._id.toString(),
@@ -102,6 +121,10 @@ async function buildContext(role: Role): Promise<Ctx> {
     invitablePatientId: invitable.id,
     pendingUserId: pendingUser._id.toString(),
     pendingPatientId: pendingPatient.id,
+    appointmentId: appointment._id.toString(),
+    appointmentDate,
+    bookStartAt: at(addDaysToDate(appointmentDate, 1), '10:00').toISOString(),
+    rescheduleStartAt: at(appointmentDate, '11:00').toISOString(),
     n,
   };
 }
@@ -129,6 +152,10 @@ const send = (row: Row, c: Ctx | null) => {
       invitablePatientId: zero,
       pendingUserId: zero,
       pendingPatientId: zero,
+      appointmentId: zero,
+      appointmentDate: '2030-01-01',
+      bookStartAt: '2030-01-01T04:30:00.000Z',
+      rescheduleStartAt: '2030-01-01T05:30:00.000Z',
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -139,7 +166,7 @@ const send = (row: Row, c: Ctx | null) => {
 
 /** Keys a public (no token) response must never contain. */
 const PRIVATE_KEYS =
-  /"(email|phone|registrationNumber|roomNumber|slotMinutes|gstin|invoicePrefix|isActive|activeDoctors|lockVersion|createdBy|updatedBy|passwordHash)"/;
+  /"(email|phone|registrationNumber|roomNumber|slotMinutes|gstin|invoicePrefix|isActive|activeDoctors|lockVersion|bookingVersion|createdBy|updatedBy|passwordHash)"/;
 
 /** Public clinic settings include the clinic's own contact email/phone (spec §7.4), nothing else. */
 const PRIVATE_SETTINGS_KEYS =
@@ -154,6 +181,7 @@ async function auditCount() {
 describe('RBAC matrix', () => {
   let emails: ReturnType<typeof captureEmails>;
   beforeAll(async () => {
+    await Appointment.init();
     await resetDb();
     emails = captureEmails(); // welcome and reset emails are sent in the background
   });

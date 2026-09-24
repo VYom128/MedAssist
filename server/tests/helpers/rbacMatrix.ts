@@ -49,6 +49,15 @@ export interface Ctx {
   /** A self-registered user waiting for verification against `pendingPatientId`. */
   pendingUserId: string;
   pendingPatientId: string;
+  /**
+   * A scheduled appointment of `patientId` with `doctorId` (own for a doctor or patient caller),
+   * days ahead; `doctorId` works 09:00–13:00 every day and `serviceId` is bookable.
+   */
+  appointmentId: string;
+  /** Clinic date of the appointment, and free slots for booking and rescheduling. */
+  appointmentDate: string;
+  bookStartAt: string;
+  rescheduleStartAt: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -75,6 +84,7 @@ const DOCTOR: readonly Role[] = ['doctor'];
 const PATIENT: readonly Role[] = ['patient'];
 const RECEPTION: readonly Role[] = ['receptionist'];
 const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'patient'];
+const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
 const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
@@ -415,6 +425,70 @@ ENDPOINTS.push(
   },
 );
 
+ENDPOINTS.push(
+  // Appointments (spec §7.8). Doctors and patients act on their own appointment (the context's).
+  { method: 'get', path: () => '/appointments', roles: PATIENT_READERS, status: 200 },
+  {
+    method: 'get',
+    path: (c) => `/appointments/calendar?from=${c.appointmentDate}&to=${c.appointmentDate}`,
+    roles: ADMIN_DOCTOR_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: () => '/appointments',
+    body: (c) => ({
+      patientId: c.patientId,
+      doctorId: c.doctorId,
+      serviceId: c.serviceId,
+      startAt: c.bookStartAt,
+    }),
+    roles: APPOINTMENT_BOOKERS,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/appointments/${c.appointmentId}`,
+    roles: PATIENT_READERS,
+    status: 200,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/appointments/${c.appointmentId}`,
+    body: (c) => ({ priority: 'priority', reason: `Matrix ${c.n}` }),
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.appointmentId}/reschedule`,
+    body: (c) => ({ startAt: c.rescheduleStartAt, reason: 'Matrix reschedule' }),
+    roles: APPOINTMENT_BOOKERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/appointments/${c.appointmentId}/cancel`,
+    body: () => ({ reason: 'Matrix cancel' }),
+    roles: PATIENT_READERS,
+    status: 200,
+  },
+  // Slots and availability (spec §7.6): any logged-in user
+  {
+    method: 'get',
+    path: (c) => `/doctors/${c.doctorId}/slots?date=${c.appointmentDate}`,
+    roles: ALL,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) =>
+      `/doctors/${c.doctorId}/availability?from=${c.appointmentDate}&to=${c.appointmentDate}`,
+    roles: ALL,
+    status: 200,
+  },
+);
+
 /**
  * Public reads (no token needed). rbac.test.ts checks every role and an anonymous caller get
  * `status`; routeInventory.test.ts checks each is in its PUBLIC list.
@@ -449,6 +523,10 @@ export const PATTERN_CTX = {
   invitablePatientId: ':id',
   pendingUserId: ':userId',
   pendingPatientId: ':id',
+  appointmentId: ':id',
+  appointmentDate: '',
+  bookStartAt: '',
+  rescheduleStartAt: '',
   n: 0,
 } as unknown as Ctx;
 

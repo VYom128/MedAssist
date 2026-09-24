@@ -30,6 +30,11 @@ const doctorProfileSchema = new Schema(
      * conflict (one retries and re-checks overlaps) instead of both passing their checks.
      */
     lockVersion: { type: Number, default: 0 },
+    /**
+     * Bumped inside every booking/reschedule transaction for this doctor (the booking lock), so
+     * two overlapping bookings conflict and the retry sees the first one.
+     */
+    bookingVersion: { type: Number, default: 0 },
     createdBy: { type: ObjectId, ref: 'User' },
     updatedBy: { type: ObjectId, ref: 'User' },
   },

@@ -18,7 +18,7 @@ import { withTransaction } from '../../utils/transaction.js';
 import { DoctorProfile } from '../doctors/model.js';
 import { findDoctor } from '../doctors/service.js';
 import { getSettings } from '../settings/service.js';
-import { DoctorSchedule } from './model.js';
+import { DoctorSchedule, type DoctorScheduleDoc } from './model.js';
 import { toVersionView, type ScheduleVersion } from './serializer.js';
 import type { ReplaceScheduleInput } from './validation.js';
 
@@ -47,6 +47,20 @@ async function versionOn(doctorId: Id, date: string): Promise<ScheduleVersion | 
   return first && first.effectiveFrom <= date ? first : null;
 }
 
+/** One weekday document → the day's schedule returned by getScheduleForDate. */
+function toDaySchedule(doc: DoctorScheduleDoc) {
+  return {
+    effectiveFrom: calendarDateString(doc.effectiveFrom),
+    effectiveTo: doc.effectiveTo ? calendarDateString(doc.effectiveTo) : null,
+    weekday: doc.weekday,
+    sessions: doc.sessions.map((s) => ({
+      start: s.start,
+      end: s.end,
+      maxWalkIns: s.maxWalkIns ?? 0,
+    })),
+  };
+}
+
 /**
  * The doctor's sessions on a clinic date (spec §8.1 step 2). Used by slot generation (Phase 4).
  * @param doctorId The doctor's User id.
@@ -63,17 +77,38 @@ export async function getScheduleForDate(doctorId: Id, date: string) {
     effectiveFrom: { $lte: day },
     $or: [{ effectiveTo: null }, { effectiveTo: { $gte: day } }],
   }).lean();
-  if (!doc) return null;
-  return {
-    effectiveFrom: calendarDateString(doc.effectiveFrom),
-    effectiveTo: doc.effectiveTo ? calendarDateString(doc.effectiveTo) : null,
-    weekday,
-    sessions: doc.sessions.map((s) => ({
-      start: s.start,
-      end: s.end,
-      maxWalkIns: s.maxWalkIns ?? 0,
-    })),
-  };
+  return doc ? toDaySchedule(doc) : null;
+}
+
+export type DaySchedule = ReturnType<typeof toDaySchedule>;
+
+/**
+ * `getScheduleForDate` for every date in `[from, to]` with one query (availability, §7.6).
+ * @returns a map 'YYYY-MM-DD' → the day's schedule, or null when no template covers the date.
+ */
+export async function getSchedulesForRange(
+  doctorId: Id,
+  from: string,
+  to: string,
+): Promise<Map<string, DaySchedule | null>> {
+  const docs = await DoctorSchedule.find({
+    doctor: doctorId,
+    effectiveFrom: { $lte: calendarDate(to) },
+    $or: [{ effectiveTo: null }, { effectiveTo: { $gte: calendarDate(from) } }],
+  }).lean();
+  const result = new Map<string, DaySchedule | null>();
+  for (let date = from; date <= to; date = addDaysToDate(date, 1)) {
+    const day = calendarDate(date);
+    const weekday = weekdayOf(date);
+    const doc = docs.find(
+      (d) =>
+        d.weekday === weekday &&
+        d.effectiveFrom <= day &&
+        (d.effectiveTo === null || d.effectiveTo === undefined || d.effectiveTo >= day),
+    );
+    result.set(date, doc ? toDaySchedule(doc) : null);
+  }
+  return result;
 }
 
 /** `{ current, upcoming }`: the version in effect today and the next one starting later. */

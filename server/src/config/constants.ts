@@ -67,7 +67,79 @@ export const PATIENT_RULES = Object.freeze({
 /** Human-readable number sequences (spec §8.10): counter key and prefix. */
 export const SEQUENCES = Object.freeze({
   MRN: { key: 'mrn', prefix: 'MRN' },
+  /** Yearly: the counter key is `appointment:<clinic year>` → 'APT-2026-000001'. */
+  APPOINTMENT: { key: 'appointment', prefix: 'APT' },
 } as const);
+
+/** Appointment enums (spec §6.12). */
+export const APPOINTMENT_STATUSES = Object.freeze([
+  'scheduled',
+  'checked_in',
+  'in_consultation',
+  'completed',
+  'cancelled',
+  'no_show',
+] as const);
+export type AppointmentStatus = (typeof APPOINTMENT_STATUSES)[number];
+/**
+ * Appointments still to happen or under way. A patient may not hold two open appointments that
+ * overlap, or two with the same doctor on one clinic day (spec §8.2).
+ */
+export const OPEN_APPOINTMENT_STATUSES = Object.freeze([
+  'scheduled',
+  'checked_in',
+  'in_consultation',
+] as const satisfies readonly AppointmentStatus[]);
+export const APPOINTMENT_TYPES = Object.freeze(['new', 'follow_up', 'walk_in'] as const);
+export type AppointmentType = (typeof APPOINTMENT_TYPES)[number];
+export const APPOINTMENT_SOURCES = Object.freeze([
+  'reception',
+  'patient_portal',
+  'walk_in',
+  'doctor',
+] as const);
+export type AppointmentSource = (typeof APPOINTMENT_SOURCES)[number];
+/** Queue priority, most urgent first (spec §8.4). */
+export const APPOINTMENT_PRIORITIES = Object.freeze(['emergency', 'priority', 'normal'] as const);
+export type AppointmentPriority = (typeof APPOINTMENT_PRIORITIES)[number];
+
+/** Notification types (spec §11). Phase 10 stores them in-app; Phase 4 only emails. */
+export const NOTIFICATION_TYPES = Object.freeze({
+  APPOINTMENT_BOOKED: 'appointment.booked',
+  APPOINTMENT_RESCHEDULED: 'appointment.rescheduled',
+  APPOINTMENT_CANCELLED: 'appointment.cancelled',
+} as const);
+export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
+
+/**
+ * Appointment rules: slots starting within `minLeadMinutes` of now are not offered (spec §8.1
+ * step 6); calendar and availability ranges are at most `maxRangeDays` days; staff give a reason
+ * of at least `reasonMinLength` characters to reschedule or cancel (spec §8.3).
+ */
+export const APPOINTMENT_RULES = Object.freeze({
+  minLeadMinutes: 15,
+  maxRangeDays: 31,
+  reasonMaxLength: 500,
+  reasonMinLength: 3,
+});
+
+/**
+ * State machines (spec §5): for each status, the statuses it may move to. Checked with
+ * `assertTransition(machine, from, to)` (utils/stateMachine.ts) → 409 INVALID_STATUS_TRANSITION.
+ * Later phases add encounter, prescription, lab order, invoice and follow-up machines here.
+ */
+export const STATE_MACHINES = Object.freeze({
+  /** Spec §5.1. `scheduled → scheduled` is a reschedule; `no_show → scheduled` an undo. */
+  appointment: Object.freeze({
+    scheduled: ['scheduled', 'checked_in', 'cancelled', 'no_show'],
+    checked_in: ['in_consultation', 'cancelled'],
+    in_consultation: ['completed'],
+    completed: [],
+    cancelled: [],
+    no_show: ['scheduled'],
+  } satisfies Record<AppointmentStatus, readonly AppointmentStatus[]>),
+});
+export type StateMachine = keyof typeof STATE_MACHINES;
 
 /**
  * Why a session was revoked (spec §6.4, plus 'rotated' for a normal refresh and 'deactivated'
@@ -159,6 +231,10 @@ export const AUDIT_ACTIONS = Object.freeze({
   PATIENT_PORTAL_INVITE: 'patient.portal_invite',
   PATIENT_LINK_CONFIRM: 'patient.link_confirm',
   PATIENT_LINK_REJECT: 'patient.link_reject',
+  APPOINTMENT_CREATE: 'appointment.create',
+  APPOINTMENT_UPDATE: 'appointment.update',
+  APPOINTMENT_RESCHEDULE: 'appointment.reschedule',
+  APPOINTMENT_CANCEL: 'appointment.cancel',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /** The same user reading the same record within this window produces one audit entry (§10.4). */
@@ -261,6 +337,12 @@ export const ERROR_CODES = Object.freeze({
   BUSINESS_RULE_VIOLATION: 'BUSINESS_RULE_VIOLATION',
   CANCELLATION_WINDOW_PASSED: 'CANCELLATION_WINDOW_PASSED',
   BOOKING_LIMIT_REACHED: 'BOOKING_LIMIT_REACHED',
+  // Not in §16 (Phase 4): patient self-booking is turned off in settings.
+  SELF_BOOKING_DISABLED: 'SELF_BOOKING_DISABLED',
+  // Not in §16 (Phase 4): a date in the past, or beyond bookingWindowDays for patients.
+  OUTSIDE_BOOKING_WINDOW: 'OUTSIDE_BOOKING_WINDOW',
+  // Not in §16 (Phase 4): the walk-in overbook allowance for the session is used up.
+  OVERBOOK_LIMIT_REACHED: 'OVERBOOK_LIMIT_REACHED',
   SELF_VERIFICATION_NOT_ALLOWED: 'SELF_VERIFICATION_NOT_ALLOWED',
   PAYMENT_EXCEEDS_BALANCE: 'PAYMENT_EXCEEDS_BALANCE',
   DISCOUNT_REQUIRES_ADMIN: 'DISCOUNT_REQUIRES_ADMIN',
@@ -301,6 +383,9 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = Object.fre
   BUSINESS_RULE_VIOLATION: 422,
   CANCELLATION_WINDOW_PASSED: 422,
   BOOKING_LIMIT_REACHED: 422,
+  SELF_BOOKING_DISABLED: 403,
+  OUTSIDE_BOOKING_WINDOW: 422,
+  OVERBOOK_LIMIT_REACHED: 422,
   SELF_VERIFICATION_NOT_ALLOWED: 422,
   PAYMENT_EXCEEDS_BALANCE: 422,
   DISCOUNT_REQUIRES_ADMIN: 422,
