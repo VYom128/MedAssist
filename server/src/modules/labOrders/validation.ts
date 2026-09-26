@@ -90,6 +90,8 @@ export const listLabOrdersSchema = {
       /** Clinic dates the order was placed (inclusive). */
       from: dateOnly.optional(),
       to: dateOnly.optional(),
+      /** Clinic date the order was released (the worklist's "Released today"). */
+      releasedOn: dateOnly.optional(),
       q: z.string().trim().min(1).max(100).optional(),
       needsReview: booleanQuery,
     })

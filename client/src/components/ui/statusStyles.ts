@@ -1,5 +1,13 @@
 import {
+  ArrowDown,
   Ban,
+  BadgeCheck,
+  Beaker,
+  CircleAlert,
+  FlaskConical,
+  Send,
+  TestTubeDiagonal,
+  Undo2,
   CalendarCheck,
   CirclePause,
   CalendarClock,
@@ -144,6 +152,44 @@ export const STATUS_STYLES = {
     issued: { tone: 'success', label: 'Issued', icon: FileCheck2 },
     completed: { tone: 'neutral', label: 'Completed', icon: CircleCheck },
     cancelled: { tone: 'neutral', label: 'Cancelled', icon: Ban },
+  },
+  /** Lab order (Phase 6, spec §5.4 + draft). */
+  labOrder: {
+    draft: { tone: 'warning', label: 'Draft', icon: FilePen },
+    ordered: { tone: 'info', label: 'Ordered', icon: Send },
+    sample_collected: { tone: 'primary', label: 'Sample collected', icon: TestTubeDiagonal },
+    sample_rejected: { tone: 'danger', label: 'Sample rejected', icon: Undo2 },
+    processing: { tone: 'consult', label: 'Processing', icon: Beaker },
+    result_entered: { tone: 'warning', label: 'Awaiting verification', icon: FlaskConical },
+    verified: { tone: 'success', label: 'Verified', icon: BadgeCheck },
+    released: { tone: 'success', label: 'Released', icon: FileCheck2 },
+    cancelled: { tone: 'neutral', label: 'Cancelled', icon: Ban },
+  },
+  /** One test of a lab order. */
+  labItem: {
+    pending: { tone: 'neutral', label: 'Pending', icon: CircleDashed },
+    result_entered: { tone: 'warning', label: 'Entered', icon: FlaskConical },
+    verified: { tone: 'success', label: 'Verified', icon: BadgeCheck },
+    cancelled: { tone: 'neutral', label: 'Cancelled', icon: Ban },
+  },
+  /** A result's flag (spec §8.7); `na` shows nothing. */
+  labFlag: {
+    normal: { tone: 'success', label: 'Normal', icon: CircleCheck },
+    low: { tone: 'warning', label: 'Low', icon: ArrowDown },
+    high: { tone: 'warning', label: 'High', icon: ArrowUp },
+    critical_low: { tone: 'danger', label: 'Critical low', icon: Siren },
+    critical_high: { tone: 'danger', label: 'Critical high', icon: Siren },
+    abnormal: { tone: 'warning', label: 'Abnormal', icon: CircleAlert },
+    na: { tone: 'neutral', label: '—', icon: Minus },
+  },
+  /** Lab priority. */
+  labPriority: {
+    routine: { tone: 'neutral', label: 'Routine', icon: Minus },
+    urgent: { tone: 'danger', label: 'Urgent', icon: Siren },
+  },
+  /** Lab turnaround. */
+  labTat: {
+    overdue: { tone: 'danger', label: 'Overdue', icon: Clock },
   },
   /** Queue priority and clinical flags. */
   priority: {

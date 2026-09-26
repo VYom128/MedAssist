@@ -8,6 +8,7 @@ import StatusPill from '../../../components/ui/StatusPill';
 import { formatDate } from '../../../utils/dates';
 import { useGetPrescriptionQuery, useListPrescriptionsQuery } from '../../prescriptions/api';
 import PrescriptionItems from '../../prescriptions/components/PrescriptionItems';
+import LabHistory from '../../labs/components/LabHistory';
 import { useGetEncounterQuery, useListEncountersQuery } from '../api';
 import EncounterReadView from './EncounterReadView';
 
@@ -64,8 +65,8 @@ const rowClass =
   'w-full rounded-control px-2 py-2 text-left transition-colors duration-150 ease-standard hover:bg-neutral-50 focus-visible:outline-2 focus-visible:outline-primary-600';
 
 /**
- * The patient's earlier signed notes (date, doctor, primary diagnosis) and active prescriptions,
- * each opening a read-only quick view. The patient timeline replaces this in Phase 8.
+ * The patient's earlier signed notes (date, doctor, primary diagnosis), active prescriptions and
+ * lab results (released first, with flag counts), each opening a read-only quick view. The patient timeline replaces this in Phase 8.
  */
 export default function HistoryPanel({
   patientId,
@@ -133,6 +134,7 @@ export default function HistoryPanel({
           ))}
         </ul>
       </section>
+      <LabHistory patientId={patientId} />
       <NoteQuickView id={note} onClose={() => setNote(null)} />
       <PrescriptionQuickView id={prescription} onClose={() => setPrescription(null)} />
     </div>

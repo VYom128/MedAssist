@@ -19,6 +19,7 @@ export const LINK_DESCRIPTIONS: Record<string, string> = {
   '/doctor/appointments': 'Your own appointments in a calendar or list.',
   '/doctor/schedule': 'Your weekly hours and leave.',
   '/doctor/profile': 'What patients see when they book with you.',
+  '/lab/worklist': 'Collect samples, enter results, verify and release – urgent orders first.',
   '/patient/appointments': 'Book, change or cancel your appointments.',
   '/patient/profile': 'Your patient record at the clinic.',
   '/profile': 'Your name and contact number.',
@@ -30,6 +31,6 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   admin: 'Clinic set-up, staff accounts and records.',
   doctor: 'Your queue, appointments, schedule and the profile patients see.',
   receptionist: 'Appointments, the queue, patient registration and identity checks.',
-  labtech: 'Your lab workspace.',
+  labtech: 'The lab worklist: samples, results, verification and release.',
   patient: 'Your appointments and your record at the clinic.',
 };

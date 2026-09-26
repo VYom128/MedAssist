@@ -81,6 +81,8 @@ export interface SignResult {
   encounter: Encounter;
   prescription: Prescription | null;
   appointment: { id: string; status: string };
+  /** The note's draft lab orders, placed with it (Phase 6). */
+  labOrders?: { id: string; orderNumber: string }[];
   warnings: string[];
 }
 
@@ -180,6 +182,7 @@ export const encountersApi = apiSlice.injectEndpoints({
         one(id),
         LIST,
         { type: 'PrescriptionList', id: 'LIST' },
+        { type: 'LabWorklist', id: 'LIST' },
         ...(result
           ? [
               byAppointment(result.appointment.id),

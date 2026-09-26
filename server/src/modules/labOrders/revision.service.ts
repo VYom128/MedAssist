@@ -14,8 +14,8 @@ import { alertCritical, notifyResultsReleased } from './notify.js';
 import { isCriticalFlag } from './ranges.js';
 import { prepareReleaseReport } from './report.js';
 import type { BuiltResult, ResultInput } from './results.js';
-import { toLabView, type LabOrderLike } from './serializer.js';
-import { loadLabOrder, patientIdOf, resourceOf } from './service.js';
+import type { LabOrderLike } from './serializer.js';
+import { labViewOf, loadLabOrder, patientIdOf, resourceOf } from './service.js';
 import { applyOrderTransition } from './status.service.js';
 import { findItem, flaggedResults, refreshHasCritical } from './workflow.service.js';
 
@@ -233,7 +233,7 @@ export async function reviseItem(
       resultVersion: version,
       reasonGiven: true,
     });
-    return toLabView(await loadLabOrder(o._id, { detail: true }));
+    return labViewOf(await loadLabOrder(o._id, { detail: true }));
   }
 
   const at = (field: string) => `items.$[it].${field}`;
@@ -267,7 +267,7 @@ export async function reviseItem(
     reasonGiven: true,
   });
   emitLabWorklistUpdated([o._id.toString()]);
-  return toLabView(await loadLabOrder(o._id, { detail: true }));
+  return labViewOf(await loadLabOrder(o._id, { detail: true }));
 }
 
 /**
@@ -314,5 +314,5 @@ export async function verifyRevision(
     pending.results.map((r) => r.parameterKey),
     { itemId, resultVersion: version, dualVerification: dual },
   );
-  return toLabView(await loadLabOrder(o._id, { detail: true }));
+  return labViewOf(await loadLabOrder(o._id, { detail: true }));
 }

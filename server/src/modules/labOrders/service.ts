@@ -71,11 +71,19 @@ export async function loadLabOrder(
   return o as unknown as LabOrderLike;
 }
 
+/** The lab technician's view, with the dual verification setting. */
+export async function labViewOf(o: LabOrderLike) {
+  const settings = await getSettings();
+  return toLabView(o, {
+    requireDualVerification: settings.lab?.requireDualVerification !== false,
+  });
+}
+
 /** The detail view for the caller's role. */
-export function viewForRole(user: AuthUser, o: LabOrderLike) {
+export async function viewForRole(user: AuthUser, o: LabOrderLike) {
   switch (user.role) {
     case ROLES.LABTECH:
-      return toLabView(o);
+      return labViewOf(o);
     case ROLES.DOCTOR:
       return toDoctorView(o);
     case ROLES.PATIENT:
@@ -545,6 +553,15 @@ export async function listLabOrders(
     if (query.from) range.$gte = startOfClinicDay(query.from, timezone);
     if (query.to) range.$lte = endOfClinicDay(query.to, timezone);
     and.push({ orderedAt: range });
+  }
+  if (query.releasedOn) {
+    const { timezone } = await getSettings();
+    and.push({
+      releasedAt: {
+        $gte: startOfClinicDay(query.releasedOn, timezone),
+        $lte: endOfClinicDay(query.releasedOn, timezone),
+      },
+    });
   }
   const filter = { $and: and };
   const sort: Record<string, 1 | -1> =

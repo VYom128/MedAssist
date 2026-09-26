@@ -5,6 +5,7 @@ import {
   FileText,
   FlaskConical,
   IdCard,
+  ListChecks,
   ListOrdered,
   LayoutDashboard,
   Receipt,
@@ -252,6 +253,17 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.ADMIN],
     load: () => import('../features/audit/pages/AuditLogsPage'),
     nav: { label: 'Audit logs', icon: ScrollText },
+  },
+  {
+    path: '/lab/worklist',
+    roles: [ROLES.LABTECH],
+    load: () => import('../features/labs/pages/LabWorklistPage'),
+    nav: { label: 'Worklist', icon: ListChecks },
+  },
+  {
+    path: '/lab/orders/:id',
+    roles: [ROLES.LABTECH],
+    load: () => import('../features/labs/pages/LabOrderPage'),
   },
   {
     path: '/doctor/schedule',

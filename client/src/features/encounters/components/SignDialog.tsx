@@ -59,6 +59,7 @@ export default function SignDialog({
   flush,
   extraProblems = [],
   revision,
+  labTests = 0,
   onClose,
   onGoTo,
   onSigned,
@@ -71,6 +72,8 @@ export default function SignDialog({
   /** Problems found outside the note (e.g. incomplete prescription rows). */
   extraProblems?: Problem[];
   revision: () => number;
+  /** Tests in the note's draft lab orders (sent to the lab on signing). */
+  labTests?: number;
   onClose: () => void;
   onGoTo: (field: string) => void;
   onSigned: (result: SignResult) => void;
@@ -177,13 +180,21 @@ export default function SignDialog({
                 'No drugs'
               ),
             },
+            {
+              label: 'Lab tests',
+              value:
+                labTests > 0
+                  ? `${labTests} test${labTests === 1 ? '' : 's'} will be sent to the lab`
+                  : 'None',
+            },
             { label: 'Follow-up', value: formatFollowUp(note.followUp) },
           ]}
         />
         <p className="text-sm text-muted">
           Signing locks the note: later corrections need an amendment with a reason.
-          {drugs.length > 0 ? ' The prescription is issued to the patient.' : ''} The consultation
-          is marked as completed.
+          {drugs.length > 0 ? ' The prescription is issued to the patient.' : ''}
+          {labTests > 0 ? ' The lab orders are sent to the lab.' : ''} The consultation is marked as
+          completed.
         </p>
       </div>
     </Modal>

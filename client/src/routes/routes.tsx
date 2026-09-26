@@ -70,6 +70,17 @@ export const routes: RouteObject[] = [
           },
         ],
       },
+      {
+        element: <RoleRoute roles={[ROLES.LABTECH]} />,
+        children: [
+          {
+            path: '/print/lab-labels/:id',
+            lazy: async () => ({
+              Component: (await import('../features/labs/pages/PrintSampleLabelPage')).default,
+            }),
+          },
+        ],
+      },
     ],
   },
   // Waiting-room kiosk: public (kiosk key in the URL), full screen, no app layout (spec §13.1).

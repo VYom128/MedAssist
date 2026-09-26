@@ -142,10 +142,17 @@ const history = (o: LabOrderLike) =>
     note: orNull(h.note),
   }));
 
-/** Lab technician: the whole order. */
-export function toLabView(o: LabOrderLike) {
+/**
+ * Lab technician: the whole order, plus whether dual verification is on (the verify button
+ * explains itself when the viewer entered the results).
+ */
+export function toLabView(
+  o: LabOrderLike,
+  { requireDualVerification = true }: { requireDualVerification?: boolean } = {},
+) {
   return {
     ...core(o),
+    requireDualVerification,
     patient: toLabTechView(o.patient),
     clinicalNotes: orNull(o.clinicalNotes),
     sample: sampleView(o, { full: true }),
@@ -259,6 +266,22 @@ export function toPatientView(o: LabOrderLike) {
   };
 }
 
+/**
+ * Counts of out-of-range results a doctor can already see (entered or verified tests), for
+ * lists and the history panel: `abnormal` = low/high/abnormal, `critical` = critical_*.
+ */
+function flagSummary(o: LabOrderLike) {
+  let abnormal = 0;
+  let critical = 0;
+  for (const i of o.items.filter(doctorSeesResults)) {
+    for (const r of i.results ?? []) {
+      if (r.flag === 'critical_low' || r.flag === 'critical_high') critical += 1;
+      else if (r.flag !== 'normal' && r.flag !== 'na') abnormal += 1;
+    }
+  }
+  return { abnormal, critical };
+}
+
 /** One row of GET /lab-orders for the caller's role. */
 export function toListItem(o: LabOrderLike, role: string) {
   const tests = o.items.map((i) => ({ code: i.testSnapshot.code, name: i.testSnapshot.name }));
@@ -278,6 +301,7 @@ export function toListItem(o: LabOrderLike, role: string) {
         patient: patientSummary(o),
         tests,
         hasCritical: o.hasCritical ?? false,
+        flags: flagSummary(o),
         releasedAt: orNull(o.releasedAt),
         reviewedByDoctorAt: orNull(o.reviewedByDoctorAt),
       };

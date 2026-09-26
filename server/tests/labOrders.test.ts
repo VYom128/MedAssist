@@ -720,3 +720,53 @@ describe('catalogue snapshot', () => {
     expect(view.body.data.tests[0]).toMatchObject({ name: 'Lipid profile', pricePaise: 50_000 });
   });
 });
+
+describe('step 4 additions for the client', () => {
+  it('releasedOn filters by the clinic day of release; lab views carry the dual verification setting', async () => {
+    const doctor = await loginAsDoctor();
+    const { id: patient } = await createPatient();
+    const test = await createLabTest();
+    const today = await insertLabOrder({
+      patient,
+      doctor: doctor.id,
+      status: 'released',
+      tests: [test],
+      releasedAt: new Date(),
+    });
+    await insertLabOrder({
+      patient,
+      doctor: doctor.id,
+      status: 'released',
+      tests: [test],
+      releasedAt: new Date(Date.now() - 3 * 86_400_000),
+    });
+    const lab = await loginAs('labtech');
+    const list = await get(lab, `/lab-orders?status=released&releasedOn=${clinicToday(tz)}`);
+    expect(list.body.data.map((o: { id: string }) => o.id)).toEqual([today._id.toString()]);
+    expect((await get(lab, `/lab-orders/${today._id}`)).body.data.requireDualVerification).toBe(
+      true,
+    );
+  });
+
+  it('doctor list rows count abnormal and critical results the doctor can see', async () => {
+    const doctor = await loginAsDoctor();
+    const { id: patient } = await createPatient();
+    const test = await createLabTest();
+    const snap = {
+      test: test._id,
+      testSnapshot: { code: test.code, name: test.name, pricePaise: 1 },
+    };
+    const r = (flag: string) => ({ parameterKey: 'hb', name: 'Hb', value: 1, flag });
+    await insertLabOrder({
+      patient,
+      doctor: doctor.id,
+      status: 'released',
+      items: [
+        { ...snap, status: 'verified', results: [r('low'), r('critical_high'), r('normal')] },
+        { ...snap, status: 'pending', results: [r('high')] }, // not visible yet
+      ],
+    });
+    const list = await get(doctor, '/lab-orders');
+    expect(list.body.data[0].flags).toEqual({ abnormal: 1, critical: 1 });
+  });
+});

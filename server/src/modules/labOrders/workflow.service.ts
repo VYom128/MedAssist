@@ -25,8 +25,8 @@ import { alertCritical, notifyResultsReleased, notifySampleRejected } from './no
 import { isCriticalFlag } from './ranges.js';
 import { prepareReleaseReport } from './report.js';
 import { buildResults, type ResultInput } from './results.js';
-import { toDoctorView, toLabView, type LabOrderLike } from './serializer.js';
-import { loadLabOrder, patientIdOf, resourceOf } from './service.js';
+import { toDoctorView, type LabOrderLike } from './serializer.js';
+import { labViewOf, loadLabOrder, patientIdOf, resourceOf } from './service.js';
 import { applyOrderTransition, recomputeOrderStatus } from './status.service.js';
 
 /**
@@ -37,7 +37,7 @@ import { applyOrderTransition, recomputeOrderStatus } from './status.service.js'
  * (never values); events carry ids only and are sent after the commit.
  */
 
-const labView = async (id: Types.ObjectId) => toLabView(await loadLabOrder(id, { detail: true }));
+const labView = async (id: Types.ObjectId) => labViewOf(await loadLabOrder(id, { detail: true }));
 
 /** Loads the order for a lab technician (placed orders only; others 404). */
 async function forLab(user: AuthUser, id: string, meta: RequestMeta) {
@@ -171,7 +171,7 @@ export async function collectSample(user: AuthUser, id: string, meta: RequestMet
   });
   await announce(o);
   const fresh = await loadLabOrder(o._id, { detail: true });
-  return { ...toLabView(fresh), label: labelOf(fresh) };
+  return { ...(await labViewOf(fresh)), label: labelOf(fresh) };
 }
 
 /**

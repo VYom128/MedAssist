@@ -85,9 +85,12 @@ function valueFor(p: ParameterLike, range: RangeLike | null, mode: Mode): unknow
   ) {
     v = range.criticalHigh * 1.1;
   } else if (mode !== 'normal' && high !== undefined) {
-    v = between(high * 1.05, high * 1.3);
+    // Out of range but never critical (only the planned criticals are).
+    const cap = typeof range?.criticalHigh === 'number' ? range.criticalHigh : Infinity;
+    v = between(high * 1.05, Math.min(high * 1.3, high + (cap - high) * 0.9));
   } else if (mode !== 'normal' && low !== undefined) {
-    v = between(low * 0.75, low * 0.95);
+    const floor = typeof range?.criticalLow === 'number' ? range.criticalLow : -Infinity;
+    v = between(Math.max(low * 0.75, low - (low - floor) * 0.9), low * 0.95);
   } else if (low !== undefined && high !== undefined) {
     v = between(low + (high - low) * 0.1, high - (high - low) * 0.1);
   } else if (high !== undefined) {
@@ -146,6 +149,17 @@ export async function seedLabOrders(): Promise<Record<string, number>> {
   if (p1 >= 0 && p1 < openCount && candidates.length > openCount) {
     const [moved] = candidates.splice(p1, 1);
     candidates = [...candidates.slice(0, openCount), moved!, ...candidates.slice(openCount)];
+  } else if (p1 < 0 && patient1 && candidates.length > openCount) {
+    // No note of patient1 suits a test: a routine CBC on their latest signed note instead.
+    const note = notes.find((e) => e.patient.equals(patient1));
+    if (note) {
+      const routine = { prefix: '', tests: ['CBC'], notes: 'Routine blood count' };
+      candidates = [
+        ...candidates.slice(0, openCount),
+        { e: note, match: routine },
+        ...candidates.slice(openCount, plan - 1),
+      ];
+    }
   }
   const statuses = plannedStatuses(candidates.length);
 
