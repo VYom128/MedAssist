@@ -653,3 +653,31 @@ describe('lab TAT job (spec §8.11)', () => {
     expect((await LabOrder.findById(slowNotYet._id).lean())!.tatBreachedAt).toBeInstanceOf(Date);
   });
 });
+
+describe('early critical values (step 5)', () => {
+  it('the doctor sees a critical value at once, finds it in "to review", and acknowledges it; release asks again', async () => {
+    const s = await placedOrder();
+    await processing(s);
+    await enter(s, [hb(4.2)]); // partial, critical
+    const review = await get(s.doctor, '/lab-orders?needsReview=true');
+    expect(review.body.data).toEqual([
+      expect.objectContaining({ id: s.orderId, status: 'processing', hasCritical: true }),
+    ]);
+    expect(review.body.data[0].flags).toMatchObject({ critical: 1 });
+    const view = await get(s.doctor, `/lab-orders/${s.orderId}`);
+    expect(view.body.data.items[0]).toMatchObject({
+      resultsAvailable: true,
+      unverified: true,
+      results: [expect.objectContaining({ parameterKey: 'hb', flag: 'critical_low' })],
+    });
+    const ack = await post(s.doctor, `/lab-orders/${s.orderId}/acknowledge`);
+    expect(ack.status).toBe(200);
+    expect((await get(s.doctor, '/lab-orders?needsReview=true')).body.data).toEqual([]);
+
+    await enter(s, [hb(4.2), smear('Negative')]);
+    await post(s.lab2, `/lab-orders/${s.orderId}/verify`);
+    await post(s.lab2, `/lab-orders/${s.orderId}/release`);
+    const again = await get(s.doctor, '/lab-orders?needsReview=true');
+    expect(again.body.data.map((o: { id: string }) => o.id)).toEqual([s.orderId]);
+  });
+});

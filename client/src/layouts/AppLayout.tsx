@@ -4,6 +4,7 @@ import { useAppSelector } from '../app/hooks';
 import { ROLE_HOME } from '../constants/roles';
 import { useLogoutMutation } from '../features/auth/api';
 import { selectCurrentUser } from '../features/auth/authSlice';
+import CriticalLabBanner from '../features/labs/components/CriticalLabBanner';
 import { useSocketInvalidation } from '../hooks/useSocketInvalidation';
 import { navItemsFor, type NavItem } from '../routes/routeConfig';
 import { ACCOUNT_LINKS } from './accountLinks';
@@ -86,6 +87,8 @@ export default function AppLayout() {
               ref={pageRef}
               className="mx-auto w-full max-w-content px-4 py-6 sm:px-6 lg:py-8 xl:px-8"
             >
+              {/* Doctors: critical lab values stay on screen until acknowledged. */}
+              {user.role === 'doctor' && !forced && <CriticalLabBanner />}
               <Outlet />
             </div>
           </main>

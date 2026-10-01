@@ -146,7 +146,15 @@ export interface LabOrder {
   reviewedByDoctorAt?: string | null;
 }
 
-/** One row of GET /lab-orders (lab technician or doctor). */
+/** Flagged results a doctor can see (doctor list rows). */
+export interface FlagCounts {
+  low: number;
+  high: number;
+  abnormal: number;
+  critical: number;
+}
+
+/** One row of GET /lab-orders (lab technician, doctor or patient). */
 export interface LabOrderListItem {
   id: string;
   orderNumber: string | null;
@@ -158,7 +166,15 @@ export interface LabOrderListItem {
   encounterId: string;
   appointmentId: string;
   patient: { id: string; mrn: string; fullName: string; age?: number; gender?: Gender };
-  tests: { id?: string; code: string; name: string; status?: LabItemStatus }[];
+  tests: {
+    id?: string;
+    code: string;
+    name: string;
+    status?: LabItemStatus;
+    /** Reception (billing) only. */
+    pricePaise?: number;
+    cancelled?: boolean;
+  }[];
   hasCritical: boolean;
   // Lab
   sampleId?: string | null;
@@ -166,7 +182,10 @@ export interface LabOrderListItem {
   // Doctor
   releasedAt?: string | null;
   reviewedByDoctorAt?: string | null;
-  flags?: { abnormal: number; critical: number };
+  flags?: FlagCounts;
+  // Patient
+  reportAvailable?: boolean;
+  corrected?: boolean;
 }
 
 export interface LabOrderListParams {

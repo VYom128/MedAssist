@@ -118,8 +118,15 @@ const previousVersions = (i: LabOrderItem) =>
   }));
 
 /** Doctors see an item's results once it has them (spec §8.7: "unverified" until verified). */
+/**
+ * Doctors see an item's results once it has them (spec §8.7: "unverified" until verified) – and
+ * a critical value at once, even while the rest of the test is still being entered (they were
+ * alerted about it).
+ */
 const doctorSeesResults = (i: LabOrderItem) =>
-  i.status === 'result_entered' || i.status === 'verified';
+  i.status === 'result_entered' ||
+  i.status === 'verified' ||
+  (i.status === 'pending' && (i.results ?? []).some((r) => r.flag.startsWith('critical')));
 
 function sampleView(o: LabOrderLike, { full }: { full: boolean }) {
   const s = o.sample;
@@ -267,19 +274,18 @@ export function toPatientView(o: LabOrderLike) {
 }
 
 /**
- * Counts of out-of-range results a doctor can already see (entered or verified tests), for
- * lists and the history panel: `abnormal` = low/high/abnormal, `critical` = critical_*.
+ * Counts of flagged results a doctor can already see (entered or verified tests, and early
+ * criticals), for lists: low, high, abnormal (options) and critical.
  */
 function flagSummary(o: LabOrderLike) {
-  let abnormal = 0;
-  let critical = 0;
+  const counts = { low: 0, high: 0, abnormal: 0, critical: 0 };
   for (const i of o.items.filter(doctorSeesResults)) {
     for (const r of i.results ?? []) {
-      if (r.flag === 'critical_low' || r.flag === 'critical_high') critical += 1;
-      else if (r.flag !== 'normal' && r.flag !== 'na') abnormal += 1;
+      if (r.flag === 'critical_low' || r.flag === 'critical_high') counts.critical += 1;
+      else if (r.flag === 'low' || r.flag === 'high' || r.flag === 'abnormal') counts[r.flag] += 1;
     }
   }
-  return { abnormal, critical };
+  return counts;
 }
 
 /** One row of GET /lab-orders for the caller's role. */

@@ -1,6 +1,6 @@
 import type { LabResult } from '../api';
 import { formatResultValue, isAbnormalFlag } from '../format';
-import { FlagPill } from './LabBadges';
+import { LabFlagPill } from './LabBadges';
 
 /**
  * Results of one test, read-only (spec §12.3 layout): parameter, value (bold when out of range),
@@ -9,9 +9,12 @@ import { FlagPill } from './LabBadges';
 export default function ResultsTable({
   results,
   caption,
+  audience = 'staff',
 }: {
   results: LabResult[];
   caption: string;
+  /** 'patient' words critical flags for patients. */
+  audience?: 'staff' | 'patient';
 }) {
   if (results.length === 0) return <p className="text-sm text-muted">No results yet.</p>;
   return (
@@ -54,7 +57,7 @@ export default function ResultsTable({
                 {r.referenceText ?? ''}
               </td>
               <td className="text-right sm:py-2 sm:text-left">
-                <FlagPill flag={r.flag} />
+                <LabFlagPill flag={r.flag} audience={audience} />
               </td>
             </tr>
           );

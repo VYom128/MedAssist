@@ -767,6 +767,6 @@ describe('step 4 additions for the client', () => {
       ],
     });
     const list = await get(doctor, '/lab-orders');
-    expect(list.body.data[0].flags).toEqual({ abnormal: 1, critical: 1 });
+    expect(list.body.data[0].flags).toEqual({ low: 1, high: 0, abnormal: 0, critical: 1 });
   });
 });

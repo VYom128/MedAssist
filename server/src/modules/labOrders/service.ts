@@ -478,10 +478,14 @@ async function roleFilter(user: AuthUser, query: ListLabOrdersQuery, meta: Reque
       // Their drafts and every placed order – but not drafts they discarded.
       const visible: Filter = { $or: [PLACED_LAB_ORDER, { status: 'draft' }] };
       if (query.needsReview) {
+        // Results to review, plus critical values not yet acknowledged in any open status.
         return {
           orderedBy: me,
-          status: { $in: LAB_REVIEWABLE_STATUSES },
           reviewedByDoctorAt: null,
+          $or: [
+            { status: { $in: LAB_REVIEWABLE_STATUSES } },
+            { hasCritical: true, status: { $nin: ['draft', 'cancelled'] } },
+          ],
         } as Filter;
       }
       if (query.patient) {
@@ -531,7 +535,7 @@ async function searchFilter(q: string): Promise<Filter> {
 /**
  * GET /lab-orders – lab technicians: the worklist (every placed order; urgent first, then
  * oldest); doctors: their own orders and placed orders of related patients (`needsReview`: own
- * orders with results not yet acknowledged); receptionists: status only, for one patient or
+ * orders with results – or a critical value – not yet acknowledged); receptionists: status only, for one patient or
  * appointment; patients: their own released orders.
  */
 export async function listLabOrders(

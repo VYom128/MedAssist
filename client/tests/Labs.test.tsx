@@ -262,6 +262,119 @@ describe('lab order page', () => {
     expect(calls).toEqual([]);
   });
 
+  it('server validation errors appear on the right parameter', async () => {
+    serveOrder(labOrder({ status: 'processing', sample: collectedSample }));
+    server.use(
+      http.put(url('/lab-orders/lo1/items/i1/results'), () =>
+        fail(400, 'VALIDATION_ERROR', 'Check the highlighted results', [
+          { field: 'body.results.0.value', message: 'Value out of range' },
+        ]),
+      ),
+    );
+    openOrder();
+    const user = userEvent.setup();
+    const hb = await screen.findByLabelText(/Haemoglobin/, {}, { timeout: 5000 });
+    await user.type(hb, '9999999');
+    await user.click(screen.getByRole('button', { name: 'Save CBC' }));
+    expect(await screen.findByText('Value out of range')).toBeInTheDocument();
+    expect(hb).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('revise after release: all values and a reason; the correction then shows before/after', async () => {
+    const released = labItem({
+      status: 'verified',
+      results: [
+        {
+          parameterKey: 'hb',
+          name: 'Haemoglobin',
+          unit: 'g/dL',
+          value: 14.2,
+          referenceText: null,
+          flag: 'normal',
+        },
+        {
+          parameterKey: 'smear',
+          name: 'Malaria smear',
+          unit: null,
+          value: 'Negative',
+          referenceText: null,
+          flag: 'na',
+        },
+      ],
+    });
+    serveOrder(labOrder({ status: 'released', sample: collectedSample, items: [released] }));
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(url('/lab-orders/lo1/items/i1/revise'), async ({ request }) => {
+        bodies.push(await request.json());
+        const updated = labOrder({
+          status: 'released',
+          sample: collectedSample,
+          items: [
+            {
+              ...released,
+              pendingRevision: {
+                results: [
+                  {
+                    parameterKey: 'hb',
+                    name: 'Haemoglobin',
+                    unit: 'g/dL',
+                    value: 12.4,
+                    referenceText: null,
+                    flag: 'normal',
+                  },
+                ],
+                remarks: null,
+                reason: 'Transcription error',
+                by: 'lab1',
+                at: '2026-09-25T08:00:00Z',
+              },
+            },
+          ],
+        });
+        // The refetch after the mutation sees the pending correction too.
+        server.use(http.get(url('/lab-orders/lo1'), () => ok(updated)));
+        return ok(updated);
+      }),
+    );
+    openOrder();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole('button', { name: 'Revise result' }, { timeout: 5000 }),
+    );
+    const dialog = await screen.findByRole('dialog', { name: /Revise/ });
+    const hb = await within(dialog).findByLabelText(/Haemoglobin/);
+    expect(hb).toHaveValue('14.2');
+    await user.clear(hb);
+    await user.type(hb, '12.4');
+    await user.click(within(dialog).getByRole('button', { name: 'Submit for verification' }));
+    expect(
+      await within(dialog).findByText(/Give a reason of at least 10 characters/),
+    ).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+    await user.type(
+      within(dialog).getByLabelText(/Reason for the correction/),
+      'Transcription error',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Submit for verification' }));
+    await waitFor(() =>
+      expect(bodies).toEqual([
+        {
+          results: [
+            { parameterKey: 'hb', value: 12.4 },
+            { parameterKey: 'smear', value: 'Negative' },
+          ],
+          remarks: null,
+          reason: 'Transcription error',
+        },
+      ]),
+    );
+    // The page now shows released vs corrected values; the reviser cannot verify it.
+    expect(await screen.findByText('Correction waiting for verification')).toBeInTheDocument();
+    expect(screen.getByText('12.4')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Verify revision' })).toBeDisabled();
+  });
+
   it('verify is disabled (with the reason) for the technician who entered the results', async () => {
     serveOrder(
       labOrder({

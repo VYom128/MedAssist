@@ -8,7 +8,7 @@ import { isApiQueryError } from '../../../utils/http';
 import type { LabParameter } from '../../labTests/api';
 import type { LabResult, ResultInput } from '../api';
 import { computeFlag, referenceText, selectRange, type Subject } from '../ranges';
-import { FlagPill } from './LabBadges';
+import { LabFlagPill } from './LabBadges';
 
 type Values = Record<string, string>;
 
@@ -104,7 +104,7 @@ export default function ItemResultsForm({
           const hint = (
             <span className="flex flex-wrap items-center gap-2">
               {reference ? <span>Ref. {reference}</span> : null}
-              <FlagPill flag={flag} />
+              <LabFlagPill flag={flag} />
             </span>
           );
           const onChange = (v: string) => setValues((prev) => ({ ...prev, [p.key]: v }));

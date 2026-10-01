@@ -12,7 +12,7 @@ import type { ApiQueryError } from '../utils/http';
 
 type Api = Pick<BaseQueryApi, 'getState' | 'dispatch'>;
 
-function useBaseQueryApi(): Api {
+export function useBaseQueryApi(): Api {
   const store = useStore();
   return { getState: store.getState, dispatch: store.dispatch };
 }

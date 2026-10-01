@@ -438,6 +438,7 @@ describe('Lab orders tab', () => {
     expect(await screen.findByText('To be sent when you sign')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Review & sign/ }));
     const sign = await screen.findByRole('dialog', { name: 'Review and sign' });
+    expect(sign).toHaveTextContent('Complete Blood Count (CBC)');
     expect(sign).toHaveTextContent('1 test will be sent to the lab');
   });
 });

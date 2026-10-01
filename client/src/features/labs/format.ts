@@ -1,6 +1,6 @@
 import type { LabFlag, LabOrderStatus } from '../../constants/catalog';
 import { clinicDate } from '../../utils/dates';
-import type { LabItem, LabOrder, LabOrderListParams } from './api';
+import type { FlagCounts, LabItem, LabOrder, LabOrderListParams } from './api';
 
 /**
  * The lab worklist tabs (spec §13.4 #6): each is a list filter. "Released today" uses the clinic
@@ -75,3 +75,18 @@ export function withinDocumentationWindow(
   if (!completedAt) return false;
   return now - new Date(completedAt).getTime() <= 72 * 3_600_000;
 }
+
+/** "2 high, 1 low, 1 critical" – or "All within range" (null when nothing is visible yet). */
+export function flagSummaryText(flags: FlagCounts | undefined): string | null {
+  if (!flags) return null;
+  const parts = [
+    flags.critical ? `${flags.critical} critical` : null,
+    flags.high ? `${flags.high} high` : null,
+    flags.low ? `${flags.low} low` : null,
+    flags.abnormal ? `${flags.abnormal} abnormal` : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join(', ') : 'All within range';
+}
+
+/** What a patient reads for a critical value (calm wording, no alarm). */
+export const PATIENT_CRITICAL_TEXT = 'Outside reference range – your doctor has been informed';

@@ -8,6 +8,7 @@ import Modal from '../../../components/ui/Modal';
 import StatusPill from '../../../components/ui/StatusPill';
 import { formatDate } from '../../../utils/dates';
 import { useGetLabOrderQuery, useListLabOrdersQuery, type LabOrderListItem } from '../api';
+import { flagSummaryText } from '../format';
 import LabOrderResults from './LabOrderResults';
 
 function QuickView({ id, onClose }: { id: string | null; onClose: () => void }) {
@@ -75,12 +76,12 @@ export default function LabHistory({ patientId }: { patientId: string }) {
                 {o.status !== 'released' && (
                   <StatusPill domain="labOrder" status={o.status} size="sm" />
                 )}
-                {(o.flags?.critical ?? 0) > 0 && (
-                  <Badge tone="danger">{o.flags!.critical} critical</Badge>
-                )}
-                {(o.flags?.abnormal ?? 0) > 0 && (
-                  <Badge tone="warning">{o.flags!.abnormal} out of range</Badge>
-                )}
+                {o.flags &&
+                  (o.flags.critical > 0 || flagSummaryText(o.flags) !== 'All within range') && (
+                    <Badge tone={o.flags.critical > 0 ? 'danger' : 'warning'}>
+                      {flagSummaryText(o.flags)}
+                    </Badge>
+                  )}
               </span>
             </button>
           </li>

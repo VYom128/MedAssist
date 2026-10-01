@@ -446,7 +446,9 @@ export async function releaseOrder(user: AuthUser, id: string, meta: RequestMeta
         { releasedAt: now, releasedBy: user.id, reportDocument: documentId },
         user.id,
         undefined,
-        { session, at: now },
+        // An earlier acknowledgement (of unverified or critical results) does not cover the
+        // released results: the doctor reviews them again.
+        { session, at: now, extra: { $unset: { reviewedByDoctorAt: '', reviewedBy: '' } } },
       );
     });
   } catch (err) {
@@ -466,17 +468,25 @@ export async function releaseOrder(user: AuthUser, id: string, meta: RequestMeta
 /**
  * POST /lab-orders/:id/acknowledge – a doctor who may read the order (its orderer, or with a care
  * relationship) marks the results reviewed; it leaves "results to review". Results must be there
- * (result_entered, verified or released).
+ * (result_entered, verified or released) – or a critical value, acknowledged at once (release
+ * asks for a review of the final results again).
  */
 export async function acknowledgeResults(user: AuthUser, id: string, meta: RequestMeta) {
   const o = await loadLabOrder(id);
   await assertCanReadLabOrder(user, o, meta);
-  if (!(LAB_REVIEWABLE_STATUSES as readonly string[]).includes(o.status)) {
+  const earlyCritical = o.hasCritical && o.status !== 'draft' && o.status !== 'cancelled';
+  if (!(LAB_REVIEWABLE_STATUSES as readonly string[]).includes(o.status) && !earlyCritical) {
     throw notAllowedNow('There are no results to acknowledge yet', o.status, 'acknowledged');
   }
   const now = new Date();
   const updated = await LabOrder.updateOne(
-    { _id: o._id, status: { $in: LAB_REVIEWABLE_STATUSES } },
+    {
+      _id: o._id,
+      $or: [
+        { status: { $in: LAB_REVIEWABLE_STATUSES } },
+        { hasCritical: true, status: { $nin: ['draft', 'cancelled'] } },
+      ],
+    },
     { $set: { reviewedByDoctorAt: now, reviewedBy: new Types.ObjectId(user.id) } },
   );
   if (updated.matchedCount === 0) {

@@ -59,7 +59,7 @@ export default function SignDialog({
   flush,
   extraProblems = [],
   revision,
-  labTests = 0,
+  labOrders = [],
   onClose,
   onGoTo,
   onSigned,
@@ -72,8 +72,8 @@ export default function SignDialog({
   /** Problems found outside the note (e.g. incomplete prescription rows). */
   extraProblems?: Problem[];
   revision: () => number;
-  /** Tests in the note's draft lab orders (sent to the lab on signing). */
-  labTests?: number;
+  /** The note's draft lab orders (sent to the lab on signing). */
+  labOrders?: { id: string; priority: string; tests: { code: string; name: string }[] }[];
   onClose: () => void;
   onGoTo: (field: string) => void;
   onSigned: (result: SignResult) => void;
@@ -85,6 +85,7 @@ export default function SignDialog({
   const problems = [...check.problems, ...extraProblems];
   const { warnings } = check;
   const drugs = prescription?.status === 'draft' ? prescription.items : [];
+  const labTests = labOrders.reduce((n, o) => n + o.tests.length, 0);
 
   const close = () => {
     setServerProblems(null);
@@ -183,9 +184,23 @@ export default function SignDialog({
             {
               label: 'Lab tests',
               value:
-                labTests > 0
-                  ? `${labTests} test${labTests === 1 ? '' : 's'} will be sent to the lab`
-                  : 'None',
+                labTests > 0 ? (
+                  <div>
+                    <ul className="space-y-0.5">
+                      {labOrders.map((o) => (
+                        <li key={o.id}>
+                          {o.tests.map((t) => `${t.name} (${t.code})`).join(', ')}
+                          {o.priority === 'urgent' ? ' – urgent' : ''}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-muted">
+                      {labTests} test{labTests === 1 ? '' : 's'} will be sent to the lab
+                    </p>
+                  </div>
+                ) : (
+                  'None'
+                ),
             },
             { label: 'Follow-up', value: formatFollowUp(note.followUp) },
           ]}

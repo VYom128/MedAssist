@@ -387,3 +387,24 @@ export const DOCUMENT_LINK_TYPES = [
   'followup_request',
 ] as const;
 export type DocumentLinkType = (typeof DOCUMENT_LINK_TYPES)[number];
+
+/**
+ * Uploads (spec §10.3): the server checks the bytes and has the last word; the client checks
+ * first so people get a quick, clear message. Size: the server's MAX_UPLOAD_MB default.
+ */
+export const UPLOAD_RULES = {
+  maxMb: 10,
+  mimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
+  extensions: ['.pdf', '.jpg', '.jpeg', '.png'],
+  accept: 'application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png',
+  titleMax: 120,
+  deleteReasonMin: 5,
+} as const;
+
+/** Categories each role may upload (server DOCUMENT_UPLOAD_CATEGORIES). */
+export const DOCUMENT_UPLOAD_CATEGORIES: Partial<Record<string, readonly DocumentCategory[]>> = {
+  doctor: ['referral', 'imaging', 'visit_summary', 'other'],
+  receptionist: ['id_proof', 'insurance', 'referral', 'other'],
+  labtech: ['lab_report'],
+  patient: ['referral', 'other'],
+};

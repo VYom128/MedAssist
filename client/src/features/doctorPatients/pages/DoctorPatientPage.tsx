@@ -1,4 +1,4 @@
-import { FilePen, FileText, Pill, Printer } from 'lucide-react';
+import { FilePen, FileText, FlaskConical, Pill, Printer } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
@@ -17,11 +17,14 @@ import { useListEncountersQuery } from '../../encounters/api';
 import AllergyBanner from '../../encounters/components/AllergyBanner';
 import { useGetPatientQuery } from '../../patients/api';
 import { useListPrescriptionsQuery } from '../../prescriptions/api';
+import DocumentsPanel from '../../documents/components/DocumentsPanel';
+import PatientLabOrders from '../../labs/components/PatientLabOrders';
 import ClinicalProfileModal from '../components/ClinicalProfileModal';
 
 /**
  * /doctor/patients/:id – a patient the doctor cares for: allergies and chronic conditions
- * (editable), earlier visits and prescriptions. The full timeline comes in Phase 8.
+ * (editable), earlier visits, prescriptions, lab results and documents (with uploads). The full
+ * timeline comes in Phase 8.
  */
 export default function DoctorPatientPage() {
   const { id = '' } = useParams();
@@ -143,6 +146,10 @@ export default function DoctorPatientPage() {
               </ul>
             </SectionCard>
           </div>
+          <SectionCard title="Lab results" icon={FlaskConical} iconTone="info">
+            <PatientLabOrders patientId={p.id} view="doctor" />
+          </SectionCard>
+          <DocumentsPanel patientId={p.id} />
           <ClinicalProfileModal patient={p} open={editing} onClose={() => setEditing(false)} />
         </>
       )}

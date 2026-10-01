@@ -103,9 +103,7 @@ function DraftWorkspace({
   const current = useCurrentPrescription(id);
   const rx = usePrescriptionDraft(id, current.prescription, !current.isLoading);
   const labOrders = useListLabOrdersQuery({ encounter: id, limit: 50 });
-  const draftLabTests = (labOrders.data?.items ?? [])
-    .filter((o) => o.status === 'draft')
-    .reduce((n, o) => n + o.tests.length, 0);
+  const draftLabOrders = (labOrders.data?.items ?? []).filter((o) => o.status === 'draft');
 
   useEffect(() => {
     dispatch(opened({ id, revision: encounter.revision }));
@@ -293,7 +291,7 @@ function DraftWorkspace({
         flush={async () => (await saveNow()) && (await rx.saveNow())}
         extraProblems={rxProblems}
         revision={() => entry?.revision ?? encounter.revision}
-        labTests={draftLabTests}
+        labOrders={draftLabOrders}
         onClose={() => setSignOpen(false)}
         onGoTo={goTo}
         onSigned={(result) => {
