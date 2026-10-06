@@ -140,6 +140,7 @@ export default function ItemResultsForm({
       <Textarea
         id={`${idPrefix}-remarks`}
         label="Remarks (optional)"
+        hint="Internal – seen by the lab and doctors, not printed on the report or shown to the patient."
         maxLength={LAB_RULES.remarksMax}
         rows={2}
         value={remarks}

@@ -17,8 +17,8 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | 3 | Patients | ✅ Done |
 | 4 | Appointments and queue | ✅ Done |
 | 5 | Visit notes and prescriptions | ✅ Done |
-| 6 | Lab workflow and documents | 🟡 In progress |
-| 7 | Billing | ⬜ Not started |
+| 6 | Lab workflow and documents | ✅ Done |
+| 7 | Billing | 🟡 In progress |
 | 8 | Patient timeline, portal and follow-ups | ⬜ Not started |
 | 9 | AI features | ⬜ Not started |
 | 10 | Dashboards, notifications, reports and printing | ⬜ Not started |
@@ -344,19 +344,77 @@ At 360 px: the history panel is a drawer ("Patient history" button), prescriptio
 **Goal:** lab orders from ordering to release, and secure file uploads.
 **Spec:** §4.8, §5.4, §6.20, §6.23, §7.14, §7.16, §8.7, §12.2
 
-- [ ] Lab orders from encounters (priority, clinical notes)
-- [ ] Sample collection (sample id), rejection, recollect
-- [ ] Result entry with automatic flags; critical value alerts
-- [ ] Dual verification, send back, release, revision after release
-- [ ] Lab report PDF generated on release
-- [ ] Documents: upload (type/size checks), list, authorized download, soft delete
-- [ ] Lab worklist UI (tabs by status), order detail with results grid
-- [ ] Doctor "results to review" page
-- [ ] Tests: flags, self-verification blocked, patient visibility only after release
+- [x] Lab orders from encounters (priority, clinical notes)
+- [x] Sample collection (sample id), rejection, recollect
+- [x] Result entry with automatic flags; critical value alerts
+- [x] Dual verification, send back, release, revision after release
+- [x] Lab report PDF generated on release
+- [x] Documents: upload (type/size checks), list, authorized download, soft delete
+- [x] Lab worklist UI (tabs by status), order detail with results grid
+- [x] Doctor "results to review" page
+- [x] Tests: flags, self-verification blocked, patient visibility only after release
 
 **Done when:** an order moves through every status and the patient sees the released PDF report.
+Verified 2026-10-06: `npm run lint`, `npm run format:check`, `npm run typecheck` clean; `npm test` (server + client) run 3 times in a row – all green, nothing intermittent. `npm run seed -- --reset` then `npm run seed` (second run creates nothing: 80 lab orders and 3 documents unchanged). `npm run smoke` (61 checks, twice in a row) now has Phase 6 checks (lab worklist, minimal patient view for the lab, patient1's released reports without internals, PDF download headers, 404 on someone else's order, reception status-only view, admins 403 on `/lab-orders`, no `storageKey`, a fake PNG refused with 415). The manual test script below was run end-to-end over the HTTP API against a separate API instance on the seeded DB (30 checks: draft → ordered on signing, collect + label, processing, a critical value flagged by the server although the client sent "normal", `lab.critical` once with ids only, the doctor's critical row, self-verification blocked for results and for the revision, release with the PDF, the patient's view and download, revision pending → verified → "Corrected", only the current report visible to the patient, audit entries with field names only, fake PNG 415). Statuses `sample_rejected` → recollect, send-back and cancellation are covered by `labWorkflow.test.ts`. **Not checked in a real browser by Claude** – please run the script below in the UI.
 
-**Notes / decisions:**
+Final check (security review of the checklist): patients never see draft/unreleased orders, pending revisions, previous versions or remarks; lab techs get name, MRN, age, sex and allergies only; receptionists never see results; admins have no lab order endpoints (document metadata only); flags are computed on the server (client flags stripped); critical alerts are claimed once per result version and carry no clinical text (email or socket); dual verification applies to verify and verify-revision; uploads are magic-byte checked, size-limited, per-role, never served statically, `storageKey` never exposed, downloads audited with `attachment`/`nosniff`/`no-store`; every lab status change goes through `assertTransition` (`applyOrderTransition`), is audited with field names/counts only and emits ids-only events after the commit; every Phase 6 endpoint has an RBAC matrix row (`routeInventory.test.ts` enforces it). **One leak found and fixed:** item remarks were hidden in the patient API but printed on the report PDF, which the patient downloads – remarks are now internal (lab + doctors) and the form says so (D127).
+
+**Notes / decisions:** (recorded as D119–D134 in spec §20 "Decisions made")
+- **Ordering (D119):** lab orders start as `draft` (private to the ordering doctor, editable/discardable) and are placed when the note is signed (in the sign transaction: `ordered`, `LAB-YYYY-NNNNNN`, `orderedAt`); "Order more tests" on a signed note within 72 h places at once. The doctor cancels a whole order only while no sample is held; single tests until their results are complete.
+- **Access (D120–D121):** a placed lab order is a care relationship (`CARE_RELATIONSHIP_CHECKS` + `relatedPatientIds`); lab techs reach patients only through placed orders and see a minimal patient view; views per role (lab: everything; doctor: results once entered, marked unverified, criticals at once; reception: status + prices; patient: own released, current results only; admin: none).
+- **Results (D122–D125):** flags only on the server (age at collection + sex, `abnormalOptions`); partial saves; `RESULTS_INCOMPLETE` (422, new code); dual verification (`SELF_VERIFICATION_NOT_ALLOWED`) for verify and verify-revision; send-back keeps values; revision after release = `released → released`, pending until a second technician verifies; released items locked at the model level except the revision path.
+- **Critical values (D126):** email + `lab.critical` to the ordering doctor once per item result version (conditional claim), no clinical text; unacknowledged criticals count as "to review"; release resets the acknowledgement.
+- **Remarks (D127):** internal – never in the patient view or the PDF.
+- **PDF + files (D128–D130):** `services/pdf.service.ts` (PDFKit) for every server PDF; the lab report is built before and stored inside the release/revision transaction as a generated Document (older ones hidden from the patient); storage adapter (`local` under `UPLOAD_DIR`; s3/cloudinary stubs until Phase 11); multer memory storage, magic-byte check (`file-type`), SHA-256, sanitised names, 30 uploads/h/user; downloads stream through the API (audited, safe headers); upload/read categories per role; soft delete by admins or the uploader within 24 h, generated documents never.
+- **Sockets, TAT, notifications (D131–D132):** `lab.worklist.updated` (lab room), `lab.order.changed`, `lab.critical` – ids only, after the commit; hourly `runLabTatJob` sets `tatBreachedAt` once; sample rejected → patient + reception, released/revised → patient + doctor, without test names or values.
+- **Seed (D133):** 80 lab orders through the lab services (55 released with PDFs, 3 criticals, a revision, cancelled tests, acknowledgements; patient1 always has a report), 3 demo documents; `--reset` also clears the upload directory.
+- **Client (D134):** lab worklist + order page + sample label print page; consult Lab orders tab; doctor Lab results with a persistent critical banner; patient Lab reports ("Corrected") and Documents; reception Documents and Lab orders tabs; FileUpload / DocumentList / FilePreview.
+- **Smoke:** Phase 6 checks run inside the Phase 5 sessions (only `lab1` logs in again): logins are limited to 10 per 15 min per email + IP, and separate logins made two back-to-back runs fail with 429. Now 61 checks, two runs in a row green.
+- New packages: `multer`, `file-type`, `pdfkit` (server).
+- **You must set in `server/.env`** (optional – the defaults work for local dev): `STORAGE_DRIVER=local`, `UPLOAD_DIR` (default `./uploads` under `server/`, gitignored; must be outside `client/`; back it up – it holds patient files) and `MAX_UPLOAD_MB` (default 10, 1–50). Restart the API after changing `.env`.
+- **Watch in Phase 7:** invoice/receipt PDFs must use `pdf.service` and be stored as generated Documents (category `invoice`, which reception already reads); the draft invoice on signing should include placed lab orders at `testSnapshot.pricePaise` and drop cancelled tests; a narrow race remains in `verify` (the self-verification check runs before the conditional update – harmless in practice because it needs the verifier to re-enter results in between).
+- Tests: 1785 server (was 1544) + 206 client (was 179). Phase 6 complete 2026-10-06.
+
+<details>
+<summary>Phase 6 manual test script (seeded DB, password <code>Password@123</code>)</summary>
+
+Seed data used: today's queue has patients checked in with `dr.mehta`; patient logins `patient1…8` (find which one is in today's queue on reception's Queue screen). Re-seed with `--reset` if today's queue looks different.
+
+Doctor (`dr.mehta@medassist.dev`):
+1. My queue → finish the patient "With you now" (Review & sign) → Call next (or start a checked-in patient with a portal login).
+2. In the consultation: Lab orders tab → search "CBC" → add; search "HbA1c" → add; priority Urgent; clinical notes "Fatigue". The order shows as a draft (no number). Review & sign → the dialog lists the 2 lab tests → Sign note. The Lab orders tab now shows `LAB-2026-…` "Ordered".
+
+Lab technician 1 (`lab1@medassist.dev`, second browser/private window):
+3. Worklist → the new urgent order is at the top of "Ordered" (it appeared without reloading). Open it → Collect sample → the label page opens (large sample ID `S26-…`, patient name, MRN, tests) → Print → close.
+4. Start processing → enter CBC: Haemoglobin **6.1** (the flag preview shows Critical low), the other values in range, a remark → Save. Enter HbA1c 7.2 → Save. The order moves to "Results entered".
+
+Doctor:
+5. Without reloading, a red critical-result banner appears; Lab results lists the order first with a critical count; the results show "Unverified". (The remark is visible to the doctor.)
+
+Lab technician 1:
+6. Verify → blocked: "Results must be verified by a different lab technician…" (the button explains it).
+
+Lab technician 2 (`lab2@medassist.dev`):
+7. Open the order → Verify → Release (confirm). "Download PDF" works; the PDF has no remark.
+
+Patient (the order's patient):
+8. Lab reports → the order with High/Low/critical shown as text + icon and calm wording → Download PDF. Before step 7 the order was not listed at all.
+
+Lab technician 1:
+9. On the released order → HbA1c → Revise → value 6.8, reason "Transcription error" → Save: "Waiting for verification". Verify revision as lab1 → blocked.
+
+Lab technician 2:
+10. Verify revision → the item shows Version 2 with before/after.
+
+Patient:
+11. Lab reports → the order has a "Corrected" badge; the report shows 6.8 and only the new PDF (version 2); 7.2 is nowhere.
+
+Uploads:
+12. As the patient: Documents → Upload → rename any text file to `fake.png` and choose it → the client accepts the extension, the server answers "Only PDF, JPG and PNG files can be uploaded". A real PNG/PDF uploads and appears in the list; a file over 10 MB is refused.
+13. As `admin@medassist.dev`: no Lab menu; opening `/lab/worklist` shows the 403 page. As `reception1`: the patient's Lab orders tab shows status and prices only.
+
+At 360 px: worklist rows become cards, the results grid stacks, nothing scrolls sideways.
+</details>
 
 ---
 

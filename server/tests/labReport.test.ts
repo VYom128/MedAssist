@@ -125,7 +125,6 @@ describe('on release', () => {
       'Haemoglobin',
       '4.2',
       'CRITICAL LOW **',
-      'Repeat sample advised',
       'Verified by Ravi Iyer',
       'Released by Ravi Iyer',
       '*** End of report ***',
@@ -133,6 +132,8 @@ describe('on release', () => {
     ]) {
       expect(text, expected).toContain(expected);
     }
+    // Remarks are internal: never on the patient-visible report (D127).
+    expect(text).not.toContain('Repeat sample advised');
   });
 
   it('GET /lab-orders/:id/report.pdf streams it to the doctor, the lab and the patient (audited)', async () => {

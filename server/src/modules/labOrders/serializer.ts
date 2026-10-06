@@ -117,7 +117,6 @@ const previousVersions = (i: LabOrderItem) =>
     reason: orNull(p.reason),
   }));
 
-/** Doctors see an item's results once it has them (spec §8.7: "unverified" until verified). */
 /**
  * Doctors see an item's results once it has them (spec §8.7: "unverified" until verified) – and
  * a critical value at once, even while the rest of the test is still being entered (they were

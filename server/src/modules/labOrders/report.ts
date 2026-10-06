@@ -120,7 +120,7 @@ export async function buildLabReportPdf(o: LabOrderLike, opts: ReportOptions): P
   for (const item of o.items.filter((i) => i.status !== 'cancelled')) {
     heading(pdf, `${item.testSnapshot.name} (${item.testSnapshot.code})`);
     table(pdf, columns, resultRows(item));
-    if (item.remarks) paragraph(pdf, `Remarks: ${item.remarks}`);
+    // Item remarks are internal (lab and doctors): the report is patient-visible (D127).
     const verifier = nameOf(item.verifiedBy as Person);
     paragraph(
       pdf,
