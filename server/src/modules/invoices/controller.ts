@@ -3,6 +3,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { parsePagination } from '../../utils/pagination.js';
 import { buildRequestMeta } from '../../utils/requestContext.js';
+import { sendPdf } from '../../utils/sendFile.js';
 import * as invoicesService from './service.js';
 import type { ListInvoicesQuery } from './validation.js';
 
@@ -68,4 +69,13 @@ export async function voidInvoice(req: Request, res: Response) {
     buildRequestMeta(req),
   );
   return sendSuccess(res, { message: 'Invoice voided', data });
+}
+
+export async function invoicePdf(req: Request, res: Response) {
+  const { buffer, fileName } = await invoicesService.invoicePdf(
+    currentUser(req),
+    params(req).id,
+    buildRequestMeta(req),
+  );
+  sendPdf(res, buffer, fileName, { download: (req.query as { download?: boolean }).download });
 }

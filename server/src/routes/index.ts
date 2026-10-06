@@ -13,6 +13,7 @@ import labOrderRoutes from '../modules/labOrders/routes.js';
 import labTestRoutes from '../modules/labTests/routes.js';
 import queueRoutes from '../modules/queue/routes.js';
 import patientRoutes from '../modules/patients/routes.js';
+import paymentRoutes from '../modules/payments/routes.js';
 import prescriptionRoutes from '../modules/prescriptions/routes.js';
 import serviceRoutes from '../modules/services/routes.js';
 import settingsRoutes from '../modules/settings/routes.js';
@@ -39,5 +40,6 @@ router.use('/prescriptions', prescriptionRoutes);
 router.use('/lab-orders', labOrderRoutes);
 router.use('/documents', documentRoutes);
 router.use('/invoices', invoiceRoutes);
+router.use('/payments', paymentRoutes);
 
 export default router;

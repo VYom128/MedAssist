@@ -10,10 +10,12 @@ import { DoctorProfile } from '../modules/doctors/model.js';
 import { Document } from '../modules/documents/model.js';
 import { NoteAmendment } from '../modules/encounters/amendment.model.js';
 import { Encounter } from '../modules/encounters/model.js';
+import { Invoice } from '../modules/invoices/model.js';
 import { LabOrder } from '../modules/labOrders/model.js';
 import { LabTest } from '../modules/labTests/model.js';
 import { DoctorLeave } from '../modules/leaves/model.js';
 import { Patient } from '../modules/patients/model.js';
+import { Payment } from '../modules/payments/model.js';
 import { Prescription } from '../modules/prescriptions/model.js';
 import { DoctorSchedule } from '../modules/schedules/model.js';
 import { Service } from '../modules/services/model.js';
@@ -29,6 +31,7 @@ import { seedAppointments } from './appointments.js';
 import { seedDepartments } from './departments.js';
 import { seedDocuments } from './documents.js';
 import { seedEncounters } from './encounters.js';
+import { seedInvoices } from './invoices.js';
 import { doctorLogins, seedDoctors } from './doctors.js';
 import { seedLabOrders } from './labOrders.js';
 import { seedLabTests } from './labTests.js';
@@ -54,11 +57,12 @@ const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = 
   { name: 'encounters', run: seedEncounters },
   { name: 'labOrders', run: seedLabOrders },
   { name: 'documents', run: seedDocuments },
+  { name: 'invoices', run: seedInvoices },
 ];
 
 /**
- * Collections `--reset` empties (raw driver for audit logs, notes, amendments and prescriptions:
- * Mongoose blocks those deletes).
+ * Collections `--reset` empties (raw driver for audit logs, notes, amendments, prescriptions, lab
+ * orders, documents, invoices and payments: Mongoose blocks those deletes).
  */
 async function resetData() {
   await Promise.all([
@@ -79,7 +83,9 @@ async function resetData() {
     Prescription.collection.deleteMany({}),
     LabOrder.collection.deleteMany({}),
     Document.collection.deleteMany({}),
-    Counter.deleteMany({}), // MRN, APT, ENC, RX, LAB and sample numbers and queue tokens
+    Invoice.collection.deleteMany({}),
+    Payment.collection.deleteMany({}),
+    Counter.deleteMany({}), // MRN, APT, ENC, RX, LAB, INV, PAY and sample numbers, queue tokens
   ]);
   // The stored files go with their records (development only – see runSeed).
   await rm(config.storage.uploadDir, { recursive: true, force: true });
@@ -138,7 +144,8 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
     await resetData();
     logger.info(
       'Wiped users, sessions, audit logs, clinic setup data, patients, appointments, clinical ' +
-        'notes, prescriptions, lab orders, documents (and their files) and counters',
+        'notes, prescriptions, lab orders, documents (and their files), invoices, payments and ' +
+        'counters',
     );
   }
   await initStorage();

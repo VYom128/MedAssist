@@ -269,6 +269,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
   LAB_RESULT_RELEASED: 'lab.result_released',
   LAB_RESULT_REVISED: 'lab.result_revised',
   INVOICE_ISSUED: 'invoice.issued',
+  PAYMENT_RECEIVED: 'payment.received',
 } as const);
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -534,6 +535,11 @@ export const AUDIT_ACTIONS = Object.freeze({
   INVOICE_ISSUE: 'invoice.issue',
   INVOICE_VOID: 'invoice.void',
   INVOICE_VIEW: 'invoice.view',
+  INVOICE_DOWNLOAD: 'invoice.download',
+  PAYMENT_CREATE: 'payment.create',
+  PAYMENT_REFUND: 'payment.refund',
+  PAYMENT_VIEW: 'payment.view',
+  PAYMENT_RECEIPT_DOWNLOAD: 'payment.receipt_download',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /**
@@ -591,7 +597,19 @@ export const BILLING_RULES = Object.freeze({
   notesMax: 1000,
   reasonMinLength: 3,
   reasonMaxLength: 500,
+  refundReasonMinLength: 10,
+  referenceMax: 100,
 });
+
+/** Payment enums (spec §6.22): refunds are negative payments linked to the original. */
+export const PAYMENT_KINDS = Object.freeze(['payment', 'refund'] as const);
+export type PaymentKind = (typeof PAYMENT_KINDS)[number];
+/** Methods that need a reference (card slip, UPI transaction id, insurance claim number). */
+export const PAYMENT_METHODS_NEEDING_REFERENCE = Object.freeze([
+  'card',
+  'upi',
+  'insurance',
+] as const);
 
 /** Payment methods (spec §6.5 billing.paymentMethods; used by payments in Phase 7). */
 export const PAYMENT_METHODS = Object.freeze([

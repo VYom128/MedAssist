@@ -22,12 +22,15 @@ import { withTransaction } from '../../utils/transaction.js';
 import { Appointment } from '../appointments/model.js';
 import { patientRecipient } from '../appointments/service.js';
 import { Patient } from '../patients/model.js';
+import { Payment } from '../payments/model.js';
+import type { PaymentLike } from '../payments/serializer.js';
 import { resolveMyPatientId } from '../patients/portal.service.js';
 import { Service } from '../services/model.js';
 import { getSettings } from '../settings/service.js';
 import { exceedsDiscountLimit, discountPercent } from './calc.js';
 import { defaultTaxRateBps, priceLine, totalsOf, type PricedLine } from './lines.js';
 import { Invoice, type InvoiceDoc } from './model.js';
+import { buildInvoicePdf } from './pdf.js';
 import {
   INVOICE_LIST_POPULATE,
   INVOICE_POPULATE,
@@ -367,6 +370,12 @@ async function loadForStaff(user: AuthUser, id: string, meta: RequestMeta) {
 
 // ---- Writes ----------------------------------------------------------------------------------
 
+/** Seed only: back-date the action (`now`) and skip the patient email (`quiet`). */
+export interface SeedTimeOptions {
+  now?: Date;
+  quiet?: boolean;
+}
+
 const draftOnly = (status: string) =>
   status === 'draft'
     ? null
@@ -529,6 +538,7 @@ export async function issueInvoice(
   id: string,
   { expectedVersion }: { expectedVersion: number },
   meta: RequestMeta,
+  { now = new Date(), quiet = false }: SeedTimeOptions = {},
 ) {
   const inv = await loadForStaff(user, id, meta);
   assertTransition('invoice', inv.status, 'issued');
@@ -541,7 +551,6 @@ export async function issueInvoice(
     });
   }
   const { timezone } = await getSettings();
-  const now = new Date();
   const free = inv.totalPaise === 0;
   if (free) assertTransition('invoice', 'issued', 'paid');
 
@@ -587,7 +596,7 @@ export async function issueInvoice(
     request: meta,
     metadata: { ...summaryOf(issued), status: issued.status },
   });
-  void notifyInvoiceIssued(issued);
+  if (!quiet) void notifyInvoiceIssued(issued);
   return toView(await loadInvoice(inv._id), user.role);
 }
 
@@ -620,6 +629,7 @@ export async function voidInvoice(
   id: string,
   { reason }: { reason: string },
   meta: RequestMeta,
+  { now = new Date() }: SeedTimeOptions = {},
 ) {
   const inv = await loadForStaff(user, id, meta);
   // Paid (or partly paid) invoices become voidable once refunded back to nothing paid.
@@ -632,7 +642,6 @@ export async function voidInvoice(
     );
   }
   assertTransition('invoice', inv.status, 'void');
-  const now = new Date();
   const updated = await Invoice.findOneAndUpdate(
     { _id: inv._id, status: inv.status, amountPaidPaise: 0 },
     {
@@ -662,4 +671,30 @@ export async function voidInvoice(
     metadata: { fromStatus: inv.status, totalPaise: inv.totalPaise, reasonGiven: true },
   });
   return toView(await loadInvoice(inv._id), user.role);
+}
+
+/**
+ * GET /invoices/:id/pdf – the invoice's readers (patients: their own; never a draft – staff get
+ * 422, patients 404). Made on demand; audited `invoice.download`.
+ */
+export async function invoicePdf(user: AuthUser, id: string, meta: RequestMeta) {
+  if (user.role === ROLES.PATIENT) await resolveMyPatientId(user);
+  const inv = await loadInvoice(id);
+  await assertCanReadInvoice(user, inv, meta);
+  if (inv.status === 'draft') {
+    throw ApiError.unprocessable('Issue the invoice before printing it');
+  }
+  const payments = (await Payment.find({ invoice: inv._id })
+    .sort({ receivedAt: 1, _id: 1 })
+    .lean()) as unknown as PaymentLike[];
+  const buffer = await buildInvoicePdf(inv, payments);
+  await audit.record({
+    action: AUDIT_ACTIONS.INVOICE_DOWNLOAD,
+    actor: actorOf(user),
+    resource: resourceOf(inv),
+    patient: patientIdOf(inv),
+    request: meta,
+    metadata: { status: inv.status },
+  });
+  return { buffer, fileName: `${inv.invoiceNumber ?? 'invoice'}.pdf` };
 }

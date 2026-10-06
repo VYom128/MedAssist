@@ -141,3 +141,15 @@ export function exceedsDiscountLimit(items: readonly LineInput[], maxPercent: nu
   if (discountTotalPaise === 0) return false;
   return discountTotalPaise * 100 > maxPercent * subtotalPaise;
 }
+
+/**
+ * An issued invoice's status from its amounts (spec §8.9, §5.5): nothing paid (net of refunds)
+ * → issued; everything → paid; otherwise partially_paid.
+ */
+export function statusForAmounts(
+  totalPaise: number,
+  amountPaidPaise: number,
+): 'issued' | 'partially_paid' | 'paid' {
+  if (amountPaidPaise <= 0) return totalPaise === 0 ? 'paid' : 'issued';
+  return amountPaidPaise >= totalPaise ? 'paid' : 'partially_paid';
+}

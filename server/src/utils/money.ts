@@ -55,3 +55,20 @@ function numberToPlainString(n: number): string {
   if (/e/i.test(text)) throw new RangeError(`Not a valid rupee amount: ${n}`);
   return text;
 }
+
+/**
+ * Paise as an amount with Indian digit grouping and two decimals, without a currency sign:
+ * 12345678950 → '12,34,56,789.50', -50000 → '-500.00'. For PDFs and emails (the client formats
+ * with `formatINR`).
+ */
+export function formatIndianAmount(paise: number): string {
+  if (!Number.isSafeInteger(paise)) throw new RangeError(`Not whole paise: ${paise}`);
+  const sign = paise < 0 ? '-' : '';
+  const abs = Math.abs(paise);
+  const rupees = String(Math.floor(abs / 100));
+  const fraction = String(abs % 100).padStart(2, '0');
+  const last3 = rupees.slice(-3);
+  const rest = rupees.slice(0, -3);
+  const grouped = rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${last3}` : last3;
+  return `${sign}${grouped}.${fraction}`;
+}

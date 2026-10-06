@@ -114,6 +114,9 @@ export interface Ctx {
   /** Invoices of patientId (Phase 7): a manual draft (revision 0) and an unpaid issued one. */
   draftInvoiceId: string;
   issuedInvoiceId: string;
+  /** A partly paid invoice of patientId and its cash payment (refundable). */
+  paidInvoiceId: string;
+  paymentId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -903,6 +906,39 @@ ENDPOINTS.push(
     status: 200,
   },
   {
+    method: 'get',
+    path: (c) => `/invoices/${c.paidInvoiceId}/pdf`,
+    roles: INVOICE_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/invoices/${c.paidInvoiceId}/payments`,
+    roles: INVOICE_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/invoices/${c.issuedInvoiceId}/payments`,
+    body: () => ({ amountPaise: 100, method: 'cash' }),
+    roles: RECEPTION,
+    status: 201,
+  },
+  { method: 'get', path: () => '/payments/summary', roles: ADMIN_RECEPTION, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/payments/${c.paymentId}/refund`,
+    body: () => ({ amountPaise: 100, reason: 'Matrix refund reason' }),
+    roles: ADMIN_RECEPTION,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/payments/${c.paymentId}/receipt.pdf`,
+    roles: INVOICE_READERS,
+    status: 200,
+  },
+  {
     method: 'post',
     path: (c) => `/invoices/${c.issuedInvoiceId}/void`,
     body: () => ({ reason: 'Matrix void' }),
@@ -998,6 +1034,8 @@ export const PATTERN_CTX = {
   myDocumentId: ':id',
   draftInvoiceId: ':id',
   issuedInvoiceId: ':id',
+  paidInvoiceId: ':id',
+  paymentId: ':id',
   n: 0,
 } as unknown as Ctx;
 

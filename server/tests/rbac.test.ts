@@ -7,6 +7,7 @@ import { getStorage } from '../src/services/storage/index.js';
 import { LabTest } from '../src/modules/labTests/model.js';
 import { DoctorLeave } from '../src/modules/leaves/model.js';
 import { Invoice } from '../src/modules/invoices/model.js';
+import { Payment } from '../src/modules/payments/model.js';
 import { Patient } from '../src/modules/patients/model.js';
 import { Service } from '../src/modules/services/model.js';
 import { User } from '../src/modules/users/model.js';
@@ -329,7 +330,7 @@ async function buildContext(role: Role): Promise<Ctx> {
     totalPaise: 1000,
     balancePaise: 1000,
   };
-  const [draftInvoice, issuedInvoice] = await Invoice.create([
+  const [draftInvoice, issuedInvoice, paidInvoice] = await Invoice.create([
     { ...invoiceBase, status: 'draft' },
     {
       ...invoiceBase,
@@ -337,7 +338,25 @@ async function buildContext(role: Role): Promise<Ctx> {
       invoiceNumber: `INV-1999-${String(n).padStart(6, '0')}`,
       issuedAt: new Date(),
     },
+    {
+      ...invoiceBase,
+      status: 'partially_paid',
+      invoiceNumber: `INV-1998-${String(n).padStart(6, '0')}`,
+      issuedAt: new Date(),
+      amountPaidPaise: 500,
+      balancePaise: 500,
+    },
   ]);
+  const payment = await Payment.create({
+    paymentNumber: `PAY-1999-${String(n).padStart(6, '0')}`,
+    invoice: paidInvoice!._id,
+    patient: patient.id,
+    amountPaise: 500,
+    method: 'cash',
+    kind: 'payment',
+    receivedBy: target._id,
+    receivedAt: new Date(),
+  });
   return {
     me,
     targetId: target._id.toString(),
@@ -390,6 +409,8 @@ async function buildContext(role: Role): Promise<Ctx> {
     myDocumentId: mine._id.toString(),
     draftInvoiceId: draftInvoice!._id.toString(),
     issuedInvoiceId: issuedInvoice!._id.toString(),
+    paidInvoiceId: paidInvoice!._id.toString(),
+    paymentId: payment._id.toString(),
     n,
   };
 }
@@ -449,6 +470,8 @@ const send = (row: Row, c: Ctx | null) => {
       myDocumentId: zero,
       draftInvoiceId: zero,
       issuedInvoiceId: zero,
+      paidInvoiceId: zero,
+      paymentId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -491,6 +514,7 @@ describe('RBAC matrix', () => {
       Prescription.init(),
       LabOrder.init(),
       Invoice.init(),
+      Payment.init(),
     ]);
     await resetDb();
     emails = captureEmails(); // welcome and reset emails are sent in the background

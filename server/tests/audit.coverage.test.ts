@@ -465,6 +465,21 @@ describe('audit coverage', () => {
     await post(`/invoices/${invoiceId}/issue`, reception.auth, {
       expectedVersion: edited.body.data.revision,
     });
+    // payment.create, payment.view, payment.refund, payment.receipt_download, invoice.download
+    const payment = await post(`/invoices/${invoiceId}/payments`, reception.auth, {
+      amountPaise: 1000,
+      method: 'upi',
+      reference: 'UPI-REF-778899',
+    });
+    await api().get(`/api/v1/invoices/${invoiceId}/payments`).set(reception.auth);
+    await post(`/payments/${payment.body.data.payment.id}/refund`, reception.auth, {
+      amountPaise: 400,
+      reason: 'Charged twice for the visit',
+    });
+    await api()
+      .get(`/api/v1/payments/${payment.body.data.payment.id}/receipt.pdf`)
+      .set(reception.auth);
+    await api().get(`/api/v1/invoices/${invoiceId}/pdf`).set(reception.auth);
     const manual = await post('/invoices', reception.auth, {
       patientId,
       items: [{ kind: 'other', description: 'Certificate', unitPricePaise: 20_000 }],
