@@ -77,6 +77,13 @@ export const SEQUENCES = Object.freeze({
   LAB_ORDER: { key: 'lab_order', prefix: 'LAB' },
   /** Yearly: `sample:<clinic year>` → 'S26-000001' (two-digit year in the prefix). */
   SAMPLE: { key: 'sample', prefix: 'S' },
+  /**
+   * Yearly: `invoice:<clinic year>` → 'INV-2026-000001', assigned on issue. The prefix printed
+   * is `settings.billing.invoicePrefix` (default 'INV'); the counter key never changes.
+   */
+  INVOICE: { key: 'invoice', prefix: 'INV' },
+  /** Yearly: `payment:<clinic year>` → 'PAY-2026-000001' (payments and refunds). */
+  PAYMENT: { key: 'payment', prefix: 'PAY' },
 } as const);
 
 /** Appointment enums (spec §6.12). */
@@ -261,6 +268,7 @@ export const NOTIFICATION_TYPES = Object.freeze({
   LAB_CRITICAL_VALUE: 'lab.critical_value',
   LAB_RESULT_RELEASED: 'lab.result_released',
   LAB_RESULT_REVISED: 'lab.result_revised',
+  INVOICE_ISSUED: 'invoice.issued',
 } as const);
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -371,6 +379,18 @@ export const STATE_MACHINES = Object.freeze({
     released: ['released'],
     cancelled: [],
   } satisfies Record<LabOrderStatus, readonly LabOrderStatus[]>),
+  /**
+   * Spec §5.5 plus Phase 7 decisions: a draft can be voided (appointment cancelled, or by
+   * staff); after issue the status follows the amounts (payments and refunds): nothing paid →
+   * issued, part → partially_paid, all → paid. Void only while nothing is paid (net of refunds).
+   */
+  invoice: Object.freeze({
+    draft: ['issued', 'void'],
+    issued: ['partially_paid', 'paid', 'void'],
+    partially_paid: ['partially_paid', 'paid', 'issued', 'void'],
+    paid: ['partially_paid', 'issued'],
+    void: [],
+  } satisfies Record<InvoiceStatus, readonly InvoiceStatus[]>),
 });
 export type StateMachine = keyof typeof STATE_MACHINES;
 
@@ -507,6 +527,13 @@ export const AUDIT_ACTIONS = Object.freeze({
   DOCUMENT_VIEW: 'document.view',
   DOCUMENT_DOWNLOAD: 'document.download',
   DOCUMENT_DELETE: 'document.delete',
+  INVOICE_CREATE: 'invoice.create',
+  INVOICE_UPDATE: 'invoice.update',
+  /** Lines added, removed or flagged by the system (lab orders placed or cancelled). */
+  INVOICE_SYNC: 'invoice.sync',
+  INVOICE_ISSUE: 'invoice.issue',
+  INVOICE_VOID: 'invoice.void',
+  INVOICE_VIEW: 'invoice.view',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /**
@@ -522,6 +549,49 @@ export const AUDIT_GENESIS_HASH = 'GENESIS';
  * on the instance that made it; this TTL bounds how stale other API instances can be.
  */
 export const SETTINGS_CACHE_TTL_MS = 60_000;
+
+/** Invoice enums (spec §6.21, §5.5). */
+export const INVOICE_STATUSES = Object.freeze([
+  'draft',
+  'issued',
+  'partially_paid',
+  'paid',
+  'void',
+] as const);
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+/** appointment = the visit's invoice; supplementary = tests ordered after it was issued. */
+export const INVOICE_KINDS = Object.freeze(['appointment', 'supplementary', 'manual'] as const);
+export type InvoiceKind = (typeof INVOICE_KINDS)[number];
+export const INVOICE_LINE_KINDS = Object.freeze([
+  'consultation',
+  'lab_test',
+  'procedure',
+  'other',
+] as const);
+export type InvoiceLineKind = (typeof INVOICE_LINE_KINDS)[number];
+/** Kinds staff may add by hand (lab test lines come only from lab orders). */
+export const INVOICE_STAFF_LINE_KINDS = Object.freeze([
+  'consultation',
+  'procedure',
+  'other',
+] as const);
+/**
+ * Where a line came from: `visit` = added by the system from the appointment or a lab order
+ * (price and quantity fixed, only the discount can change, cannot be removed by hand);
+ * `staff` = added at the desk.
+ */
+export const INVOICE_LINE_ORIGINS = Object.freeze(['visit', 'staff'] as const);
+/** Invoices that are still owed (after issue, not fully paid). */
+export const INVOICE_OPEN_STATUSES = Object.freeze(['issued', 'partially_paid'] as const);
+export const BILLING_RULES = Object.freeze({
+  maxQuantity: 999,
+  maxLines: 50,
+  maxTaxRateBps: 10_000,
+  descriptionMax: 200,
+  notesMax: 1000,
+  reasonMinLength: 3,
+  reasonMaxLength: 500,
+});
 
 /** Payment methods (spec §6.5 billing.paymentMethods; used by payments in Phase 7). */
 export const PAYMENT_METHODS = Object.freeze([
@@ -776,6 +846,12 @@ export const ERROR_CODES = Object.freeze({
   RESULTS_INCOMPLETE: 'RESULTS_INCOMPLETE',
   PAYMENT_EXCEEDS_BALANCE: 'PAYMENT_EXCEEDS_BALANCE',
   DISCOUNT_REQUIRES_ADMIN: 'DISCOUNT_REQUIRES_ADMIN',
+  // Not in §16 (Phase 7): issuing an invoice that has no lines.
+  INVOICE_EMPTY: 'INVOICE_EMPTY',
+  // Not in §16 (Phase 7): voiding an invoice with money still paid on it (refund first).
+  VOID_REQUIRES_REFUND: 'VOID_REQUIRES_REFUND',
+  // Not in §16 (Phase 7): a refund larger than what is left of the payment.
+  REFUND_EXCEEDS_PAYMENT: 'REFUND_EXCEEDS_PAYMENT',
   // Not in §16: oversized JSON body (see ROADMAP Phase 0 notes). FILE_TOO_LARGE is for uploads.
   PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',
@@ -823,6 +899,9 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = Object.fre
   RESULTS_INCOMPLETE: 422,
   PAYMENT_EXCEEDS_BALANCE: 422,
   DISCOUNT_REQUIRES_ADMIN: 422,
+  INVOICE_EMPTY: 422,
+  VOID_REQUIRES_REFUND: 422,
+  REFUND_EXCEEDS_PAYMENT: 422,
   PAYLOAD_TOO_LARGE: 413,
   FILE_TOO_LARGE: 413,
   UNSUPPORTED_FILE_TYPE: 415,

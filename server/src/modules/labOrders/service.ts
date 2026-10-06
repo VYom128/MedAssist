@@ -31,6 +31,12 @@ import { buildPatientSearchQuery } from '../../utils/search.js';
 import { withTransaction } from '../../utils/transaction.js';
 import { openLabReport } from '../documents/service.js';
 import { assertDocumentationOpen, loadEncounter } from '../encounters/service.js';
+import {
+  addLabOrderToInvoice,
+  afterInvoiceSync,
+  removeOrFlagCancelledLabItems,
+  type SyncResult,
+} from '../invoices/sync.service.js';
 import { LabTest } from '../labTests/model.js';
 import { Patient } from '../patients/model.js';
 import { resolveMyPatientId } from '../patients/portal.service.js';
@@ -185,24 +191,27 @@ export async function createLabOrder(
       ],
       { session },
     );
-    return doc!;
+    // Placed after signing: its tests are billed on the visit's draft (or a supplementary one).
+    const invoice = place ? await addLabOrderToInvoice(doc!, { session, by: user.id, now }) : null;
+    return { doc: doc!, invoice };
   });
 
   await audit.record({
     action: AUDIT_ACTIONS.LAB_ORDER_CREATE,
     actor: actorOf(user),
-    resource: resourceOf(created),
-    patient: created.patient,
+    resource: resourceOf(created.doc),
+    patient: created.doc.patient,
     request: meta,
     metadata: {
-      status: created.status,
+      status: created.doc.status,
       testCount: items.length,
-      priority: created.priority,
+      priority: created.doc.priority,
       clinicalNotesGiven: Boolean(input.clinicalNotes),
     },
   });
-  if (place) emitLabWorklistUpdated([created._id.toString()]);
-  return toDoctorView(await loadLabOrder(created._id, { detail: true }));
+  await afterInvoiceSync(user, [created.invoice], meta, 'lab_order');
+  if (place) emitLabWorklistUpdated([created.doc._id.toString()]);
+  return toDoctorView(await loadLabOrder(created.doc._id, { detail: true }));
 }
 
 /** PATCH /lab-orders/:id – the ordering doctor changes a draft's tests, priority or notes. */
@@ -351,14 +360,19 @@ export async function cancelLabOrder(
     );
   }
   const now = new Date();
-  await applyOrderTransition(
-    o,
-    'cancelled',
-    { cancellation: { by: user.id, at: now, reason } },
-    user.id,
-    'Cancelled by the ordering doctor',
-    { at: now },
-  );
+  const openItems = o.items.filter((i) => i.status !== 'cancelled').map((i) => i._id);
+  const invoices = await withTransaction(async (session) => {
+    await applyOrderTransition(
+      o,
+      'cancelled',
+      { cancellation: { by: user.id, at: now, reason } },
+      user.id,
+      'Cancelled by the ordering doctor',
+      { at: now, session },
+    );
+    // Every test of the order leaves the draft invoice, or is flagged on an issued one.
+    return removeOrFlagCancelledLabItems(o._id, openItems, { session, by: user.id, now });
+  });
   await audit.record({
     action: AUDIT_ACTIONS.LAB_ORDER_CANCEL,
     actor: actorOf(user),
@@ -367,6 +381,7 @@ export async function cancelLabOrder(
     request: meta,
     metadata: { reasonGiven: true, from: o.status },
   });
+  await afterInvoiceSync(user, invoices, meta, 'lab_cancel');
   emitLabWorklistUpdated([o._id.toString()]);
   return freshView(user, o._id);
 }
@@ -410,7 +425,7 @@ export async function cancelLabOrderItem(
 
   const itemOid = new Types.ObjectId(itemId);
   const now = new Date();
-  const status = await withTransaction(async (session) => {
+  const { status, invoices } = await withTransaction(async (session) => {
     const updated = await LabOrder.updateOne(
       {
         _id: o._id,
@@ -430,7 +445,18 @@ export async function cancelLabOrderItem(
     if (updated.modifiedCount === 0) {
       throw ApiError.conflict('This lab order changed meanwhile. Reload it and try again.');
     }
-    return recomputeOrderStatus(o._id, { by: user.id, session, note: 'All tests cancelled' });
+    const orderStatus = await recomputeOrderStatus(o._id, {
+      by: user.id,
+      session,
+      note: 'All tests cancelled',
+    });
+    // The test leaves the draft invoice, or is flagged on an issued one for a refund.
+    const changed: SyncResult[] = await removeOrFlagCancelledLabItems(o._id, [itemOid], {
+      session,
+      by: user.id,
+      now,
+    });
+    return { status: orderStatus, invoices: changed };
   });
 
   await audit.record({
@@ -441,6 +467,7 @@ export async function cancelLabOrderItem(
     request: meta,
     metadata: { itemId, reasonGiven: true, orderStatus: status },
   });
+  await afterInvoiceSync(user, invoices, meta, 'lab_cancel');
   emitLabWorklistUpdated([o._id.toString()]);
   emitLabOrderChanged(o._id.toString(), [o.orderedBy._id.toString()]);
   return freshView(user, o._id);

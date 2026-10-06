@@ -6,6 +6,7 @@ import { LabOrder } from '../src/modules/labOrders/model.js';
 import { getStorage } from '../src/services/storage/index.js';
 import { LabTest } from '../src/modules/labTests/model.js';
 import { DoctorLeave } from '../src/modules/leaves/model.js';
+import { Invoice } from '../src/modules/invoices/model.js';
 import { Patient } from '../src/modules/patients/model.js';
 import { Service } from '../src/modules/services/model.js';
 import { User } from '../src/modules/users/model.js';
@@ -308,6 +309,35 @@ async function buildContext(role: Role): Promise<Ctx> {
     uploadedBy: me.user._id,
     uploadedByRole: role,
   });
+  // Phase 7: a manual draft and an unpaid issued invoice of `patient`.
+  const invoiceLine = {
+    kind: 'other',
+    origin: 'staff',
+    description: 'Matrix line',
+    quantity: 1,
+    unitPricePaise: 1000,
+    discountPaise: 0,
+    taxRateBps: 0,
+    taxPaise: 0,
+    lineTotalPaise: 1000,
+  };
+  const invoiceBase = {
+    kind: 'manual',
+    patient: patient.id,
+    items: [invoiceLine],
+    subtotalPaise: 1000,
+    totalPaise: 1000,
+    balancePaise: 1000,
+  };
+  const [draftInvoice, issuedInvoice] = await Invoice.create([
+    { ...invoiceBase, status: 'draft' },
+    {
+      ...invoiceBase,
+      status: 'issued',
+      invoiceNumber: `INV-1999-${String(n).padStart(6, '0')}`,
+      issuedAt: new Date(),
+    },
+  ]);
   return {
     me,
     targetId: target._id.toString(),
@@ -358,6 +388,8 @@ async function buildContext(role: Role): Promise<Ctx> {
     revisionLabItemId: revision.items[0]!._id.toString(),
     documentId: report._id.toString(),
     myDocumentId: mine._id.toString(),
+    draftInvoiceId: draftInvoice!._id.toString(),
+    issuedInvoiceId: issuedInvoice!._id.toString(),
     n,
   };
 }
@@ -415,6 +447,8 @@ const send = (row: Row, c: Ctx | null) => {
       revisionLabItemId: zero,
       documentId: zero,
       myDocumentId: zero,
+      draftInvoiceId: zero,
+      issuedInvoiceId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -451,7 +485,13 @@ async function auditCount() {
 describe('RBAC matrix', () => {
   let emails: ReturnType<typeof captureEmails>;
   beforeAll(async () => {
-    await Promise.all([Appointment.init(), Encounter.init(), Prescription.init(), LabOrder.init()]);
+    await Promise.all([
+      Appointment.init(),
+      Encounter.init(),
+      Prescription.init(),
+      LabOrder.init(),
+      Invoice.init(),
+    ]);
     await resetDb();
     emails = captureEmails(); // welcome and reset emails are sent in the background
   });
