@@ -5,6 +5,7 @@ import { config } from './config/env.js';
 import { createApp } from './app.js';
 import { startJobs } from './jobs/index.js';
 import { flushAudit } from './services/audit.service.js';
+import { initStorage } from './services/storage/index.js';
 import { closeSocket, initSocket } from './socket/index.js';
 import { listen, PortInUseError } from './utils/listen.js';
 import { logger, serializeError } from './utils/logger.js';
@@ -13,6 +14,7 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 async function start() {
   await connectDB();
+  await initStorage();
 
   const app = createApp();
   let server: Server;

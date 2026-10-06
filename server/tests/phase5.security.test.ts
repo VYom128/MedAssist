@@ -12,6 +12,7 @@ import { logger } from '../src/utils/logger.js';
 import { auditEntries, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
 import {
+  createLabTest,
   createPatient,
   insertAppointment,
   loginAsDoctor,
@@ -46,7 +47,7 @@ afterEach(() => emails.restore());
 
 /** Words of the clinical content used below – none may appear in audit, logs or events. */
 const CLINICAL =
-  /Wheezing|breathless|asthma|bronchospasm|Amoxicillin|Salbutamol|Penicillin|inhaler|J45|nebulise/i;
+  /Wheezing|eosinophils|breathless|asthma|bronchospasm|Amoxicillin|Salbutamol|Penicillin|inhaler|J45|nebulise/i;
 
 /** A doctor's patient with a signed, amended note and an issued prescription. */
 async function careRecord() {
@@ -76,7 +77,25 @@ async function careRecord() {
       changes: { examination: 'Bilateral wheeze, no bronchospasm at rest' },
     });
   expect(amend.status).toBe(201);
-  return { ...c, patientId, prescriptionId: c.prescriptionId! };
+  // Phase 6: a lab order on the signed note (placed at once), with notes for the lab.
+  const test = await createLabTest();
+  const lab = await api()
+    .post('/api/v1/lab-orders')
+    .set(c.doctor.auth)
+    .send({
+      encounterId: c.encounterId,
+      testIds: [test._id.toString()],
+      clinicalNotes: 'Wheezing – check eosinophils',
+    });
+  expect(lab.status).toBe(201);
+  return {
+    ...c,
+    patientId,
+    prescriptionId: c.prescriptionId!,
+    testId: test._id.toString(),
+    labOrderId: lab.body.data.id as string,
+    labItemId: lab.body.data.items[0].id as string,
+  };
 }
 
 describe('doctors without a care relationship', () => {
@@ -112,6 +131,21 @@ describe('doctors without a care relationship', () => {
       ['post', `/prescriptions/${c.prescriptionId}/cancel`, { reason: 'Not my patient here' }],
       ['post', `/prescriptions/${c.prescriptionId}/reissue`, { reason: 'Not my patient here' }],
       ['post', `/prescriptions/${c.prescriptionId}/issue`, {}],
+      // Phase 6: lab orders
+      ['get', `/lab-orders?patient=${c.patientId}`],
+      ['get', `/lab-orders/${c.labOrderId}`],
+      ['post', '/lab-orders', { encounterId: c.encounterId, testIds: [c.testId] }],
+      ['patch', `/lab-orders/${c.labOrderId}`, { priority: 'urgent' }],
+      ['post', `/lab-orders/${c.labOrderId}/discard`],
+      ['post', `/lab-orders/${c.labOrderId}/cancel`, { reason: 'Not my patient here' }],
+      [
+        'post',
+        `/lab-orders/${c.labOrderId}/items/${c.labItemId}/cancel`,
+        { reason: 'Not my patient here' },
+      ],
+      ['post', `/lab-orders/${c.labOrderId}/acknowledge`],
+      ['get', `/lab-orders/${c.labOrderId}/report.pdf`],
+      ['get', `/documents?patient=${c.patientId}`],
     ];
     const before = (await auditEntries('access.denied')).length;
     for (const [method, path, body] of reqs) {
@@ -129,6 +163,8 @@ describe('doctors without a care relationship', () => {
     expect(mine.body.data).toEqual([]);
     const notes = await api().get('/api/v1/encounters').set(stranger.auth);
     expect(notes.body.data).toEqual([]);
+    const labOrders = await api().get('/api/v1/lab-orders').set(stranger.auth);
+    expect(labOrders.body.data).toEqual([]);
   });
 
   it('admins and receptionists cannot read notes or amendments (403), nor edit prescriptions', async () => {

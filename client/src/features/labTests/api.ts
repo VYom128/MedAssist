@@ -24,6 +24,8 @@ export interface LabParameter {
   unit: string | null;
   valueType: LabValueType;
   options: string[];
+  /** Options flagged 'abnormal' as results (Phase 6). */
+  abnormalOptions?: string[];
   ranges: ReferenceRange[];
 }
 

@@ -11,6 +11,14 @@ export interface AppointmentChanged {
   appointmentId: string;
 }
 
+/** Lab events (Phase 6): ids only. */
+export interface LabWorklistUpdated {
+  orderIds: string[];
+}
+export interface LabOrderChanged {
+  orderId: string;
+}
+
 /** The socket (or a stand-in in tests). */
 type EventSource = Pick<Socket, 'on' | 'off'>;
 
@@ -25,20 +33,38 @@ export const queueUpdatedTags = ({ doctorId, date }: QueueUpdated) => [
   'QueueBoard' as const,
 ];
 
+/** Cache tags to refresh when lab orders changed. */
+export const labTags = (orderIds: readonly string[]) => [
+  { type: 'LabWorklist' as const, id: 'LIST' },
+  ...orderIds.map((id) => ({ type: 'LabOrder' as const, id })),
+];
+
 /**
  * Maps socket events to RTK Query invalidation: `queue.updated` → that doctor's queue, the
  * calendars showing that date, appointment lists, free slots; `appointment.changed` → that
- * appointment. Returns a function that removes the listeners.
+ * appointment; `lab.worklist.updated` → the lab lists and those orders; `lab.order.changed` and
+ * `lab.critical` → that order and the lists (the doctor's critical alert reads them). Returns a
+ * function that removes the listeners.
  */
 export function attachInvalidation(source: EventSource, dispatch: Dispatch): () => void {
   const onQueue = (payload: QueueUpdated) =>
     dispatch(apiSlice.util.invalidateTags(queueUpdatedTags(payload)));
   const onAppointment = ({ appointmentId }: AppointmentChanged) =>
     dispatch(apiSlice.util.invalidateTags([{ type: 'Appointment', id: appointmentId }]));
+  const onWorklist = ({ orderIds }: LabWorklistUpdated) =>
+    dispatch(apiSlice.util.invalidateTags(labTags(orderIds ?? [])));
+  const onLabOrder = ({ orderId }: LabOrderChanged) =>
+    dispatch(apiSlice.util.invalidateTags(labTags([orderId])));
   source.on('queue.updated', onQueue);
   source.on('appointment.changed', onAppointment);
+  source.on('lab.worklist.updated', onWorklist);
+  source.on('lab.order.changed', onLabOrder);
+  source.on('lab.critical', onLabOrder);
   return () => {
     source.off('queue.updated', onQueue);
     source.off('appointment.changed', onAppointment);
+    source.off('lab.worklist.updated', onWorklist);
+    source.off('lab.order.changed', onLabOrder);
+    source.off('lab.critical', onLabOrder);
   };
 }

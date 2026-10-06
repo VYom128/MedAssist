@@ -25,6 +25,7 @@ interface ParameterLike {
   unit?: string | null;
   valueType: string;
   options?: readonly string[] | null;
+  abnormalOptions?: readonly string[] | null;
   ranges?: readonly object[] | null;
 }
 
@@ -39,6 +40,7 @@ export function parameterView(p: ParameterLike) {
     unit: p.unit ?? null,
     valueType: p.valueType,
     options: [...(p.options ?? [])],
+    abnormalOptions: [...(p.abnormalOptions ?? [])],
     ranges: (p.ranges ?? []).map((r) => clean({ ...r })),
   };
 }

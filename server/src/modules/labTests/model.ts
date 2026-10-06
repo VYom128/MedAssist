@@ -10,7 +10,7 @@ const { ObjectId } = Schema.Types;
 
 /**
  * Reference range for a numeric parameter. Ages are whole years, both ends inclusive; missing
- * ends are open. Flag computation from these ranges comes in Phase 6 (spec §8.7).
+ * ends are open. Flags are computed from these in labOrders/ranges.ts (spec §8.7).
  */
 const rangeSchema = new Schema(
   {
@@ -33,6 +33,7 @@ const parameterSchema = new Schema(
     unit: String,
     valueType: { type: String, enum: LAB_VALUE_TYPES, required: true },
     options: { type: [String], default: [] }, // valueType 'option'
+    abnormalOptions: { type: [String], default: [] }, // options flagged 'abnormal' (Phase 6)
     ranges: { type: [rangeSchema], default: [] }, // valueType 'number'
   },
   { _id: false },

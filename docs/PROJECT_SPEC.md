@@ -480,19 +480,27 @@ stateDiagram-v2
 ### 5.4 Lab order
 ```mermaid
 stateDiagram-v2
-  [*] --> ordered
+  [*] --> draft: ordered during a consultation
+  draft --> ordered: note signed (number assigned)
+  draft --> cancelled: discarded
   ordered --> sample_collected
   ordered --> cancelled
   sample_collected --> sample_rejected
+  sample_collected --> cancelled: all tests cancelled
   sample_rejected --> ordered: recollect
+  sample_rejected --> cancelled
   sample_collected --> processing
   processing --> result_entered: all items have results
+  processing --> cancelled: all tests cancelled
   result_entered --> processing: verifier sends back
   result_entered --> verified
   verified --> released
   released --> released: revision (new result version)
 ```
-Order status is derived from its items where relevant (e.g. `result_entered` only when every non-cancelled item has results).
+Order status is derived from its items where relevant (e.g. `result_entered` only when every non-cancelled item has results; `cancelled` when every item is cancelled). Every change goes through `STATE_MACHINES.labOrder` + `assertTransition` and one conditional update (`applyOrderTransition`, Phase 6).
+
+- **`draft`** (Phase 6, D119): orders added during a consultation are private drafts of the ordering doctor (editable, discardable); signing the note places them (`ordered`, `orderNumber`, `orderedAt`) in the sign transaction. The doctor cancels a whole placed order only while no sample is held (`ordered`, `sample_rejected`); single tests can be cancelled until their results are complete.
+- **Revision after release** (D125): a lab technician revises one released test with a reason (≥ 10 chars, complete values). With dual verification on it waits as the item's `pendingRevision` until a **different** technician verifies it (`verify-revision`); with it off it applies at once. Applying moves the old values to `previousResults`, bumps `resultVersion`, generates a new report PDF, clears the doctor's acknowledgement and notifies the patient and the doctor. Until then the patient keeps seeing the last released version; the patient never sees pending revisions or previous versions, only a "Corrected" label.
 
 ### 5.5 Invoice
 `draft → issued → partially_paid → paid`; `issued/partially_paid → void` (after refunds); `paid → partially_paid` only through a refund. Draft is editable; issued is locked.
@@ -921,35 +929,47 @@ indexes: { sourceType: 1, sourceId: 1, sourceVersion: 1, language: 1 } unique
   encounter: ObjectId ref Encounter, appointment: ObjectId ref Appointment
   priority: enum ['routine','urgent'], default 'routine'
   clinicalNotes: String, max 500            // why the test is needed; visible to lab
-  status: enum ['ordered','sample_collected','sample_rejected','processing','result_entered','verified','released','cancelled']
+  status: enum ['draft','ordered','sample_collected','sample_rejected','processing','result_entered','verified','released','cancelled']
+  orderedAt: Date                           // Phase 6: set when placed (drafts have none); "placed" = has orderedAt
   sample: {
-    sampleId: String, unique sparse          // barcode value
+    sampleId: String, unique sparse          // barcode value, 'S26-000001' (counter per clinic year)
     type: String, collectedBy: ref User, collectedAt: Date,
+    patientAgeYears: Number                  // Phase 6: age at collection (reference ranges, report)
     rejection: { reason: String, by: ref User, at: Date }
   }
   items: [{
     test: ObjectId ref LabTest, required
-    testSnapshot: { code, name, pricePaise }            // snapshot
+    testSnapshot: { code, name, pricePaise, sampleType, turnaroundHours }   // snapshot (+ sampleType, TAT: Phase 6)
     status: enum ['pending','result_entered','verified','cancelled']
     results: [{
       parameterKey, name, unit,
       value: Mixed, referenceText: String,
-      flag: enum ['normal','low','high','critical_low','critical_high','abnormal','na']
+      flag: enum ['normal','low','high','critical_low','critical_high','abnormal','na']   // always computed on the server
     }]
-    remarks: String
+    remarks: String, max 1000                // internal: lab + doctors only, never on the report or to the patient (D127)
     resultVersion: Number, default 1
-    previousResults: [{ version, results, revisedBy, revisedAt, reason }]
+    previousResults: [{ version, results, remarks, enteredBy, verifiedBy, revisedBy, revisedAt, reason }]
+    pendingRevision: { results, remarks, reason, by, at }   // Phase 6: a revision awaiting a second technician
+    criticalAlertedVersion: Number           // Phase 6: the result version whose critical alert was sent (once)
     enteredBy: ref User, enteredAt: Date
     verifiedBy: ref User, verifiedAt: Date
+    cancellation: { by, at, reason }         // Phase 6: single test cancelled
   }]
   hasCritical: Boolean, default false
-  reportDocument: ObjectId ref Document
+  reportDocument: ObjectId ref Document      // the current report (older ones stay, hidden from the patient)
   releasedAt: Date, releasedBy: ref User
+  reviewedByDoctorAt: Date, reviewedBy: ref User   // Phase 6: "results to review" acknowledgement (cleared on release/revision)
+  tatBreachedAt: Date                        // Phase 6: set once by the hourly turnaround job
   cancellation: { by, at, reason }
   statusHistory: [{ status, at, by, note }]
+  createdBy, updatedBy: ref User
 }
-indexes: { status: 1, priority: -1, createdAt: 1 } (lab worklist), { patient: 1, createdAt: -1 }
+indexes: { status: 1, priority: -1, createdAt: 1 } (lab worklist), { patient: 1, createdAt: -1 },
+  { orderedBy: 1, status: 1 }, { encounter: 1 }, { 'sample.sampleId': 1 } unique sparse,
+  { orderNumber: 1 } unique (partial: string)
 options: optimisticConcurrency: true
+rules: items of a released order change only through the revision service (internal token,
+  else 409 RECORD_LOCKED); lab orders are never deleted or bulk-written.
 ```
 
 ### 6.21 `invoices`
@@ -1714,12 +1734,13 @@ Reports (§7.18) render as table + chart, filterable by date range, exportable t
 | `DOCUMENTATION_WINDOW_CLOSED` | 422 | A note edited or signed after the late documentation window (in consultation or ≤ 72 h after completion; Phase 5, D102) |
 | `ALLERGY_ACK_REQUIRED` | 422 | A prescribed drug matches a recorded allergy without an acknowledgement; `details` list the items (Phase 5, D113) |
 | `SIGN_VALIDATION_FAILED` | 422 | The note (or prescription) lacks what signing/issuing needs; `details` list the fields (Phase 5, D106) |
-| `SELF_VERIFICATION_NOT_ALLOWED` | 422 | Same lab tech entering and verifying |
+| `SELF_VERIFICATION_NOT_ALLOWED` | 422 | Same lab tech entering and verifying – results (`verify`) or a revision (`verify-revision`), while dual verification is on (Phase 6, D124) |
+| `RESULTS_INCOMPLETE` | 422 | Lab results miss values the action needs (verify with tests not fully entered; a revision without every parameter); `details` list them (Phase 6, D123) |
 | `PAYMENT_EXCEEDS_BALANCE` | 422 | Overpayment |
 | `DISCOUNT_REQUIRES_ADMIN` | 422 | Discount over allowed limit |
 | `PAYLOAD_TOO_LARGE` | 413 | JSON body over the size limit (Phase 0) |
-| `FILE_TOO_LARGE` | 413 | Upload over limit |
-| `UNSUPPORTED_FILE_TYPE` | 415 | Not PDF/JPG/PNG |
+| `FILE_TOO_LARGE` | 413 | Upload over `MAX_UPLOAD_MB` (Phase 6) |
+| `UNSUPPORTED_FILE_TYPE` | 415 | Not PDF/JPG/PNG by its first bytes (magic numbers) – the name and Content-Type are ignored (Phase 6, D129) |
 | `RATE_LIMITED` | 429 | Too many requests |
 | `AI_DISABLED` | 403 | Turned off in settings or patient withdrew consent |
 | `AI_UNAVAILABLE` | 503 | Provider error/timeout |
@@ -1786,6 +1807,8 @@ Record decisions here as they are made (date, decision, reason).
 | 6 | File storage in production | Cloudinary (free tier) |
 
 ### Decisions made
+Phase 6 key decisions: lab orders start as doctor-private drafts placed when the note is signed (D119); a placed lab order is a care relationship and the lab tech's only way to a patient (D120); views per role, patients see only current released results (D121); flags only on the server (D122); dual verification for verify and verify-revision (D124); released results change only through a verified revision (D125); critical alerts once per result version, without clinical text (D126); item remarks are internal (D127); every server PDF goes through `pdf.service` and is stored as a Document (D128); uploads are checked by magic bytes and stored through the storage adapter, never served statically (D129).
+
 Phase 5 key decisions: the care relationship is a list of pluggable checks in `patientAccess` (appointments now; lab orders in Phase 6, follow-ups in Phase 8), cached per request (D97); the draft note is created in the start/call-next transaction (D100); clinical records are edited with `expectedVersion` and audited by field name only (D101, D114); signed notes change only through the amendment service's internal path (D105); one transaction signs, issues and completes (D106); one current prescription per encounter via `isCurrent` (D108); the allergy check is a name + drug-class convenience check with per-item acknowledgement (D113); clinical drafts live in memory only on the client (D116).
 
 Phase 4 key decisions: booking lock = `bookingVersion` bumped on the doctor and the patient inside the transaction, with the partial unique index as the last guard (D79); `assertTransition` + one conditional update for every status change (D81); walk-ins take the next free slot or an overbook place (D84); Socket.IO events carry ids only and are sent after commit (D88); the queue board shows tokens, doctors and rooms only, behind `KIOSK_KEY` (D87); jobs run with node-cron only when `JOBS_ENABLED=true` (D90); admins view appointments but the UI offers them no actions (D91).
@@ -1916,3 +1939,19 @@ Phase 1 key decisions: patient self-registration creates a User only, with no Pa
 | D116 | 2026-09-24 | **Client drafts in memory only**: `consultDraft` and `rxDraft` Redux slices (cleared on logout); autosave 2 s after typing, on blur, tab change and Ctrl/⌘+S, one request in flight, offline back-off, conflict/locked/closed stop autosave with "Reload latest"; half-typed diagnoses, incomplete prescription rows and invalid vitals are never sent. Leaving with unsaved changes asks first. | Patient data never in browser storage. |
 | D117 | 2026-09-24 | **Client pages**: consult workspace (sticky header, allergy banner announced once, tabs Vitals / Notes / Diagnosis & plan / Prescription / Follow-up – no lab or AI tabs yet, history panel), review & sign with links to fields, signed view with Amend and history, prescription editor, My patients, patient page, Notes ("Unsigned" drafts > 24 h), reception print button. | §13.4 #4. |
 | D118 | 2026-09-24 | **Seed**: ~20 note templates matched to appointment reasons; a signed note for every completed appointment through a seed-only insert (no 72 h window), ~85 % with prescriptions, ~40 % with follow-ups; allergy-safe prescribing (template alternatives) except one acknowledged demo; three amendments through the service; drafts for today's consultations. `--reset` clears notes, amendments and prescriptions. | §15.3. |
+| D119 | 2026-10-06 | **Lab order `draft`** (§5.4): tests ordered during a consultation are drafts private to the ordering doctor (PATCH, discard = `draft → cancelled`); signing the note places them in the sign transaction (`ordered`, `orderNumber` `LAB-YYYY-NNNNNN`, `orderedAt`); "Order more tests" on a signed note within 72 h places at once. "Placed" = `orderedAt` set; lab techs, receptionists and other doctors never see drafts. | Ordering belongs to the visit; nothing reaches the lab before the note is signed. |
+| D120 | 2026-10-06 | **Care relationship + lab techs (§2.3)**: a placed lab order by the doctor for the patient is a care-relationship check (`CARE_RELATIONSHIP_CHECKS` and `relatedPatientIds`). Lab technicians reach patients only through placed lab orders (scopes demographics, lab, allergies) and get a minimal patient view inside lab orders (name, MRN, age, sex, allergies – no contact details); no `/patients` endpoints. | Minimum necessary for the lab. |
+| D121 | 2026-10-06 | **Lab order views per role**: lab tech – everything incl. versions and pending revisions; doctor – results once an item has them (marked unverified until verified) and critical values at once, old versions, whether a revision is pending (not its values); receptionist – status, tests and prices only (lists per patient/appointment); patient – own released orders, current released results only (no remarks, versions, pending revisions; "Corrected" label); admin – no lab order endpoints. Others → 404 + `access.denied`. | §2.4, §2.5. |
+| D122 | 2026-10-06 | **Flags on the server only** (§8.7): the age/sex-specific range is chosen at entry from the sample's `patientAgeYears` and the patient's sex; client flags are stripped by validation; option parameters use `abnormalOptions`; `na` when nothing to compare. | Clients cannot mislabel results. |
+| D123 | 2026-10-06 | **Result entry**: `PUT …/items/:itemId/results` while `processing`, partial saves allowed; the item becomes `result_entered` (enteredBy/At) when every parameter has a value, the order when every open item has. Verify needs every open item complete (422 `RESULTS_INCOMPLETE`); send-back (with reason) returns entered items to `pending` with values kept. | §4.8. |
+| D124 | 2026-10-06 | **Dual verification** (settings `lab.requireDualVerification`, default on): the verifier must not have entered any of the order's results, and a revision must be verified by someone other than its author → 422 `SELF_VERIFICATION_NOT_ALLOWED`. | §4.8, §8.7. |
+| D125 | 2026-10-06 | **Revision after release** = `released → released`: one test at a time with a reason (≥ 10), complete values; pending until a second technician verifies (or at once with dual verification off); one pending revision per test (409). Released items are locked at the model level (query/save hooks, 409 `RECORD_LOCKED`) except for the revision service's internal token; lab orders are never deleted. | Released results are append-only (§10.5). |
+| D126 | 2026-10-06 | **Critical values**: `hasCritical` from the stored results; the ordering doctor gets a detail-free email and a `lab.critical` socket event (ids only) once per item result version, claimed with a conditional update of `criticalAlertedVersion` (parallel saves alert once); off with `lab.criticalAlertEnabled=false`. Unacknowledged criticals count as "results to review" and can be acknowledged early; release clears the acknowledgement so the final results are reviewed again. | §8.7, §10.3. |
+| D127 | 2026-10-06 | **Item remarks are internal**: shown to lab technicians and doctors, never in the patient view nor on the report PDF (the PDF is patient-visible). The form says so. | Found in the Phase 6 final check: the PDF printed remarks the patient API hid. |
+| D128 | 2026-10-06 | **Report PDF on release/revision**: built with `services/pdf.service.ts` (PDFKit standard fonts, clinic header, tables, page footers) before the transaction, stored, then saved as a generated `lab_report` Document inside the release/revision transaction (an orphaned file is logged if it fails); older reports stay for staff, hidden from the patient; `GET /lab-orders/:id/report.pdf` streams the current one (audited `document.download`). | §12.2–12.3; one PDF path for all server documents. |
+| D129 | 2026-10-06 | **Uploads**: multer memory storage (`MAX_UPLOAD_MB`, default 10 → 413), real type from magic bytes (`file-type`; PDF/JPEG/PNG → else 415), SHA-256, sanitised names, 30 uploads/hour/user. Storage adapter (`services/storage`, `STORAGE_DRIVER=local` under `UPLOAD_DIR` with random keys in date folders; s3/cloudinary stubs until Phase 11); `UPLOAD_DIR` is never served statically and must be outside the client folder; `storageKey` is `select: false` and in no view. Downloads stream through the API with `attachment`, `nosniff`, `no-store` and are audited. | §10.3, §12.2. |
+| D130 | 2026-10-06 | **Documents per role**: uploads – doctor (referral, imaging, visit_summary, other; related patients), receptionist (id_proof, insurance, referral, other), lab tech (lab_report; patients with a placed order), patient (other, referral; own, always visible to them). Reads – doctor all categories with a relationship; receptionist id_proof/insurance/invoice plus referral/other uploaded by reception or the patient; lab tech lab reports; patient own documents marked visible; admin metadata only (no title/name, no download). Soft delete (`POST /documents/:id/delete` with reason): admins, or the uploader within 24 h; generated documents never. | §2.4, §7.16. |
+| D131 | 2026-10-06 | **Lab sockets and TAT**: `lab.worklist.updated` (room `lab`, lab techs only), `lab.order.changed` (ordering doctor; the patient once released) and `lab.critical`, ids only, after the commit. Hourly `runLabTatJob` sets `tatBreachedAt` once when `orderedAt + max(turnaroundHours)` has passed (no email until Phase 10). | §8.11, D88. |
+| D132 | 2026-10-06 | **Notifications** (§11): sample rejected → patient + receptionists; released/revised → patient + ordering doctor; critical → ordering doctor. Titles and bodies never name tests, values or flags. | §10.3. |
+| D133 | 2026-10-06 | **Seed**: ~80 lab orders from suitable signed notes run through the lab services (released with PDFs, criticals, a revision, cancelled tests, acknowledgements; patient1 always has a report) and 3 demo documents; notifications muted while seeding; `--reset` clears lab orders, documents and the upload directory. | §15.3. |
+| D134 | 2026-10-06 | **Client**: lab worklist (status tabs, urgent first, overdue badges, live), order page (timeline, next-step actions, results grid with ranges and live flag preview, revisions), sample label print page (large-text sample ID, no barcode package), consult Lab orders tab, doctor "Lab results" (critical first) with a persistent critical banner, patient lab reports (+ "Corrected") and documents, reception Documents and status-only Lab orders tabs, shared FileUpload/DocumentList/FilePreview (object URLs from the authorised download, never stored). | §13.4. |

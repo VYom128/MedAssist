@@ -11,12 +11,13 @@ import { clinicDate, formatCalendarDate } from '../../utils/dates';
 import type { Prescription } from '../prescriptions/api';
 import type { Diagnosis, Encounter, FollowUp, NoteChanges } from './api';
 
-/** The consult workspace tabs (spec §4.7; lab orders and the AI summary come in later phases). */
+/** The consult workspace tabs (spec §4.7; the AI summary comes in Phase 9). */
 export const CONSULT_TABS = [
   { id: 'vitals', label: 'Vitals' },
   { id: 'notes', label: 'Notes' },
   { id: 'diagnosis', label: 'Diagnosis & plan' },
   { id: 'prescription', label: 'Prescription' },
+  { id: 'lab', label: 'Lab orders' },
   { id: 'followup', label: 'Follow-up' },
 ] as const;
 export type ConsultTab = (typeof CONSULT_TABS)[number]['id'];

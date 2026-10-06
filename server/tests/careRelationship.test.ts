@@ -2,7 +2,12 @@ import { Types } from 'mongoose';
 import { Appointment } from '../src/modules/appointments/model.js';
 import { Patient } from '../src/modules/patients/model.js';
 import { auditEntries, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
-import { createPatient, insertAppointment, loginAsDoctor } from './helpers/fixtures.js';
+import {
+  createPatient,
+  insertAppointment,
+  insertLabOrder,
+  loginAsDoctor,
+} from './helpers/fixtures.js';
 import { api, expectErrorShape } from './helpers/testApp.js';
 
 /**
@@ -50,6 +55,14 @@ describe('GET /patients/:id as a doctor', () => {
     expect(res.body.data).not.toHaveProperty('adminNotes');
     expect(res.body.data).not.toHaveProperty('portal');
     expect((await auditEntries('patient.view'))[0]?.patient?.toString()).toBe(id);
+  });
+
+  it('a lab order the doctor placed is enough (spec §2.3); a draft order is not', async () => {
+    const { id } = await createPatient();
+    await insertLabOrder({ patient: id, doctor: doctor.id, status: 'draft' });
+    expect((await get(`/patients/${id}`)).status).toBe(404);
+    await insertLabOrder({ patient: id, doctor: doctor.id, status: 'released' });
+    expect((await get(`/patients/${id}`)).status).toBe(200);
   });
 
   it('a future appointment is enough (e.g. reviewing before the visit)', async () => {

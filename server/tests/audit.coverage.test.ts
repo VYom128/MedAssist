@@ -20,7 +20,8 @@ import {
   TEST_PASSWORD,
 } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
-import { insertAppointment, loginAsDoctor } from './helpers/fixtures.js';
+import { pdfBytes } from './helpers/files.js';
+import { createLabTest, insertAppointment, loginAsDoctor } from './helpers/fixtures.js';
 import { api } from './helpers/testApp.js';
 
 /**
@@ -356,7 +357,80 @@ describe('audit coverage', () => {
       .send({
         items: [{ drugName: 'Paracetamol', dose: '1 tablet', frequency: 'SOS', durationDays: 3 }],
       });
+    // lab_order.create (a draft on the unsigned note), .update, .discard
+    const labTest = (await createLabTest())._id.toString();
+    const labDraft = await post('/lab-orders', drToday.auth, {
+      encounterId: noteId,
+      testIds: [labTest],
+    });
+    await api()
+      .patch(`/api/v1/lab-orders/${labDraft.body.data.id}`)
+      .set(drToday.auth)
+      .send({ priority: 'urgent' });
+    const dropped = await post('/lab-orders', drToday.auth, {
+      encounterId: noteId,
+      testIds: [labTest],
+    });
+    await post(`/lab-orders/${dropped.body.data.id}/discard`, drToday.auth);
     await post(`/encounters/${noteId}/sign`, drToday.auth, { expectedVersion: 1 });
+    // lab_order.submit (with the signing), .view, .item_cancel, .cancel (placed on the signed note)
+    await api().get(`/api/v1/lab-orders/${labDraft.body.data.id}`).set(drToday.auth);
+    const placed = await post('/lab-orders', drToday.auth, {
+      encounterId: noteId,
+      testIds: [labTest, (await createLabTest())._id.toString()],
+    });
+    await post(
+      `/lab-orders/${placed.body.data.id}/items/${placed.body.data.items[0].id}/cancel`,
+      drToday.auth,
+      { reason: 'Reagent unavailable' },
+    );
+    await post(`/lab-orders/${placed.body.data.id}/cancel`, drToday.auth, {
+      reason: 'Patient declined',
+    });
+    // The lab workflow: collect_sample, reject_sample, recollect, start_processing,
+    // results_enter, send_back, verify, release, revise, revision_verify; the doctor's
+    // acknowledge. Two lab technicians (dual verification).
+    const lab1 = await loginAs('labtech');
+    const lab2 = await loginAs('labtech');
+    keep(lab1.token, lab2.token);
+    const work = await post('/lab-orders', drToday.auth, {
+      encounterId: noteId,
+      testIds: [labTest],
+    });
+    const lo = `/lab-orders/${work.body.data.id}`;
+    const results = {
+      results: [
+        { parameterKey: 'hb', value: 14 },
+        { parameterKey: 'smear', value: 'Negative' },
+      ],
+    };
+    await post(`${lo}/collect-sample`, lab1.auth);
+    await post(`${lo}/reject-sample`, lab1.auth, { reason: 'Clotted sample' });
+    await post(`${lo}/recollect`, lab1.auth);
+    await post(`${lo}/collect-sample`, lab1.auth);
+    await post(`${lo}/start-processing`, lab1.auth);
+    const item = `${lo}/items/${work.body.data.items[0].id}`;
+    await api().put(`/api/v1${item}/results`).set(lab1.auth).send(results);
+    await post(`${lo}/send-back`, lab2.auth, { reason: 'Recheck please' });
+    await api().put(`/api/v1${item}/results`).set(lab1.auth).send(results);
+    await post(`${lo}/verify`, lab2.auth);
+    await post(`${lo}/release`, lab2.auth);
+    await post(`${item}/revise`, lab1.auth, { ...results, reason: 'Recalibrated analyser' });
+    await post(`${item}/verify-revision`, lab2.auth);
+    await post(`${lo}/acknowledge`, drToday.auth);
+    // document.download (the lab report), document.upload, .view, .delete
+    await api().get(`/api/v1${lo}/report.pdf`).set(drToday.auth);
+    const uploaded = await api()
+      .post('/api/v1/documents')
+      .set(reception.auth)
+      .field('patientId', patientId)
+      .field('category', 'id_proof')
+      .field('title', 'ID card')
+      .attach('file', pdfBytes(), { filename: 'id.pdf', contentType: 'application/pdf' });
+    await api().get(`/api/v1/documents/${uploaded.body.data.id}`).set(reception.auth);
+    await post(`/documents/${uploaded.body.data.id}/delete`, reception.auth, {
+      reason: 'Wrong patient',
+    });
     // prescription.view, encounter.amend, prescription.cancel + prescription.reissue, then the
     // reissued draft is issued and completed by the job (prescription.complete)
     await api().get(`/api/v1/prescriptions/${rx.body.data.id}`).set(drToday.auth);

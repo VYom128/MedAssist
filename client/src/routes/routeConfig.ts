@@ -5,6 +5,9 @@ import {
   FileText,
   FlaskConical,
   IdCard,
+  FileStack,
+  TestTubes,
+  ListChecks,
   ListOrdered,
   LayoutDashboard,
   Receipt,
@@ -30,7 +33,7 @@ export interface AppRoute {
 }
 
 /** Live counts shown next to a sidebar entry (see layouts/NavBadge). */
-export type NavBadgeKind = 'pendingLinks';
+export type NavBadgeKind = 'pendingLinks' | 'labResults';
 
 const dashboard = (role: Role, path: string, load: AppRoute['load']): AppRoute => ({
   path,
@@ -252,6 +255,45 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.ADMIN],
     load: () => import('../features/audit/pages/AuditLogsPage'),
     nav: { label: 'Audit logs', icon: ScrollText },
+  },
+  {
+    path: '/doctor/lab-results',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/labs/pages/DoctorLabResultsPage'),
+    nav: { label: 'Lab results', icon: TestTubes, badge: 'labResults' },
+  },
+  {
+    path: '/doctor/lab-orders/:id',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/labs/pages/DoctorLabOrderPage'),
+  },
+  {
+    path: '/patient/lab-reports',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/labs/pages/MyLabReportsPage'),
+    nav: { label: 'Lab reports', icon: TestTubes },
+  },
+  {
+    path: '/patient/lab-reports/:id',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/labs/pages/MyLabReportPage'),
+  },
+  {
+    path: '/patient/documents',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/documents/pages/MyDocumentsPage'),
+    nav: { label: 'Documents', icon: FileStack },
+  },
+  {
+    path: '/lab/worklist',
+    roles: [ROLES.LABTECH],
+    load: () => import('../features/labs/pages/LabWorklistPage'),
+    nav: { label: 'Worklist', icon: ListChecks },
+  },
+  {
+    path: '/lab/orders/:id',
+    roles: [ROLES.LABTECH],
+    load: () => import('../features/labs/pages/LabOrderPage'),
   },
   {
     path: '/doctor/schedule',

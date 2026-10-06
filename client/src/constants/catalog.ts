@@ -309,3 +309,102 @@ export const RX_TEXT_LIMITS = {
   generalInstructions: 1000,
 } as const;
 export const PRESCRIPTION_REASON_MIN = 10;
+
+// ---- Lab orders (Phase 6, spec §5.4, §6.20) ---------------------------------------------------
+
+export const LAB_ORDER_STATUSES = [
+  'draft',
+  'ordered',
+  'sample_collected',
+  'sample_rejected',
+  'processing',
+  'result_entered',
+  'verified',
+  'released',
+  'cancelled',
+] as const;
+export type LabOrderStatus = (typeof LAB_ORDER_STATUSES)[number];
+export const LAB_ITEM_STATUSES = ['pending', 'result_entered', 'verified', 'cancelled'] as const;
+export type LabItemStatus = (typeof LAB_ITEM_STATUSES)[number];
+export const LAB_FLAGS = [
+  'normal',
+  'low',
+  'high',
+  'critical_low',
+  'critical_high',
+  'abnormal',
+  'na',
+] as const;
+export type LabFlag = (typeof LAB_FLAGS)[number];
+export const LAB_PRIORITIES = ['routine', 'urgent'] as const;
+export type LabPriority = (typeof LAB_PRIORITIES)[number];
+export const LAB_PRIORITY_LABELS: Record<LabPriority, string> = {
+  routine: 'Routine',
+  urgent: 'Urgent',
+};
+/** Server rules (LAB_ORDER_RULES) the forms check first. */
+export const LAB_RULES = {
+  maxTests: 20,
+  clinicalNotesMax: 500,
+  reasonMin: 3,
+  reasonMax: 500,
+  revisionReasonMin: 10,
+  remarksMax: 1000,
+  textValueMax: 500,
+  documentationWindowHours: 72,
+} as const;
+
+// ---- Documents (Phase 6, spec §6.23) ---------------------------------------------------------
+
+export const DOCUMENT_CATEGORIES = [
+  'lab_report',
+  'prescription',
+  'visit_summary',
+  'invoice',
+  'referral',
+  'imaging',
+  'id_proof',
+  'insurance',
+  'other',
+] as const;
+export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+export const DOCUMENT_CATEGORY_LABELS: Record<DocumentCategory, string> = {
+  lab_report: 'Lab report',
+  prescription: 'Prescription',
+  visit_summary: 'Visit summary',
+  invoice: 'Invoice',
+  referral: 'Referral',
+  imaging: 'Imaging',
+  id_proof: 'ID proof',
+  insurance: 'Insurance',
+  other: 'Other',
+};
+export const DOCUMENT_LINK_TYPES = [
+  'appointment',
+  'encounter',
+  'lab_order',
+  'invoice',
+  'followup_request',
+] as const;
+export type DocumentLinkType = (typeof DOCUMENT_LINK_TYPES)[number];
+
+/**
+ * Uploads (spec §10.3): the server checks the bytes and has the last word; the client checks
+ * first so people get a quick, clear message. Size: the server's MAX_UPLOAD_MB default.
+ */
+export const UPLOAD_RULES = {
+  maxMb: 10,
+  mimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
+  extensions: ['.pdf', '.jpg', '.jpeg', '.png'],
+  accept: 'application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png',
+  titleMax: 120,
+  deleteReasonMin: 5,
+} as const;
+
+/** Categories each role may upload (server DOCUMENT_UPLOAD_CATEGORIES). */
+export const DOCUMENT_UPLOAD_CATEGORIES: Partial<Record<string, readonly DocumentCategory[]>> = {
+  doctor: ['referral', 'imaging', 'visit_summary', 'other'],
+  receptionist: ['id_proof', 'insurance', 'referral', 'other'],
+  labtech: ['lab_report'],
+  patient: ['referral', 'other'],
+};

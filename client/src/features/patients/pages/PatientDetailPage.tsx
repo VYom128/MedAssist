@@ -11,6 +11,8 @@ import Tabs from '../../../components/ui/Tabs';
 import { ROLES } from '../../../constants/roles';
 import { isApiQueryError } from '../../../utils/http';
 import { selectCurrentUser } from '../../auth/authSlice';
+import DocumentsPanel from '../../documents/components/DocumentsPanel';
+import PatientLabOrders from '../../labs/components/PatientLabOrders';
 import { useGetPatientQuery } from '../api';
 import InviteButton from '../components/InviteButton';
 import OverviewTab from '../components/OverviewTab';
@@ -20,10 +22,16 @@ import PortalAccessTab from '../components/PortalAccessTab';
 import { patientsBase } from '../paths';
 import { portalState } from '../portal';
 
-const TABS = [
+const BASE_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'portal', label: 'Portal access' },
   { id: 'history', label: 'Appointments & history' },
+];
+/** Reception also handles documents and sees lab order statuses (billing, Phase 7). */
+const RECEPTION_TABS = [
+  ...BASE_TABS,
+  { id: 'documents', label: 'Documents' },
+  { id: 'lab', label: 'Lab orders' },
 ];
 
 /**
@@ -38,6 +46,7 @@ export default function PatientDetailPage() {
   const isReception = user?.role === ROLES.RECEPTIONIST;
   const isAdmin = user?.role === ROLES.ADMIN;
   const base = patientsBase(user?.role);
+  const TABS = isReception ? RECEPTION_TABS : BASE_TABS;
   const tab = TABS.some((t) => t.id === params.get('tab')) ? params.get('tab')! : 'overview';
   const { data: patient, isLoading, isError, error, refetch } = useGetPatientQuery(id);
   const offerInvite = (location.state as { offerInvite?: boolean } | null)?.offerInvite;
@@ -101,6 +110,17 @@ export default function PatientDetailPage() {
           />
         )}
         {tab === 'portal' && <PortalAccessTab patient={patient} canInvite={isReception} />}
+        {tab === 'documents' && isReception && (
+          <DocumentsPanel patientId={patient.id} title="Documents" />
+        )}
+        {tab === 'lab' && isReception && (
+          <Card>
+            <p className="mb-3 text-sm text-muted">
+              Status only – results are for the doctor and the patient.
+            </p>
+            <PatientLabOrders patientId={patient.id} view="reception" />
+          </Card>
+        )}
         {tab === 'history' && (
           <Card>
             <EmptyState

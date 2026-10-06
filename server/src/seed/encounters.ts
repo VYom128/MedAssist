@@ -54,7 +54,7 @@ const FOLLOW_UP_SHARE = 0.6; // of templates with a follow-up → ~40 % of all n
 const AMEND_AT = [4, 24, 44];
 
 /** A number from the appointment number, so each visit gets the same choices on every run. */
-function seedFor(key: string): number {
+export function seedFor(key: string): number {
   return createHash('sha256').update(key).digest().readUInt32BE(0);
 }
 
@@ -115,7 +115,7 @@ function templateFor(reason: string | null | undefined, dept: string, seed: numb
 }
 
 /** A doctor as the acting user for services (autosave, amendments). */
-async function doctorActor(doctorId: Types.ObjectId): Promise<AuthUser> {
+export async function doctorActor(doctorId: Types.ObjectId): Promise<AuthUser> {
   const u = await User.findById(doctorId).lean();
   if (!u) throw new Error(`Seed doctor ${doctorId.toString()} is missing`);
   return {

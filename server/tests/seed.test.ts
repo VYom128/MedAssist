@@ -17,7 +17,9 @@ import { resetDb } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
 import { api } from './helpers/testApp.js';
 
-describe('seed', () => {
+// A full seed (with ~80 lab orders and their PDF reports since Phase 6) takes 15–40 s under the
+// parallel test load; each test here runs it at least once.
+describe('seed', { timeout: 120_000 }, () => {
   beforeAll(() => Promise.all([DoctorProfile.init(), DoctorSchedule.init()]));
   beforeEach(resetDb);
 
@@ -46,6 +48,9 @@ describe('seed', () => {
         amended: 3,
         acknowledgedWarnings: 1,
       }),
+      // tests/seed.labOrders.test.ts checks the lab data and documents.
+      labOrders: expect.objectContaining({ created: 80, released: 55, criticals: 3, revised: 1 }),
+      documents: { created: 3, unchanged: 0 },
     });
 
     const settings = await ClinicSettings.findOne().lean();
@@ -96,6 +101,7 @@ describe('seed', () => {
     expect((await LabTest.findOne({ code: 'DENGUE-NS1' }).lean())?.parameters[0]).toMatchObject({
       valueType: 'option',
       options: ['Negative', 'Positive'],
+      abnormalOptions: ['Positive'],
     });
 
     // No welcome emails: the seed sets demo passwords instead.
@@ -184,6 +190,8 @@ describe('seed', () => {
       patients: { created: 0, updated: 0, unchanged: 60, portalUsers: 8, pending: 1 },
       appointments: expect.objectContaining({ created: 0, updated: 0, skipped: 0 }),
       encounters: expect.objectContaining({ created: 0, prescriptions: 0, todayDrafts: 0 }),
+      labOrders: expect.objectContaining({ created: 0, unchanged: 80, released: 55 }),
+      documents: { created: 0, unchanged: 3 },
     });
     const countsAfter = await Promise.all(
       [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest, Patient].map(

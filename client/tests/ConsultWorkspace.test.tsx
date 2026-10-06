@@ -2,10 +2,12 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { Encounter } from '../src/features/encounters/api';
+import type { LabOrderListItem } from '../src/features/labs/api';
 import { routes } from '../src/routes/routes';
 import { appointment } from './appointments.fixtures';
 import { doctorView, encounter, listOf, prescription, signableNote } from './encounters.fixtures';
 import { authState, makeUser, renderRoutes } from './helpers';
+import { labOrder, labTest, worklistItem } from './labs.fixtures';
 import { fail, ok, server, url } from './msw/server';
 
 /** The consult workspace (spec §4.7, §13.4 #4). */
@@ -30,6 +32,7 @@ function setup({ note = encounter(), patch, rx = null }: Setup = {}) {
     http.get(url('/encounters/e1'), () => ok(current)),
     http.get(url('/patients/p1'), () => ok(doctorView())),
     http.get(url('/encounters'), () => ok([], { meta: listOf([]).meta })),
+    http.get(url('/lab-orders'), () => ok([], { meta: listOf([]).meta })),
     http.get(url('/prescriptions'), ({ request }) => {
       const params = new URL(request.url).searchParams;
       const items = rx && params.get('encounter') === 'e1' ? [{ ...rx, itemCount: 1 }] : [];
@@ -68,12 +71,13 @@ describe('Consult workspace', () => {
     expect(alert).toHaveTextContent('Penicillin');
     expect(screen.getByText('Hypertension')).toBeInTheDocument();
     expect(screen.getByText('Fever for 3 days')).toBeInTheDocument();
-    // Lab orders and the AI summary are later phases: no tabs for them.
+    // The AI summary is a later phase: no tab for it.
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Vitals',
       'Notes',
       'Diagnosis & plan',
       'Prescription',
+      'Lab orders',
       'Follow-up',
     ]);
   });
@@ -382,5 +386,59 @@ describe('Signed note', () => {
         changes: { adviceToPatient: 'Drink fluids' },
       }),
     );
+  });
+});
+
+describe('Lab orders tab', () => {
+  it('orders tests as a draft, lists it, and the sign summary counts the tests', async () => {
+    setup({ note: signableNote() });
+    const orders: LabOrderListItem[] = [];
+    const posted: Record<string, unknown>[] = [];
+    server.use(
+      http.get(url('/lab-tests'), () =>
+        ok([labTest()], { meta: { page: 1, limit: 20, total: 1, totalPages: 1 } }),
+      ),
+      http.get(url('/lab-orders'), () =>
+        ok(orders, { meta: { page: 1, limit: 50, total: orders.length, totalPages: 1 } }),
+      ),
+      http.post(url('/lab-orders'), async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        posted.push(body);
+        orders.push(
+          worklistItem({ id: 'lo5', status: 'draft', orderNumber: null, orderedAt: null }),
+        );
+        return ok(
+          { ...labOrder({ id: 'lo5', status: 'draft', orderNumber: null }) },
+          { status: 201 },
+        );
+      }),
+    );
+    open();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('tab', { name: 'Lab orders' }, { timeout: 5000 }));
+    expect(await screen.findByText('No lab tests ordered')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Add lab tests' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Add lab tests' });
+    // The catalogue shows sample type, preparation and price.
+    const test = await within(dialog).findByRole('button', { name: /Complete Blood Count/ });
+    expect(test).toHaveTextContent('Sample: blood · No fasting needed');
+    expect(test).toHaveTextContent('₹350');
+    // Saving without a test is refused.
+    await user.click(within(dialog).getByRole('button', { name: 'Save lab order' }));
+    expect(within(dialog).getByText('Choose at least one test')).toBeInTheDocument();
+    await user.click(test);
+    await user.selectOptions(within(dialog).getByLabelText('Priority'), 'urgent');
+    await user.type(within(dialog).getByLabelText(/Clinical notes/), 'Pallor');
+    await user.click(within(dialog).getByRole('button', { name: 'Save lab order' }));
+    await waitFor(() =>
+      expect(posted).toEqual([
+        { encounterId: 'e1', testIds: ['t1'], priority: 'urgent', clinicalNotes: 'Pallor' },
+      ]),
+    );
+    expect(await screen.findByText('To be sent when you sign')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Review & sign/ }));
+    const sign = await screen.findByRole('dialog', { name: 'Review and sign' });
+    expect(sign).toHaveTextContent('Complete Blood Count (CBC)');
+    expect(sign).toHaveTextContent('1 test will be sent to the lab');
   });
 });

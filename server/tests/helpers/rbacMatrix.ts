@@ -84,6 +84,33 @@ export interface Ctx {
   prescriptionId: string;
   /** A reissued draft prescription (replaces a cancelled one) on another signed note. */
   reissuedDraftId: string;
+  /** A draft lab order of doctorId on `encounterId` (its note is a draft, window open). */
+  draftLabOrderId: string;
+  /** A placed ('ordered') lab order of doctorId for patientId with two pending items. */
+  labOrderId: string;
+  labItemId: string;
+  /** A released lab order of doctorId for patientId (the patient's own). */
+  releasedLabOrderId: string;
+  releasedLabItemId: string;
+  /**
+   * Lab orders of doctorId in each workflow status (step 2). Results were entered, and pending
+   * revisions made, by another lab technician (`targetId`), so the caller may verify them.
+   */
+  collectedLabOrderId: string;
+  rejectedLabOrderId: string;
+  processingLabOrderId: string;
+  processingLabItemId: string;
+  enteredLabOrderId: string;
+  verifiedLabOrderId: string;
+  revisionLabOrderId: string;
+  revisionLabItemId: string;
+  /**
+   * A generated lab report of patientId (visible to the patient, file in storage); it is also
+   * the report of `releasedLabOrderId`.
+   */
+  documentId: string;
+  /** A document the caller uploaded just now (category 'other'), for delete. */
+  myDocumentId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -92,6 +119,8 @@ export interface Row {
   method: Method;
   path: (c: Ctx) => string;
   body?: (c: Ctx) => object;
+  /** A multipart/form-data request instead of a JSON body (uploads). */
+  multipart?: (c: Ctx) => { fields: Record<string, string>; file: Buffer; filename: string };
   roles: readonly Role[];
   status: number;
   /**
@@ -113,6 +142,22 @@ const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'pa
 const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
 const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionist'];
+const LAB_ORDER_READERS: readonly Role[] = ['doctor', 'labtech', 'receptionist', 'patient'];
+const DOCTOR_LABTECH: readonly Role[] = ['doctor', 'labtech'];
+const LABTECH: readonly Role[] = ['labtech'];
+const DOCUMENT_UPLOADERS: readonly Role[] = ['doctor', 'receptionist', 'labtech', 'patient'];
+/** A category each uploading role may use for `patientId`. */
+const UPLOAD_CATEGORY: Partial<Record<Role, string>> = {
+  doctor: 'referral',
+  receptionist: 'id_proof',
+  labtech: 'lab_report',
+  patient: 'other',
+};
+/** A minimal valid PDF (uploads are checked on their bytes). */
+export const MATRIX_PDF = Buffer.from(
+  '%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\ntrailer << /Root 1 0 R >>\n%%EOF\n',
+  'latin1',
+);
 
 /** A clinic date `days` from today (clinic timezone = the settings default). */
 const clinicDay = (days: number) => addDaysToDate(clinicToday('Asia/Kolkata'), days);
@@ -652,6 +697,174 @@ ENDPOINTS.push(
     roles: DOCTOR,
     status: 200,
   },
+  // Lab orders (spec §7.14): doctors order; lab techs, doctors, reception (status) and patients
+  // (own released) read; admins never.
+  {
+    method: 'get',
+    path: (c) => `/lab-orders?patient=${c.patientId}`,
+    roles: LAB_ORDER_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/lab-orders/${c.releasedLabOrderId}`,
+    roles: LAB_ORDER_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: () => '/lab-orders',
+    body: (c) => ({ encounterId: c.encounterId, testIds: [c.labTestId] }),
+    roles: DOCTOR,
+    status: 201,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/lab-orders/${c.draftLabOrderId}`,
+    body: () => ({ priority: 'urgent' }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.draftLabOrderId}/discard`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.labOrderId}/cancel`,
+    body: () => ({ reason: 'Matrix cancel' }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.labOrderId}/items/${c.labItemId}/cancel`,
+    body: () => ({ reason: 'Reagent unavailable' }),
+    roles: DOCTOR_LABTECH,
+    status: 200,
+  },
+  // Lab workflow (spec §4.8): lab technicians; the doctor acknowledges results.
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.labOrderId}/collect-sample`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.collectedLabOrderId}/reject-sample`,
+    body: () => ({ reason: 'Haemolysed' }),
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.rejectedLabOrderId}/recollect`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.collectedLabOrderId}/start-processing`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'put',
+    path: (c) => `/lab-orders/${c.processingLabOrderId}/items/${c.processingLabItemId}/results`,
+    body: () => ({ results: [{ parameterKey: 'hb', value: 14 }] }),
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.enteredLabOrderId}/verify`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.enteredLabOrderId}/send-back`,
+    body: () => ({ reason: 'Check the values' }),
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.verifiedLabOrderId}/release`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.releasedLabOrderId}/items/${c.releasedLabItemId}/revise`,
+    body: () => ({ results: [], reason: 'Matrix revision reason' }),
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.revisionLabOrderId}/items/${c.revisionLabItemId}/verify-revision`,
+    roles: LABTECH,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/lab-orders/${c.releasedLabOrderId}/acknowledge`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/lab-orders/${c.releasedLabOrderId}/report.pdf`,
+    roles: ['doctor', 'labtech', 'patient'],
+    status: 200,
+  },
+  // Documents (spec §7.16): uploads per role and category; admins see metadata and delete.
+  {
+    method: 'post',
+    path: () => '/documents',
+    multipart: (c) => ({
+      fields: {
+        patientId: c.patientId,
+        category: UPLOAD_CATEGORY[c.me.user.role as Role] ?? 'other',
+        title: 'Matrix upload',
+      },
+      file: MATRIX_PDF,
+      filename: 'matrix.pdf',
+    }),
+    roles: DOCUMENT_UPLOADERS,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/documents?patient=${c.patientId}`,
+    roles: ALL,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/documents/${c.documentId}`,
+    roles: ALL,
+    status: 200,
+    statusFor: { receptionist: 404 }, // lab reports are clinical
+  },
+  {
+    method: 'get',
+    path: (c) => `/documents/${c.documentId}/download`,
+    roles: DOCUMENT_UPLOADERS,
+    status: 200,
+    statusFor: { receptionist: 404 },
+  },
+  {
+    method: 'post',
+    path: (c) => `/documents/${c.myDocumentId}/delete`,
+    body: () => ({ reason: 'Matrix delete' }),
+    roles: ALL,
+    status: 200,
+  },
   // Slots and availability (spec §7.6): any logged-in user
   {
     method: 'get',
@@ -724,6 +937,21 @@ export const PATTERN_CTX = {
   signedEncounterId: ':id',
   prescriptionId: ':id',
   reissuedDraftId: ':id',
+  draftLabOrderId: ':id',
+  labOrderId: ':id',
+  labItemId: ':itemId',
+  releasedLabOrderId: ':id',
+  releasedLabItemId: ':itemId',
+  collectedLabOrderId: ':id',
+  rejectedLabOrderId: ':id',
+  processingLabOrderId: ':id',
+  processingLabItemId: ':itemId',
+  enteredLabOrderId: ':id',
+  verifiedLabOrderId: ':id',
+  revisionLabOrderId: ':id',
+  revisionLabItemId: ':itemId',
+  documentId: ':id',
+  myDocumentId: ':id',
   n: 0,
 } as unknown as Ctx;
 

@@ -30,6 +30,8 @@ const parameter = z.strictObject({
   unit: z.string().trim().max(20).optional(),
   valueType: z.enum(LAB_VALUE_TYPES),
   options: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  /** Options that are flagged 'abnormal' when entered as a result (e.g. 'Positive'). */
+  abnormalOptions: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
   ranges: z.array(range).max(20).optional(),
 });
 
@@ -77,7 +79,8 @@ function rangeIssues(r: RangeInput, at: (string | number)[]): ParameterIssue[] {
  * Catalogue rules beyond field types (spec §6.19): at least one parameter; keys unique; 'option'
  * needs 2+ distinct options and no ranges; 'text' has neither; numeric ranges are consistent, and
  * ranges for the same gender must not overlap in age (ages inclusive). An 'any' range may sit
- * alongside male/female ones: Phase 6 prefers the specific gender.
+ * alongside male/female ones: selectRange() prefers the specific gender. `abnormalOptions` are
+ * a subset of an option parameter's options (at least one option stays normal).
  * Paths are relative to the body (`parameters.0.ranges.1.high`).
  */
 export function parameterIssues(parameters: ParameterInput[]): ParameterIssue[] {
@@ -102,6 +105,25 @@ export function parameterIssues(parameters: ParameterInput[]): ParameterIssue[] 
       }
     } else if (options.length > 0) {
       issues.push({ path: [...at, 'options'], message: 'Only option parameters have options' });
+    }
+    const abnormal = p.abnormalOptions ?? [];
+    if (abnormal.length > 0) {
+      if (p.valueType !== 'option') {
+        issues.push({
+          path: [...at, 'abnormalOptions'],
+          message: 'Only option parameters have abnormal options',
+        });
+      } else if (abnormal.some((o) => !options.includes(o))) {
+        issues.push({
+          path: [...at, 'abnormalOptions'],
+          message: 'Abnormal options must be among the options',
+        });
+      } else if (abnormal.length >= new Set(options).size) {
+        issues.push({
+          path: [...at, 'abnormalOptions'],
+          message: 'At least one option must be normal',
+        });
+      }
     }
     if (p.valueType !== 'number' && ranges.length > 0) {
       issues.push({ path: [...at, 'ranges'], message: 'Only number parameters have ranges' });

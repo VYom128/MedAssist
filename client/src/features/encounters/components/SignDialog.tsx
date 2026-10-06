@@ -59,6 +59,7 @@ export default function SignDialog({
   flush,
   extraProblems = [],
   revision,
+  labOrders = [],
   onClose,
   onGoTo,
   onSigned,
@@ -71,6 +72,8 @@ export default function SignDialog({
   /** Problems found outside the note (e.g. incomplete prescription rows). */
   extraProblems?: Problem[];
   revision: () => number;
+  /** The note's draft lab orders (sent to the lab on signing). */
+  labOrders?: { id: string; priority: string; tests: { code: string; name: string }[] }[];
   onClose: () => void;
   onGoTo: (field: string) => void;
   onSigned: (result: SignResult) => void;
@@ -82,6 +85,7 @@ export default function SignDialog({
   const problems = [...check.problems, ...extraProblems];
   const { warnings } = check;
   const drugs = prescription?.status === 'draft' ? prescription.items : [];
+  const labTests = labOrders.reduce((n, o) => n + o.tests.length, 0);
 
   const close = () => {
     setServerProblems(null);
@@ -177,13 +181,35 @@ export default function SignDialog({
                 'No drugs'
               ),
             },
+            {
+              label: 'Lab tests',
+              value:
+                labTests > 0 ? (
+                  <div>
+                    <ul className="space-y-0.5">
+                      {labOrders.map((o) => (
+                        <li key={o.id}>
+                          {o.tests.map((t) => `${t.name} (${t.code})`).join(', ')}
+                          {o.priority === 'urgent' ? ' – urgent' : ''}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-1 text-muted">
+                      {labTests} test{labTests === 1 ? '' : 's'} will be sent to the lab
+                    </p>
+                  </div>
+                ) : (
+                  'None'
+                ),
+            },
             { label: 'Follow-up', value: formatFollowUp(note.followUp) },
           ]}
         />
         <p className="text-sm text-muted">
           Signing locks the note: later corrections need an amendment with a reason.
-          {drugs.length > 0 ? ' The prescription is issued to the patient.' : ''} The consultation
-          is marked as completed.
+          {drugs.length > 0 ? ' The prescription is issued to the patient.' : ''}
+          {labTests > 0 ? ' The lab orders are sent to the lab.' : ''} The consultation is marked as
+          completed.
         </p>
       </div>
     </Modal>

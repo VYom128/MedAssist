@@ -147,6 +147,8 @@ export function initSocket(httpServer: HttpServer): Server {
     }
     const user = socket.data.user!;
     void socket.join(SOCKET_ROOMS.user(user.id));
+    // Lab technicians follow the worklist (events carry order ids only).
+    if (user.role === ROLES.LABTECH) void socket.join(SOCKET_ROOMS.lab);
     socket.on(SOCKET_EVENTS.QUEUE_SUBSCRIBE, onQueueSubscribe(socket));
     socket.on(SOCKET_EVENTS.QUEUE_UNSUBSCRIBE, (payload: unknown, ack?: Ack) => {
       const parsed = subscribeSchema.safeParse(payload);

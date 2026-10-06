@@ -1,6 +1,9 @@
 import type { Role } from '../src/config/constants.js';
 import { AuditLog } from '../src/modules/audit/model.js';
 import { Department } from '../src/modules/departments/model.js';
+import { Document as DocumentModel } from '../src/modules/documents/model.js';
+import { LabOrder } from '../src/modules/labOrders/model.js';
+import { getStorage } from '../src/services/storage/index.js';
 import { LabTest } from '../src/modules/labTests/model.js';
 import { DoctorLeave } from '../src/modules/leaves/model.js';
 import { Patient } from '../src/modules/patients/model.js';
@@ -17,6 +20,8 @@ import {
   createPatient,
   createSchedule,
   insertAppointment,
+  createLabTest,
+  insertLabOrder,
   nextWeekday,
 } from './helpers/fixtures.js';
 import { addDaysToDate, clinicToday, startOfClinicDay } from '../src/utils/dates.js';
@@ -29,6 +34,7 @@ import {
   ALL,
   ENDPOINTS,
   letters,
+  MATRIX_PDF,
   PUBLIC_ENDPOINTS,
   routeKey,
   type Ctx,
@@ -197,6 +203,111 @@ async function buildContext(role: Role): Promise<Ctx> {
     appointment: otherAppt._id,
     replaces: cancelledRx!._id,
   });
+  // Phase 6: lab orders of doctorId – a draft on the draft note, a placed one and a released one
+  // for `patient`.
+  const labTests = [{ _id: lab!._id, code: lab!.code, name: lab!.name, pricePaise: 100 }];
+  const draftLabOrder = await insertLabOrder({
+    patient: inConsultation.patient,
+    doctor: doctorId,
+    status: 'draft',
+    encounter: encounter.id,
+    appointment: inConsultation._id,
+    tests: labTests,
+  });
+  const labOrder = await insertLabOrder({
+    patient: patient.id,
+    doctor: doctorId,
+    encounter: signedEncounter,
+    appointment: signedAppt._id,
+    tests: [...labTests, ...labTests],
+  });
+  const releasedLabOrder = await insertLabOrder({
+    patient: patient.id,
+    doctor: doctorId,
+    status: 'released',
+    encounter: signedEncounter,
+    appointment: signedAppt._id,
+    items: [
+      {
+        test: lab!._id,
+        testSnapshot: { code: lab!.code, name: lab!.name, pricePaise: 100 },
+        status: 'verified',
+      },
+    ],
+    releasedAt: new Date(),
+  });
+  // Step 2: an order in each workflow status. `target` (another lab technician) entered the
+  // results and made the pending revision, so a lab tech caller may verify them.
+  const hbTest = await createLabTest();
+  const workflow = (status: string, extra: Record<string, unknown> = {}) =>
+    insertLabOrder({
+      patient: patient.id,
+      doctor: doctorId,
+      status,
+      encounter: signedEncounter,
+      appointment: signedAppt._id,
+      tests: [{ _id: hbTest._id, code: hbTest.code, name: hbTest.name, pricePaise: 100 }],
+      ...extra,
+    });
+  const hbItem = (status: string, extra: Record<string, unknown> = {}) => ({
+    test: hbTest._id,
+    testSnapshot: { code: hbTest.code, name: hbTest.name, pricePaise: 100 },
+    status,
+    results: [{ parameterKey: 'hb', name: 'Haemoglobin', value: 14, flag: 'normal' }],
+    enteredBy: target._id,
+    enteredAt: new Date(),
+    ...extra,
+  });
+  const collected = await workflow('sample_collected', {
+    sample: { sampleId: `S99-${String(n).padStart(6, '0')}`, collectedAt: new Date() },
+  });
+  const rejected = await workflow('sample_rejected');
+  const processing = await workflow('processing');
+  const entered = await workflow('result_entered', { items: [hbItem('result_entered')] });
+  const verified = await workflow('verified', { items: [hbItem('verified')] });
+  const revision = await workflow('released', {
+    items: [
+      hbItem('verified', {
+        pendingRevision: {
+          results: [{ parameterKey: 'hb', name: 'Haemoglobin', value: 13, flag: 'normal' }],
+          reason: 'Matrix correction',
+          by: target._id,
+          at: new Date(),
+        },
+      }),
+    ],
+    releasedAt: new Date(),
+  });
+  // Documents: a generated lab report of `patient` (also the released order's report) and a
+  // document the caller uploaded just now.
+  const docBase = {
+    patient: patient.id,
+    mimeType: 'application/pdf',
+    sizeBytes: MATRIX_PDF.length,
+    storageDriver: 'local',
+    storageKey: (
+      await getStorage().save(MATRIX_PDF, { mimeType: 'application/pdf', originalName: 'x.pdf' })
+    ).storageKey,
+    checksumSha256: 'b'.repeat(64),
+  };
+  const report = await DocumentModel.create({
+    ...docBase,
+    category: 'lab_report',
+    title: 'Lab report',
+    originalName: 'report.pdf',
+    isGenerated: true,
+    visibleToPatient: true,
+    linked: { type: 'lab_order', id: releasedLabOrder._id },
+  });
+  await LabOrder.updateOne({ _id: releasedLabOrder._id }, { $set: { reportDocument: report._id } });
+  const mine = await DocumentModel.create({
+    ...docBase,
+    category: 'other',
+    title: 'My upload',
+    originalName: 'mine.pdf',
+    uploadedBy: me.user._id,
+    uploadedByRole: role,
+  });
   return {
     me,
     targetId: target._id.toString(),
@@ -232,6 +343,21 @@ async function buildContext(role: Role): Promise<Ctx> {
     signedEncounterId: signedEncounter.toString(),
     prescriptionId: prescription._id.toString(),
     reissuedDraftId: reissued._id.toString(),
+    draftLabOrderId: draftLabOrder._id.toString(),
+    labOrderId: labOrder._id.toString(),
+    labItemId: labOrder.items[0]!._id.toString(),
+    releasedLabOrderId: releasedLabOrder._id.toString(),
+    releasedLabItemId: releasedLabOrder.items[0]!._id.toString(),
+    collectedLabOrderId: collected._id.toString(),
+    rejectedLabOrderId: rejected._id.toString(),
+    processingLabOrderId: processing._id.toString(),
+    processingLabItemId: processing.items[0]!._id.toString(),
+    enteredLabOrderId: entered._id.toString(),
+    verifiedLabOrderId: verified._id.toString(),
+    revisionLabOrderId: revision._id.toString(),
+    revisionLabItemId: revision.items[0]!._id.toString(),
+    documentId: report._id.toString(),
+    myDocumentId: mine._id.toString(),
     n,
   };
 }
@@ -274,10 +400,30 @@ const send = (row: Row, c: Ctx | null) => {
       signedEncounterId: zero,
       prescriptionId: zero,
       reissuedDraftId: zero,
+      draftLabOrderId: zero,
+      labOrderId: zero,
+      labItemId: zero,
+      releasedLabOrderId: zero,
+      releasedLabItemId: zero,
+      collectedLabOrderId: zero,
+      rejectedLabOrderId: zero,
+      processingLabOrderId: zero,
+      processingLabItemId: zero,
+      enteredLabOrderId: zero,
+      verifiedLabOrderId: zero,
+      revisionLabOrderId: zero,
+      revisionLabItemId: zero,
+      documentId: zero,
+      myDocumentId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
   if (c) req = req.set(c.me.auth);
+  if (row.multipart && c) {
+    const { fields, file, filename } = row.multipart(c);
+    for (const [k, v] of Object.entries(fields)) req = req.field(k, v);
+    return req.attach('file', file, { filename, contentType: 'application/pdf' });
+  }
   if (row.body) req = req.send(row.body(ctx));
   return req;
 };
@@ -305,7 +451,7 @@ async function auditCount() {
 describe('RBAC matrix', () => {
   let emails: ReturnType<typeof captureEmails>;
   beforeAll(async () => {
-    await Promise.all([Appointment.init(), Encounter.init(), Prescription.init()]);
+    await Promise.all([Appointment.init(), Encounter.init(), Prescription.init(), LabOrder.init()]);
     await resetDb();
     emails = captureEmails(); // welcome and reset emails are sent in the background
   });

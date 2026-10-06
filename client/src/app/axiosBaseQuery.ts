@@ -21,6 +21,38 @@ export interface AxiosQueryArgs {
   data?: unknown;
   params?: AxiosRequestConfig['params'];
   headers?: Record<string, string>;
+  /**
+   * 'blob' for file downloads: the result is `{ blob, fileName }` instead of the JSON envelope.
+   * Only use it from hooks (useDownload) – a Blob must never be stored in the Redux state.
+   */
+  responseType?: 'blob';
+  /** Upload progress 0…1 (multipart uploads from hooks, never from cached endpoints). */
+  onUploadProgress?: (fraction: number) => void;
+}
+
+/** A downloaded file (responseType 'blob'). */
+export interface DownloadedFile {
+  blob: Blob;
+  fileName: string | null;
+}
+
+/** `attachment; filename="report.pdf"` → 'report.pdf'. */
+export function fileNameFrom(disposition: unknown): string | null {
+  if (typeof disposition !== 'string') return null;
+  return /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? null;
+}
+
+/** An error body of a blob request arrives as a Blob: read it back as JSON for the message. */
+async function readBlobError(err: unknown) {
+  const response = (err as { response?: { data?: unknown } }).response;
+  if (response && typeof Blob !== 'undefined' && response.data instanceof Blob) {
+    try {
+      response.data = JSON.parse(await response.data.text()) as unknown;
+    } catch {
+      // Not JSON: keep the generic message.
+    }
+  }
+  return err;
 }
 
 interface RefreshPayload {
@@ -78,28 +110,46 @@ export const axiosBaseQuery: BaseQueryFn<AxiosQueryArgs, unknown, ApiQueryError>
   args,
   { getState, dispatch },
 ) => {
-  const send = () => {
+  const send = async () => {
     const token = tokenOf(getState);
-    return http.request({
+    const { onUploadProgress } = args;
+    const res = await http.request({
       url: args.url,
       method: args.method ?? 'GET',
       data: args.data,
       params: args.params,
       headers: { ...args.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(args.responseType ? { responseType: args.responseType } : {}),
+      ...(onUploadProgress
+        ? {
+            onUploadProgress: (e: { loaded: number; total?: number }) =>
+              onUploadProgress(e.total ? e.loaded / e.total : 0),
+          }
+        : {}),
     });
+    if (args.responseType === 'blob') {
+      const file: DownloadedFile = {
+        blob: res.data as Blob,
+        fileName: fileNameFrom(res.headers['content-disposition']),
+      };
+      return file;
+    }
+    return res.data as unknown;
   };
+  const failed = async (err: unknown) =>
+    toApiQueryError(args.responseType === 'blob' ? await readBlobError(err) : err);
 
   try {
-    return { data: (await send()).data };
+    return { data: await send() };
   } catch (err) {
-    const error = toApiQueryError(err);
+    const error = await failed(err);
     if (error.status !== 401 || NO_REFRESH.includes(args.url)) return { error };
 
     if (!(await refreshSession(dispatch))) return { error };
     try {
-      return { data: (await send()).data };
+      return { data: await send() };
     } catch (retryErr) {
-      return { error: toApiQueryError(retryErr) };
+      return { error: await failed(retryErr) };
     }
   }
 };

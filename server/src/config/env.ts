@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { config as loadDotenv } from 'dotenv';
 import { z } from 'zod';
 
@@ -81,6 +83,18 @@ const envSchema = z
     // Background jobs (spec §8.11: reminders, no-shows). Off unless "true"; tests call the job
     // functions directly. Run them on one API instance only.
     JOBS_ENABLED: booleanString,
+
+    // File storage (spec §10.3, §12.2). 'local' writes under UPLOAD_DIR (never served statically);
+    // 's3' and 'cloudinary' come in Phase 11. Tests default to a per-process temp directory.
+    STORAGE_DRIVER: z.enum(['local', 's3', 'cloudinary']).default('local'),
+    UPLOAD_DIR: z
+      .string()
+      .trim()
+      .min(1)
+      .default(
+        isTestEnv ? path.join(tmpdir(), `medassist-test-uploads-${process.pid}`) : './uploads',
+      ),
+    MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(50).default(10),
   })
   .superRefine((env, ctx) => {
     if (env.COOKIE_SAMESITE === 'none' && !env.COOKIE_SECURE) {
@@ -102,6 +116,16 @@ const envSchema = z
         code: 'custom',
         path: ['EMAIL_TRANSPORT'],
         message: 'Must be smtp in production (console prints reset links)',
+      });
+    }
+    // Uploads must never land where the client build could serve them.
+    const clientDir = path.resolve(process.cwd(), '..', 'client');
+    const uploadDir = path.resolve(env.UPLOAD_DIR);
+    if (uploadDir === clientDir || uploadDir.startsWith(`${clientDir}${path.sep}`)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['UPLOAD_DIR'],
+        message: 'Must be outside the client folder',
       });
     }
     if (env.EMAIL_TRANSPORT === 'smtp') {
@@ -164,6 +188,12 @@ export const config = Object.freeze({
   }),
   kiosk: Object.freeze({ key: env.KIOSK_KEY }),
   jobs: Object.freeze({ enabled: env.JOBS_ENABLED }),
+  storage: Object.freeze({
+    driver: env.STORAGE_DRIVER,
+    /** Absolute path of the local driver's directory. */
+    uploadDir: path.resolve(env.UPLOAD_DIR),
+    maxUploadBytes: env.MAX_UPLOAD_MB * 1024 * 1024,
+  }),
 });
 
 export type Config = typeof config;

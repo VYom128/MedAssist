@@ -1,3 +1,4 @@
+import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { connectDB, disconnectDB } from '../config/db.js';
 import { config } from '../config/env.js';
@@ -6,8 +7,10 @@ import { AuditLog } from '../modules/audit/model.js';
 import { Counter } from '../modules/counters/model.js';
 import { Department } from '../modules/departments/model.js';
 import { DoctorProfile } from '../modules/doctors/model.js';
+import { Document } from '../modules/documents/model.js';
 import { NoteAmendment } from '../modules/encounters/amendment.model.js';
 import { Encounter } from '../modules/encounters/model.js';
+import { LabOrder } from '../modules/labOrders/model.js';
 import { LabTest } from '../modules/labTests/model.js';
 import { DoctorLeave } from '../modules/leaves/model.js';
 import { Patient } from '../modules/patients/model.js';
@@ -19,11 +22,15 @@ import { ClinicSettings } from '../modules/settings/model.js';
 import { clearSettingsCache } from '../modules/settings/service.js';
 import { User } from '../modules/users/model.js';
 import * as audit from '../services/audit.service.js';
+import { setNotificationsMuted } from '../services/notification.service.js';
+import { initStorage } from '../services/storage/index.js';
 import { logger, serializeError } from '../utils/logger.js';
 import { seedAppointments } from './appointments.js';
 import { seedDepartments } from './departments.js';
+import { seedDocuments } from './documents.js';
 import { seedEncounters } from './encounters.js';
 import { doctorLogins, seedDoctors } from './doctors.js';
+import { seedLabOrders } from './labOrders.js';
 import { seedLabTests } from './labTests.js';
 import { patientLogins, seedPatients } from './patients.js';
 import { seedServices } from './services.js';
@@ -45,6 +52,8 @@ const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = 
   { name: 'patients', run: seedPatients },
   { name: 'appointments', run: seedAppointments },
   { name: 'encounters', run: seedEncounters },
+  { name: 'labOrders', run: seedLabOrders },
+  { name: 'documents', run: seedDocuments },
 ];
 
 /**
@@ -68,8 +77,12 @@ async function resetData() {
     Encounter.collection.deleteMany({}),
     NoteAmendment.collection.deleteMany({}),
     Prescription.collection.deleteMany({}),
-    Counter.deleteMany({}), // MRN, appointment, ENC and RX numbers and queue tokens
+    LabOrder.collection.deleteMany({}),
+    Document.collection.deleteMany({}),
+    Counter.deleteMany({}), // MRN, APT, ENC, RX, LAB and sample numbers and queue tokens
   ]);
+  // The stored files go with their records (development only – see runSeed).
+  await rm(config.storage.uploadDir, { recursive: true, force: true });
   clearSettingsCache();
 }
 
@@ -125,11 +138,18 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
     await resetData();
     logger.info(
       'Wiped users, sessions, audit logs, clinic setup data, patients, appointments, clinical ' +
-        'notes, prescriptions and counters',
+        'notes, prescriptions, lab orders, documents (and their files) and counters',
     );
   }
+  await initStorage();
   const summary: Record<string, Record<string, number>> = {};
-  for (const seeder of SEEDERS) summary[seeder.name] = await seeder.run();
+  // Demo lab releases, critical values and rejections must not email anyone.
+  setNotificationsMuted(true);
+  try {
+    for (const seeder of SEEDERS) summary[seeder.name] = await seeder.run();
+  } finally {
+    setNotificationsMuted(false);
+  }
   await audit.flushAudit();
   return summary;
 }

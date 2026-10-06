@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import { ipKeyGenerator, rateLimit, type Options } from 'express-rate-limit';
-import { ROLES } from '../config/constants.js';
+import { DOCUMENT_RULES, ROLES } from '../config/constants.js';
 import { config } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 
@@ -62,6 +62,15 @@ export const createPatientBookingLimiter = (options: Partial<Options> = {}) =>
 export const createBoardLimiter = (options: Partial<Options> = {}) =>
   createRateLimiter({ windowMs: MINUTE, limit: 60, ...options });
 
+/** Uploads: 30 / hour per user (spec §10.3). Mount after `authenticate`. */
+export const createUploadLimiter = (options: Partial<Options> = {}) =>
+  createRateLimiter({
+    windowMs: 60 * MINUTE,
+    limit: DOCUMENT_RULES.uploadsPerHour,
+    keyGenerator: (req) => `user:${req.user?.id ?? ''}`,
+    ...options,
+  });
+
 // App instances are off in tests; tests build their own with the factories above.
 const skipInTest = () => config.isTest;
 export const loginLimiter = createLoginLimiter({ skip: skipInTest });
@@ -71,3 +80,4 @@ export const forgotPasswordLimiter = createPasswordResetLimiter({ skip: skipInTe
 export const resetPasswordLimiter = createPasswordResetLimiter({ skip: skipInTest });
 export const patientBookingLimiter = createPatientBookingLimiter({ skip: skipInTest });
 export const boardLimiter = createBoardLimiter({ skip: skipInTest });
+export const uploadLimiter = createUploadLimiter({ skip: skipInTest });

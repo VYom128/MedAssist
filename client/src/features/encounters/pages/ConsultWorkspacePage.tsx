@@ -1,5 +1,5 @@
 import { skipToken } from '@reduxjs/toolkit/query';
-import { BellRing, FileSignature, History, Printer, Stethoscope } from 'lucide-react';
+import { BellRing, FileSignature, FlaskConical, History, Printer, Stethoscope } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -23,6 +23,9 @@ import {
   type Appointment,
 } from '../../appointments/api';
 import { selectCurrentUser } from '../../auth/authSlice';
+import { useListLabOrdersQuery } from '../../labs/api';
+import EncounterLabOrders from '../../labs/components/EncounterLabOrders';
+import { withinDocumentationWindow } from '../../labs/format';
 import { useGetPatientQuery, type Patient } from '../../patients/api';
 import { useCurrentPrescription } from '../../prescriptions/useCurrentPrescription';
 import { useCallNextMutation } from '../../queue/api';
@@ -99,6 +102,8 @@ function DraftWorkspace({
   const { entry, change, saveNow, dirty } = useAutosave(id);
   const current = useCurrentPrescription(id);
   const rx = usePrescriptionDraft(id, current.prescription, !current.isLoading);
+  const labOrders = useListLabOrdersQuery({ encounter: id, limit: 50 });
+  const draftLabOrders = (labOrders.data?.items ?? []).filter((o) => o.status === 'draft');
 
   useEffect(() => {
     dispatch(opened({ id, revision: encounter.revision }));
@@ -264,6 +269,9 @@ function DraftWorkspace({
                   </>
                 )}
                 {tab === 'prescription' && <PrescriptionTab current={current} draft={rx} />}
+                {tab === 'lab' && (
+                  <EncounterLabOrders encounterId={id} noteStatus="draft" canOrder={false} />
+                )}
                 {tab === 'followup' && (
                   <FollowUpFields followUp={note.followUp} onChange={change} onBlur={save} />
                 )}
@@ -283,6 +291,7 @@ function DraftWorkspace({
         flush={async () => (await saveNow()) && (await rx.saveNow())}
         extraProblems={rxProblems}
         revision={() => entry?.revision ?? encounter.revision}
+        labOrders={draftLabOrders}
         onClose={() => setSignOpen(false)}
         onGoTo={goTo}
         onSigned={(result) => {
@@ -328,6 +337,9 @@ function SignedNext({ result }: { result: SignResult }) {
       <p>
         {result.prescription
           ? `Prescription ${result.prescription.prescriptionNumber ?? ''} issued. `
+          : ''}
+        {result.labOrders?.length
+          ? `${result.labOrders.length} lab order${result.labOrders.length === 1 ? '' : 's'} sent to the lab (${result.labOrders.map((o) => o.orderNumber).join(', ')}). `
           : ''}
         The consultation is complete.
         {result.warnings.length ? ` ${result.warnings.join(' ')}` : ''}
@@ -463,6 +475,16 @@ export default function ConsultWorkspacePage() {
       {signed && <SignedNext result={signed} />}
       <WithHistory patientId={patient.data.id} encounterId={encounter.id}>
         <SignedNoteView encounter={encounter} canAmend={encounter.doctor.id === user?.id} />
+        <SectionCard title="Lab orders" icon={FlaskConical} iconTone="info">
+          <EncounterLabOrders
+            encounterId={encounter.id}
+            noteStatus={encounter.status}
+            canOrder={
+              encounter.doctor.id === user?.id &&
+              withinDocumentationWindow(appointment.data?.queue?.completedAt)
+            }
+          />
+        </SectionCard>
       </WithHistory>
     </section>
   );

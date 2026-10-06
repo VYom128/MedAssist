@@ -613,14 +613,123 @@ async function phase5Checks(
   }
   const adminDenied = await call(api, '/encounters', { headers: admin });
   check('admins get 403 on clinical notes', adminDenied.res.status === 403);
+  // Phase 6: admins have no lab order endpoints.
+  const adminLab = await call(api, '/lab-orders', { headers: admin });
+  check('admins get 403 on lab orders', adminLab.res.status === 403);
   const noScope = await call(api, '/prescriptions', { headers: reception });
   check('reception must choose a patient to list prescriptions', noScope.res.status === 400);
+
+  // Phase 6 reuses these sessions: logins are limited to 10 per 15 min per email + IP.
+  await phase6Checks(api, check, as, { doctor, patient, reception });
 
   await Promise.all(
     [doctor, patient, reception, admin].map((h) =>
       call(api, '/auth/logout', { method: 'POST', headers: h }),
     ),
   );
+}
+
+/**
+ * Phase 6: lab orders and documents on the seeded data – role views, the patient's released
+ * report (download headers), and a spoofed upload refused.
+ * Read-only apart from the refused upload (nothing is stored). Runs inside phase5Checks with
+ * its sessions (admins: checked there).
+ */
+async function phase6Checks(
+  api: string,
+  check: (name: string, ok: boolean, detail?: string) => void,
+  as: (email: string) => Promise<Record<string, string> | null>,
+  {
+    doctor,
+    patient,
+    reception,
+  }: Record<'doctor' | 'patient' | 'reception', Record<string, string>>,
+) {
+  type Item = { id: string; status?: string; patient?: { id?: string } };
+  const list = (body: { data?: unknown }) => (body.data as Item[] | undefined) ?? [];
+  const lab = await as('lab1@medassist.dev');
+  if (!lab) return;
+
+  const worklist = await call(api, '/lab-orders?limit=100', { headers: lab });
+  const orders = list(worklist.body);
+  check('the lab worklist lists seeded orders', worklist.res.status === 200 && orders.length > 0);
+  if (orders[0]) {
+    const one = await call(api, `/lab-orders/${orders[0].id}`, { headers: lab });
+    const p = JSON.stringify((one.body.data as { patient?: unknown } | undefined)?.patient ?? {});
+    check(
+      'lab techs see a minimal patient (no contact details)',
+      one.res.status === 200 && !/"(email|phone|address|insurance)"/.test(p),
+      `status ${one.res.status}`,
+    );
+  }
+
+  const me = await call(api, '/patients/me', { headers: patient });
+  const myId = (me.body.data as { id?: string } | undefined)?.id;
+  const mine = await call(api, '/lab-orders', { headers: patient });
+  const reports = list(mine.body);
+  check(
+    'patient1 sees released lab reports only, without internals',
+    mine.res.status === 200 &&
+      reports.length > 0 &&
+      !/"(status|remarks|previousResults|pendingRevision|clinicalNotes)"/.test(
+        JSON.stringify(mine.body.data),
+      ),
+    `status ${mine.res.status}, ${reports.length} reports`,
+  );
+  if (reports[0]) {
+    const pdf = await fetch(`${api}/lab-orders/${reports[0].id}/report.pdf`, { headers: patient });
+    const bytes = Buffer.from(await pdf.arrayBuffer());
+    check(
+      'patient1 downloads the report PDF with safe headers',
+      pdf.status === 200 &&
+        pdf.headers.get('content-type') === 'application/pdf' &&
+        (pdf.headers.get('content-disposition') ?? '').startsWith('attachment;') &&
+        pdf.headers.get('x-content-type-options') === 'nosniff' &&
+        (pdf.headers.get('cache-control') ?? '').includes('no-store') &&
+        bytes.subarray(0, 5).toString() === '%PDF-',
+      `status ${pdf.status}`,
+    );
+  }
+  const someoneElse = orders.find((o) => o.patient?.id && o.patient.id !== myId);
+  if (someoneElse) {
+    const denied = await call(api, `/lab-orders/${someoneElse.id}`, { headers: patient });
+    check("patient1 gets 404 on someone else's lab order", denied.res.status === 404);
+  }
+
+  if (myId) {
+    const status = await call(api, `/lab-orders?patient=${myId}`, { headers: reception });
+    check(
+      'reception sees lab order status without results',
+      status.res.status === 200 &&
+        !/"(results|remarks|clinicalNotes)"/.test(JSON.stringify(status.body)),
+      `status ${status.res.status}`,
+    );
+  }
+  const review = await call(api, '/lab-orders?needsReview=true', { headers: doctor });
+  check('dr.mehta lists results to review', review.res.status === 200);
+
+  const docs = await call(api, '/documents', { headers: patient });
+  check(
+    'patient1 lists documents without storage keys',
+    docs.res.status === 200 && !/storageKey/.test(JSON.stringify(docs.body)),
+    `status ${docs.res.status}`,
+  );
+  if (myId) {
+    const form = new FormData();
+    form.append('patientId', myId);
+    form.append('category', 'other');
+    form.append('title', 'Smoke fake image');
+    form.append('file', new Blob(['not really a png'], { type: 'image/png' }), 'fake.png');
+    const fake = await fetch(`${api}/documents`, { method: 'POST', headers: patient, body: form });
+    const body = (await fake.json().catch(() => ({}))) as { error?: { code?: string } };
+    check(
+      'a fake PNG upload is refused (415)',
+      fake.status === 415 && body.error?.code === 'UNSUPPORTED_FILE_TYPE',
+      `status ${fake.status}`,
+    );
+  }
+
+  await call(api, '/auth/logout', { method: 'POST', headers: lab });
 }
 
 async function main() {

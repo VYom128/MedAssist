@@ -9,6 +9,7 @@ import {
   PRESCRIPTION_STATUSES,
 } from '../../config/constants.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { touchedFields } from '../../utils/updateFields.js';
 
 const { ObjectId } = Schema.Types;
 const { textLimits: LIMITS } = PRESCRIPTION_RULES;
@@ -130,23 +131,6 @@ const locked = () =>
     'This prescription has been issued and cannot be changed. Cancel it or reissue it instead.',
     ERROR_CODES.RECORD_LOCKED,
   );
-
-/**
- * Top-level field names an update touches (`$set: { 'cancellation.at': … }` → cancellation).
- * `$setOnInsert` (added by Mongoose timestamps) only applies to inserts, so it is ignored.
- */
-function touchedFields(update: UpdateQuery<unknown>): string[] {
-  const fields = new Set<string>();
-  for (const [key, value] of Object.entries(update)) {
-    if (key === '$setOnInsert') continue;
-    if (key.startsWith('$')) {
-      for (const path of Object.keys((value ?? {}) as object)) fields.add(path.split('.')[0]!);
-    } else {
-      fields.add(key.split('.')[0]!);
-    }
-  }
-  return [...fields];
-}
 
 const setsStatusTo = (update: UpdateQuery<unknown>, status: string) =>
   (update.$set as Record<string, unknown> | undefined)?.status === status ||

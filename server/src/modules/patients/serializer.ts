@@ -14,7 +14,7 @@ import type { PatientDoc } from './model.js';
  * | Insurance                      |   ✔   |     ✔     |      ✘       |       ✔       |
  * | Internal admin notes           |   ✔   |     ✔     |      ✘       |       ✘       |
  *
- * Lab technicians get a minimal view with lab orders (Phase 6).
+ * Lab technicians get `toLabTechView` inside lab orders only (name, MRN, age, sex, allergies).
  */
 
 export type PatientLike = PatientDoc & {
@@ -142,7 +142,30 @@ export function toPatientSelfView(p: PatientLike) {
   return { ...toDoctorView(p), insurance: insurance(p) };
 }
 
-/** The full-record view for a role (lab technicians get none until Phase 6). */
+/**
+ * Lab technicians, inside a lab order (spec §2.5): name, MRN, age, sex and allergies – no
+ * contact details, history or insurance. There is no /patients endpoint for them.
+ */
+export function toLabTechView(
+  p: Pick<PatientLike, '_id' | 'mrn' | 'firstName' | 'lastName' | 'dateOfBirth' | 'gender'> & {
+    allergies?: PatientLike['allergies'] | null;
+  },
+) {
+  return {
+    id: p._id.toString(),
+    mrn: p.mrn,
+    fullName: `${p.firstName} ${p.lastName}`,
+    age: ageOf(p),
+    gender: p.gender,
+    allergies: (p.allergies ?? []).map((a) => ({
+      substance: a.substance,
+      reaction: a.reaction ?? null,
+      severity: a.severity,
+    })),
+  };
+}
+
+/** The full-record view for a role (lab technicians get none: see toLabTechView). */
 export function viewForRole(role: Role, p: PatientLike, portal?: PortalInfo) {
   switch (role) {
     case ROLES.ADMIN:
