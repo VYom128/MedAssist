@@ -23,6 +23,11 @@ const REFERENCE_LABELS: Partial<Record<PaymentMethod, string>> = {
   upi: 'UPI transaction ID',
   insurance: 'Claim number',
 };
+const REFERENCE_MISSING: Partial<Record<PaymentMethod, string>> = {
+  card: 'Enter the card slip number',
+  upi: 'Enter the UPI transaction ID',
+  insurance: 'Enter the claim number',
+};
 
 /**
  * Record a payment (reception): the amount defaults to the balance; the method comes from the
@@ -58,7 +63,7 @@ export default function RecordPaymentModal({
       next.amount = `At most the balance of ${formatINR(invoice.balancePaise)}`;
     }
     if (needsReference && !reference.trim()) {
-      next.reference = `Enter the ${REFERENCE_LABELS[method]?.toLowerCase() ?? 'reference'}`;
+      next.reference = REFERENCE_MISSING[method] ?? 'Enter the reference';
     }
     setErrors(next);
     setServerError(null);

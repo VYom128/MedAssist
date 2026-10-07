@@ -194,7 +194,9 @@ export async function seedInvoices(): Promise<Record<string, number>> {
           expectedVersion: inv!.__v,
           items: inv!.items.map((l) => ({
             id: l._id.toString(),
-            ...(l === consultation
+            // The admin concession covers the whole bill (so it is above the limit whatever the
+            // visit's lab tests cost); desk discounts only the consultation.
+            ...(adminDiscount || l === consultation
               ? { discountPaise: percentOf(l.unitPricePaise * l.quantity, percent) }
               : {}),
           })),

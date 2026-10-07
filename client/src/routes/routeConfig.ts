@@ -231,6 +231,17 @@ export const APP_ROUTES: AppRoute[] = [
     load: () => import('../features/patients/pages/PatientDetailPage'),
   },
   {
+    path: '/admin/invoices',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/billing/pages/InvoicesListPage'),
+    nav: { label: 'Invoices', icon: ReceiptIndianRupee },
+  },
+  {
+    path: '/admin/invoices/:id',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/billing/pages/InvoiceDetailPage'),
+  },
+  {
     path: '/admin/departments',
     roles: [ROLES.ADMIN],
     load: () => import('../features/departments/pages/DepartmentsPage'),
@@ -302,6 +313,17 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.PATIENT],
     load: () => import('../features/documents/pages/MyDocumentsPage'),
     nav: { label: 'Documents', icon: FileStack },
+  },
+  {
+    path: '/patient/invoices',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/billing/pages/MyInvoicesPage'),
+    nav: { label: 'Invoices', icon: ReceiptIndianRupee },
+  },
+  {
+    path: '/patient/invoices/:id',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/billing/pages/InvoiceDetailPage'),
   },
   {
     path: '/lab/worklist',

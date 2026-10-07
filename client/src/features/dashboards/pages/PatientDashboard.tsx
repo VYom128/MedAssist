@@ -11,11 +11,12 @@ import { selectCurrentUser } from '../../auth/authSlice';
 import { useGetMyPatientQuery } from '../../patients/api';
 import NextAppointmentCard from '../../appointments/components/NextAppointmentCard';
 import MyTokenCard from '../../queue/components/MyTokenCard';
+import OutstandingBalanceCard from '../../billing/components/OutstandingBalanceCard';
 import { useGetPublicSettingsQuery } from '../../settings/api';
 import DashboardPlaceholder, { TodayPill } from '../components/DashboardPlaceholder';
 import { linkClass } from '../../../components/ui/linkClass';
 
-const UPCOMING = ['Prescriptions and lab reports', 'Invoices', 'Follow-up requests'];
+const UPCOMING = ['Prescriptions and lab reports', 'Follow-up requests'];
 
 /** "My details" card: MRN and a link to the profile. */
 function MyDetailsCard() {
@@ -91,6 +92,7 @@ export default function PatientDashboard() {
       {user?.patientId && (
         <div className="space-y-4">
           <MyTokenCard />
+          <OutstandingBalanceCard />
           <div className="grid gap-4 lg:grid-cols-2">
             <NextAppointmentCard canBook={clinic?.appointment.allowPatientSelfBooking !== false} />
             <MyDetailsCard />
