@@ -6,6 +6,7 @@ import {
   FileText,
   History,
   House,
+  MessageSquare,
   Pill,
   FlaskConical,
   IdCard,
@@ -38,7 +39,7 @@ export interface AppRoute {
 }
 
 /** Live counts shown next to a sidebar entry (see layouts/NavBadge). */
-export type NavBadgeKind = 'pendingLinks' | 'labResults';
+export type NavBadgeKind = 'pendingLinks' | 'labResults' | 'followups';
 
 const dashboard = (role: Role, path: string, load: AppRoute['load']): AppRoute => ({
   path,
@@ -145,6 +146,22 @@ export const APP_ROUTES: AppRoute[] = [
     nav: { label: 'Documents', icon: FileStack },
   },
   {
+    path: '/patient/follow-ups',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/followups/pages/MyFollowUpsPage'),
+    nav: { label: 'Follow-ups', icon: MessageSquare },
+  },
+  {
+    path: '/patient/follow-ups/new',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/followups/pages/NewFollowUpPage'),
+  },
+  {
+    path: '/patient/follow-ups/:id',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/followups/pages/MyFollowUpPage'),
+  },
+  {
     path: '/patient/timeline',
     roles: [ROLES.PATIENT],
     load: () => import('../features/timeline/pages/MyTimelinePage'),
@@ -207,6 +224,17 @@ export const APP_ROUTES: AppRoute[] = [
     load: () => import('../features/doctorPatients/pages/DoctorPatientPage'),
   },
   {
+    path: '/doctor/follow-ups',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/followups/pages/FollowUpsInboxPage'),
+    nav: { label: 'Follow-ups', icon: MessageSquare, badge: 'followups' },
+  },
+  {
+    path: '/doctor/follow-ups/:id',
+    roles: [ROLES.DOCTOR],
+    load: () => import('../features/followups/pages/FollowUpsInboxPage'),
+  },
+  {
     path: '/doctor/notes',
     roles: [ROLES.DOCTOR],
     load: () => import('../features/doctorPatients/pages/NotesPage'),
@@ -255,6 +283,17 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.RECEPTIONIST],
     load: () => import('../features/patients/pages/PendingLinksPage'),
     nav: { label: 'Pending verifications', icon: ShieldCheck, badge: 'pendingLinks' },
+  },
+  {
+    path: '/reception/follow-ups',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/followups/pages/FollowUpsInboxPage'),
+    nav: { label: 'Follow-ups', icon: MessageSquare, badge: 'followups' },
+  },
+  {
+    path: '/reception/follow-ups/:id',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/followups/pages/FollowUpsInboxPage'),
   },
   {
     path: '/reception/invoices',

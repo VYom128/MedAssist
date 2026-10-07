@@ -18,6 +18,7 @@ import { linkClass } from '../../../components/ui/linkClass';
 import NewLabReportsCard from '../../labs/components/NewLabReportsCard';
 import ActivePrescriptionsCard from '../../prescriptions/components/ActivePrescriptionsCard';
 import FollowUpDueCard from '../../visits/components/FollowUpDueCard';
+import OpenFollowupsCard from '../../followups/components/OpenFollowupsCard';
 
 /** "My details" card: MRN and a link to the profile. */
 function MyDetailsCard() {
@@ -59,7 +60,8 @@ function MyDetailsCard() {
  * Patient home (Phase 8, from existing endpoints – Phase 10 replaces it with one dashboard call).
  * While a self-signup waits for the ID check, only a banner is shown. Once linked: the token
  * while checked in, the next appointment, follow-ups to book, new lab reports, active
- * prescriptions and the outstanding balance – cards with nothing to show stay hidden.
+ * prescriptions, open follow-up requests and the outstanding balance – cards with nothing to show
+ * stay hidden.
  */
 export default function PatientDashboard() {
   const user = useAppSelector(selectCurrentUser);
@@ -98,6 +100,7 @@ export default function PatientDashboard() {
             <NextAppointmentCard canBook={clinic?.appointment.allowPatientSelfBooking !== false} />
             <ActivePrescriptionsCard />
             <NewLabReportsCard />
+            <OpenFollowupsCard />
             <MyDetailsCard />
           </div>
         </div>

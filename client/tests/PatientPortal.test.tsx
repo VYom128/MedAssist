@@ -203,6 +203,7 @@ describe('Patient home', () => {
       'Lab reports',
       'Invoices',
       'Documents',
+      'Follow-ups',
       'Timeline',
       'My details',
     ]);

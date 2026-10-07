@@ -42,6 +42,22 @@ describe('socket events → RTK Query invalidation', () => {
     );
   });
 
+  it('followup.updated refreshes that request, the follow-up lists and timelines', () => {
+    const socket = fakeSocket();
+    const dispatch = vi.fn();
+    const detach = attachInvalidation(socket as never, dispatch);
+    socket.emit('followup.updated', { requestId: 'f1' });
+    expect(dispatch).toHaveBeenCalledWith(
+      apiSlice.util.invalidateTags([
+        { type: 'FollowUp', id: 'f1' },
+        { type: 'FollowUpList', id: 'LIST' },
+        'Timeline',
+      ]),
+    );
+    detach();
+    expect(socket.count('followup.updated')).toBe(0);
+  });
+
   it('appointment.changed refreshes that appointment and timelines; detaching removes the listeners', () => {
     const socket = fakeSocket();
     const dispatch = vi.fn();
