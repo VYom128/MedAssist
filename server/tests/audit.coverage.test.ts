@@ -451,6 +451,40 @@ describe('audit coverage', () => {
     });
     await post(`/appointments/${missed._id}/no-show`, reception.auth);
     await post(`/appointments/${missed._id}/undo-no-show`, reception.auth);
+    // Phase 7: invoice.create (the visit's draft with the signing, and a manual one; tests placed
+    // or cancelled after signing → invoice.sync), invoice.view, .update, .issue, .void
+    const visitInvoice = await api()
+      .get(`/api/v1/invoices?appointment=${visit._id}`)
+      .set(reception.auth);
+    const invoiceId = visitInvoice.body.data[0].id as string;
+    const shown = await api().get(`/api/v1/invoices/${invoiceId}`).set(reception.auth);
+    const edited = await api()
+      .patch(`/api/v1/invoices/${invoiceId}`)
+      .set(reception.auth)
+      .send({ expectedVersion: shown.body.data.revision, notes: 'Corporate patient' });
+    await post(`/invoices/${invoiceId}/issue`, reception.auth, {
+      expectedVersion: edited.body.data.revision,
+    });
+    // payment.create, payment.view, payment.refund, payment.receipt_download, invoice.download
+    const payment = await post(`/invoices/${invoiceId}/payments`, reception.auth, {
+      amountPaise: 1000,
+      method: 'upi',
+      reference: 'UPI-REF-778899',
+    });
+    await api().get(`/api/v1/invoices/${invoiceId}/payments`).set(reception.auth);
+    await post(`/payments/${payment.body.data.payment.id}/refund`, reception.auth, {
+      amountPaise: 400,
+      reason: 'Charged twice for the visit',
+    });
+    await api()
+      .get(`/api/v1/payments/${payment.body.data.payment.id}/receipt.pdf`)
+      .set(reception.auth);
+    await api().get(`/api/v1/invoices/${invoiceId}/pdf`).set(reception.auth);
+    const manual = await post('/invoices', reception.auth, {
+      patientId,
+      items: [{ kind: 'other', description: 'Certificate', unitPricePaise: 20_000 }],
+    });
+    await post(`/invoices/${manual.body.data.id}/void`, reception.auth, { reason: 'Not needed' });
     emails.restore();
 
     await flushAudit();

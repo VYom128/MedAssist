@@ -51,6 +51,13 @@ describe('seed', { timeout: 120_000 }, () => {
       // tests/seed.labOrders.test.ts checks the lab data and documents.
       labOrders: expect.objectContaining({ created: 80, released: 55, criticals: 3, revised: 1 }),
       documents: { created: 3, unchanged: 0 },
+      // tests/seed.invoices.test.ts checks the billing data.
+      invoices: expect.objectContaining({
+        created: expect.any(Number),
+        void: 2,
+        supplementary: 1,
+        cancelledItemsFlagged: 1,
+      }),
     });
 
     const settings = await ClinicSettings.findOne().lean();
@@ -190,8 +197,10 @@ describe('seed', { timeout: 120_000 }, () => {
       patients: { created: 0, updated: 0, unchanged: 60, portalUsers: 8, pending: 1 },
       appointments: expect.objectContaining({ created: 0, updated: 0, skipped: 0 }),
       encounters: expect.objectContaining({ created: 0, prescriptions: 0, todayDrafts: 0 }),
-      labOrders: expect.objectContaining({ created: 0, unchanged: 80, released: 55 }),
+      // 80 + the test the invoices seeder orders after a visit was billed (supplementary invoice).
+      labOrders: expect.objectContaining({ created: 0, unchanged: 81, released: 55 }),
       documents: { created: 0, unchanged: 3 },
+      invoices: expect.objectContaining({ created: 0, unchanged: expect.any(Number) }),
     });
     const countsAfter = await Promise.all(
       [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest, Patient].map(

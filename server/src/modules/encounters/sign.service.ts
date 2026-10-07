@@ -14,6 +14,7 @@ import {
   resourceOf as appointmentResource,
 } from '../appointments/service.js';
 import { applyTransition } from '../appointments/status.service.js';
+import { afterInvoiceSync, createOrUpdateDraftForAppointment } from '../invoices/sync.service.js';
 import { afterDraftsSubmitted, submitDraftOrdersInSession } from '../labOrders/service.js';
 import { Prescription } from '../prescriptions/model.js';
 import {
@@ -71,7 +72,8 @@ function signWarnings(e: EncounterLike): string[] {
  * Checks → 422 SIGN_VALIDATION_FAILED / ALLERGY_ACK_REQUIRED (`details` list what is missing),
  * then in ONE transaction: note → signed; the draft prescription (if it has items) → issued with
  * its RX number; the note's draft lab orders → ordered with their LAB numbers; the appointment in
- * consultation → completed. Signing twice → 409
+ * consultation → completed; the visit's draft invoice created or updated (consultation + lab
+ * tests). Signing twice → 409
  * INVALID_STATUS_TRANSITION. Audit and real-time events after the commit.
  */
 export async function signEncounter(
@@ -156,9 +158,14 @@ export async function signEncounter(
     }
     // The note's draft lab orders are placed with it (numbers from the counter).
     const labOrders = await submitDraftOrdersInSession(e._id, { by: user.id, session, now });
-    // TODO(Phase 7): create or update the appointment's draft invoice.
+    // The visit's draft invoice: consultation + the lab tests just placed (Phase 7).
+    const invoice = await createOrUpdateDraftForAppointment(e.appointment, {
+      session,
+      by: user.id,
+      now,
+    });
     // TODO(Phase 8): schedule the follow-up reminder from `followUp` (§8.11).
-    return { prescriptionId, appointmentCompleted, labOrders };
+    return { prescriptionId, appointmentCompleted, labOrders, invoice };
   });
 
   // After the commit: audit, real-time events, notifications.
@@ -173,6 +180,7 @@ export async function signEncounter(
       prescriptionIssued: result.prescriptionId !== null,
       appointmentCompleted: result.appointmentCompleted,
       labOrdersPlaced: result.labOrders.length,
+      invoiceDrafted: result.invoice !== null,
     },
   });
   const appointment = await loadAppointment(e.appointment);
@@ -190,6 +198,7 @@ export async function signEncounter(
     ? await afterIssued(user, result.prescriptionId, meta, 'sign')
     : null;
   await afterDraftsSubmitted(user, result.labOrders, meta);
+  await afterInvoiceSync(user, [result.invoice], meta, 'sign');
   void announceAppointment(appointment);
 
   const signed = await Encounter.findById(e._id)
@@ -200,6 +209,7 @@ export async function signEncounter(
     prescription: prescription ? prescriptionView(prescription) : null,
     appointment: { id: appointment._id.toString(), status: appointment.status },
     labOrders: result.labOrders.map((o) => ({ id: o._id.toString(), orderNumber: o.orderNumber })),
+    invoice: result.invoice ? { id: result.invoice.invoice._id.toString() } : null,
     warnings: signWarnings(e),
   };
 }

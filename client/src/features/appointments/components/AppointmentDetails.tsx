@@ -19,6 +19,7 @@ import { formatPhone } from '../../../utils/phone';
 import { selectCurrentUser } from '../../auth/authSlice';
 import { ageSex, patientsBase } from '../../patients/paths';
 import type { Appointment } from '../api';
+import AppointmentInvoices from '../../billing/components/AppointmentInvoices';
 import PrintPrescriptionLink from '../../prescriptions/components/PrintPrescriptionLink';
 import AppointmentActions from './AppointmentActions';
 import PriorityPill from './PriorityPill';
@@ -51,6 +52,8 @@ export default function AppointmentDetails({ appointment: a }: { appointment: Ap
           <PrintPrescriptionLink appointmentId={a.id} />
         )}
       </div>
+
+      {canOpenPatient && a.status === 'completed' && <AppointmentInvoices appointmentId={a.id} />}
 
       <DescriptionList
         items={[

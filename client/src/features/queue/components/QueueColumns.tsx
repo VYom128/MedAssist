@@ -68,10 +68,13 @@ function Column({
 export default function QueueColumns({
   queue,
   waitingActions,
+  doneActions,
   compact = false,
 }: {
   queue: Queue;
   waitingActions?: (item: QueueItem) => ReactNode;
+  /** Buttons on completed patients (reception: Bill). */
+  doneActions?: (item: QueueItem) => ReactNode;
   /** Overview mode: fewer done cards. */
   compact?: boolean;
 }) {
@@ -103,6 +106,7 @@ export default function QueueColumns({
         items={queue.done}
         empty="No completed visits yet."
         seen={seen}
+        actions={doneActions}
         maxItems={compact ? 3 : undefined}
       />
     </div>

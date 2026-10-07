@@ -23,3 +23,26 @@ export function sendFile(
   });
   file.stream.pipe(res);
 }
+
+/**
+ * Sends a PDF made on demand (invoices, receipts): `inline` to show it in the browser, or
+ * `attachment` to download; no sniffing, never cached (spec §10.3).
+ */
+export function sendPdf(
+  res: Response,
+  bytes: Buffer,
+  fileName: string,
+  { download = false }: { download?: boolean } = {},
+) {
+  const disposition = attachmentHeader(fileName);
+  res.status(200);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Length', String(bytes.length));
+  res.setHeader(
+    'Content-Disposition',
+    download ? disposition : disposition.replace(/^attachment/, 'inline'),
+  );
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.end(bytes);
+}

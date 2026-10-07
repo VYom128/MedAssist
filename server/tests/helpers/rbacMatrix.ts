@@ -111,6 +111,12 @@ export interface Ctx {
   documentId: string;
   /** A document the caller uploaded just now (category 'other'), for delete. */
   myDocumentId: string;
+  /** Invoices of patientId (Phase 7): a manual draft (revision 0) and an unpaid issued one. */
+  draftInvoiceId: string;
+  issuedInvoiceId: string;
+  /** A partly paid invoice of patientId and its cash payment (refundable). */
+  paidInvoiceId: string;
+  paymentId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -139,6 +145,7 @@ const DOCTOR: readonly Role[] = ['doctor'];
 const PATIENT: readonly Role[] = ['patient'];
 const RECEPTION: readonly Role[] = ['receptionist'];
 const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'patient'];
+const INVOICE_READERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
 const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionist'];
@@ -865,6 +872,79 @@ ENDPOINTS.push(
     roles: ALL,
     status: 200,
   },
+  // Invoices (spec §7.15, Phase 7): reception and admins manage; patients read their own issued
+  // invoices; doctors and lab technicians have no billing access.
+  { method: 'get', path: () => '/invoices', roles: INVOICE_READERS, status: 200 },
+  {
+    method: 'post',
+    path: () => '/invoices',
+    body: (c) => ({
+      patientId: c.patientId,
+      items: [{ kind: 'other', description: 'Matrix line', unitPricePaise: 1000 }],
+    }),
+    roles: ADMIN_RECEPTION,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/invoices/${c.issuedInvoiceId}`,
+    roles: INVOICE_READERS,
+    status: 200,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/invoices/${c.draftInvoiceId}`,
+    body: () => ({ expectedVersion: 0, notes: 'Matrix note' }),
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/invoices/${c.draftInvoiceId}/issue`,
+    body: () => ({ expectedVersion: 0 }),
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/invoices/${c.paidInvoiceId}/pdf`,
+    roles: INVOICE_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/invoices/${c.paidInvoiceId}/payments`,
+    roles: INVOICE_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/invoices/${c.issuedInvoiceId}/payments`,
+    body: () => ({ amountPaise: 100, method: 'cash' }),
+    roles: RECEPTION,
+    status: 201,
+  },
+  { method: 'get', path: () => '/payments/summary', roles: ADMIN_RECEPTION, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/payments/${c.paymentId}/refund`,
+    body: () => ({ amountPaise: 100, reason: 'Matrix refund reason' }),
+    roles: ADMIN_RECEPTION,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/payments/${c.paymentId}/receipt.pdf`,
+    roles: INVOICE_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/invoices/${c.issuedInvoiceId}/void`,
+    body: () => ({ reason: 'Matrix void' }),
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
   // Slots and availability (spec §7.6): any logged-in user
   {
     method: 'get',
@@ -952,6 +1032,10 @@ export const PATTERN_CTX = {
   revisionLabItemId: ':itemId',
   documentId: ':id',
   myDocumentId: ':id',
+  draftInvoiceId: ':id',
+  issuedInvoiceId: ':id',
+  paidInvoiceId: ':id',
+  paymentId: ':id',
   n: 0,
 } as unknown as Ctx;
 

@@ -17,6 +17,7 @@ import {
 } from '../../utils/dates.js';
 import { withTransaction } from '../../utils/transaction.js';
 import { ensureEncounterDraft } from '../encounters/draft.js';
+import { afterInvoiceSync, voidDraftInvoicesForAppointment } from '../invoices/sync.service.js';
 import { assertPatientFree, bookingTransaction, lock, slotTaken } from './booking.service.js';
 import { bookedBetween } from './slots.service.js';
 import { assertCanViewAppointment } from '../../policies/appointmentAccess.js';
@@ -107,17 +108,32 @@ export async function cancelAppointment(
     requireStaffReason(input.reason);
   }
 
-  const cancelled = await applyTransition(
-    appt,
-    'cancelled',
-    {
-      cancellation: { by: user.id, byRole: user.role, at: now, reason: input.reason ?? undefined },
-      updatedBy: user.id,
-    },
-    user.id,
-    input.reason,
-  );
-  // TODO(Phase 7): void the appointment's draft invoice (spec §8.3).
+  const { cancelled, invoices } = await withTransaction(async (session) => {
+    const done = await applyTransition(
+      appt,
+      'cancelled',
+      {
+        cancellation: {
+          by: user.id,
+          byRole: user.role,
+          at: now,
+          reason: input.reason ?? undefined,
+        },
+        updatedBy: user.id,
+      },
+      user.id,
+      input.reason,
+      { session },
+    );
+    // Its draft invoice (if reception started one) is voided with it (spec §8.3).
+    const voided = await voidDraftInvoicesForAppointment(appt._id, {
+      session,
+      by: user.id,
+      now,
+      reason: 'Appointment cancelled',
+    });
+    return { cancelled: done, invoices: voided };
+  });
 
   await audit.record({
     action: AUDIT_ACTIONS.APPOINTMENT_CANCEL,
@@ -131,6 +147,7 @@ export async function cancelAppointment(
       reasonGiven: Boolean(input.reason),
     },
   });
+  await afterInvoiceSync(user, invoices, meta, 'appointment_cancel');
   void announceAppointment(cancelled);
   void notifyAppointment(NOTIFICATION_TYPES.APPOINTMENT_CANCELLED, cancelled, {
     notifyDoctorSameDay: user.role !== ROLES.DOCTOR,

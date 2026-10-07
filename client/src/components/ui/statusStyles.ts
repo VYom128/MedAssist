@@ -31,6 +31,10 @@ import {
   UserX,
   ArrowUp,
   Layers,
+  CircleDollarSign,
+  Undo,
+  Receipt,
+  HandCoins,
   Minus,
   type LucideIcon,
 } from 'lucide-react';
@@ -190,6 +194,19 @@ export const STATUS_STYLES = {
   /** Lab turnaround. */
   labTat: {
     overdue: { tone: 'danger', label: 'Overdue', icon: Clock },
+  },
+  /** Invoice (Phase 7, spec §5.5). */
+  invoice: {
+    draft: { tone: 'warning', label: 'Draft', icon: FilePen },
+    issued: { tone: 'info', label: 'Unpaid', icon: Receipt },
+    partially_paid: { tone: 'warning', label: 'Partly paid', icon: HandCoins },
+    paid: { tone: 'success', label: 'Paid', icon: CircleCheck },
+    void: { tone: 'neutral', label: 'Void', icon: Ban },
+  },
+  /** A payment record (refunds are negative payments). */
+  payment: {
+    payment: { tone: 'success', label: 'Payment', icon: CircleDollarSign },
+    refund: { tone: 'warning', label: 'Refund', icon: Undo },
   },
   /** Queue priority and clinical flags. */
   priority: {

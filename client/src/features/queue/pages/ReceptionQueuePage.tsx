@@ -26,6 +26,7 @@ import {
 import PriorityDialog from '../../appointments/components/PriorityDialog';
 import { useListDoctorsQuery, type Doctor } from '../../doctors/api';
 import { useGetQueueQuery, type QueueItem } from '../api';
+import BillButton from '../../billing/components/BillButton';
 import QueueColumns from '../components/QueueColumns';
 import WalkInModal from '../components/WalkInModal';
 
@@ -82,6 +83,9 @@ function DoctorQueue({
               </Button>
             </>
           )}
+          doneActions={(item) =>
+            item.status === 'completed' ? <BillButton appointmentId={item.appointmentId} /> : null
+          }
         />
       )}
     </SectionCard>

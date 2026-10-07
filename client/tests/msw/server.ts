@@ -62,6 +62,18 @@ export const handlers = [
   http.get(url('/lab-orders'), () =>
     ok([], { meta: { page: 1, limit: 100, total: 0, totalPages: 0 } }),
   ),
+  // The patient dashboard's outstanding balance card (Phase 7).
+  http.get(url('/invoices'), () =>
+    ok([], {
+      meta: {
+        page: 1,
+        limit: 1,
+        total: 0,
+        totalPages: 0,
+        totals: { billedPaise: 0, collectedPaise: 0, outstandingPaise: 0 },
+      },
+    }),
+  ),
   // Reception's sidebar badge.
   http.get(url('/patients/pending-links'), () =>
     ok([], { meta: { page: 1, limit: 1, total: 0, totalPages: 0 } }),

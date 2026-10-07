@@ -1,5 +1,6 @@
 import {
   Building2,
+  CalendarCheck2,
   CalendarClock,
   CalendarDays,
   FileText,
@@ -11,6 +12,7 @@ import {
   ListOrdered,
   LayoutDashboard,
   Receipt,
+  ReceiptIndianRupee,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -179,6 +181,23 @@ export const APP_ROUTES: AppRoute[] = [
     nav: { label: 'Pending verifications', icon: ShieldCheck, badge: 'pendingLinks' },
   },
   {
+    path: '/reception/invoices',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/billing/pages/InvoicesListPage'),
+    nav: { label: 'Invoices', icon: ReceiptIndianRupee },
+  },
+  {
+    path: '/reception/invoices/:id',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/billing/pages/InvoiceDetailPage'),
+  },
+  {
+    path: '/reception/billing/day-close',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/billing/pages/DayClosePage'),
+    nav: { label: 'Day close', icon: CalendarCheck2 },
+  },
+  {
     path: '/patient/profile',
     roles: [ROLES.PATIENT],
     load: () => import('../features/patients/pages/MyPatientProfilePage'),
@@ -210,6 +229,17 @@ export const APP_ROUTES: AppRoute[] = [
     path: '/admin/patients/:id',
     roles: [ROLES.ADMIN],
     load: () => import('../features/patients/pages/PatientDetailPage'),
+  },
+  {
+    path: '/admin/invoices',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/billing/pages/InvoicesListPage'),
+    nav: { label: 'Invoices', icon: ReceiptIndianRupee },
+  },
+  {
+    path: '/admin/invoices/:id',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/billing/pages/InvoiceDetailPage'),
   },
   {
     path: '/admin/departments',
@@ -283,6 +313,17 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.PATIENT],
     load: () => import('../features/documents/pages/MyDocumentsPage'),
     nav: { label: 'Documents', icon: FileStack },
+  },
+  {
+    path: '/patient/invoices',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/billing/pages/MyInvoicesPage'),
+    nav: { label: 'Invoices', icon: ReceiptIndianRupee },
+  },
+  {
+    path: '/patient/invoices/:id',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/billing/pages/InvoiceDetailPage'),
   },
   {
     path: '/lab/worklist',
