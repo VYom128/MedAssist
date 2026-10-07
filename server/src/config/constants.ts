@@ -84,6 +84,8 @@ export const SEQUENCES = Object.freeze({
   INVOICE: { key: 'invoice', prefix: 'INV' },
   /** Yearly: `payment:<clinic year>` → 'PAY-2026-000001' (payments and refunds). */
   PAYMENT: { key: 'payment', prefix: 'PAY' },
+  /** Yearly: `followup_request:<clinic year>` → 'FUR-2026-000001' (Phase 8). */
+  FOLLOWUP_REQUEST: { key: 'followup_request', prefix: 'FUR' },
 } as const);
 
 /** Appointment enums (spec §6.12). */
@@ -190,6 +192,46 @@ export const TIMELINE_TYPES = Object.freeze([
 ] as const);
 export type TimelineType = (typeof TIMELINE_TYPES)[number];
 export const TIMELINE_RULES = Object.freeze({ defaultLimit: 20, maxLimit: 50 });
+/** Follow-up requests (spec §5.6, §6.18, Phase 8). */
+export const FOLLOWUP_REQUEST_STATUSES = Object.freeze([
+  'open',
+  'in_review',
+  'responded',
+  'scheduled',
+  'closed',
+  'rejected',
+] as const);
+export type FollowupRequestStatus = (typeof FOLLOWUP_REQUEST_STATUSES)[number];
+/** Waiting for the clinic or the patient (count towards the open-request limit). */
+export const FOLLOWUP_OPEN_STATUSES = Object.freeze(['open', 'in_review', 'responded'] as const);
+export const FOLLOWUP_REQUEST_TYPES = Object.freeze([
+  'question',
+  'new_or_worse_symptoms',
+  'report_review',
+  'refill_request',
+  'reschedule',
+  'other',
+] as const);
+export type FollowupRequestType = (typeof FOLLOWUP_REQUEST_TYPES)[number];
+/** 'staff' messages are internal notes, never shown to the patient. */
+export const FOLLOWUP_MESSAGE_VISIBILITIES = Object.freeze(['all', 'staff'] as const);
+/** Follow-up reminder state (one per signed note with a follow-up plan, Phase 8). */
+export const FOLLOWUP_REMINDER_STATUSES = Object.freeze(['pending', 'sent', 'skipped'] as const);
+/**
+ * Follow-up rules (Phase 8 decisions): at most `maxOpenPerPatient` open requests and
+ * `maxNewPerDay` new ones per clinic day per patient (422 FOLLOWUP_LIMIT_REACHED); message and
+ * reason lengths; reminders `reminderDaysBefore` days before the follow-up is due.
+ */
+export const FOLLOWUP_RULES = Object.freeze({
+  maxOpenPerPatient: 3,
+  maxNewPerDay: 5,
+  messageMax: 2000,
+  reasonMin: 5,
+  reasonMax: 500,
+  maxAttachments: 3,
+  reminderDaysBefore: 2,
+});
+
 /**
  * Planned follow-ups shown to the patient (GET /patients/me/follow-ups-due): upcoming, or overdue
  * by at most `overdueDays`, and not yet booked.
@@ -294,6 +336,10 @@ export const NOTIFICATION_TYPES = Object.freeze({
   LAB_RESULT_REVISED: 'lab.result_revised',
   INVOICE_ISSUED: 'invoice.issued',
   PAYMENT_RECEIVED: 'payment.received',
+  FOLLOWUP_REMINDER: 'followup.reminder',
+  FOLLOWUP_REQUEST_NEW: 'followup.request_new',
+  FOLLOWUP_REQUEST_REPLY: 'followup.request_reply',
+  FOLLOWUP_REQUEST_UPDATED: 'followup.request_updated',
 } as const);
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
@@ -326,6 +372,8 @@ export const JOB_RULES = Object.freeze({
   daily0200: '0 2 * * *',
   /** Lab turnaround alerts (spec §8.11). */
   hourly: '0 * * * *',
+  /** Follow-up reminders (spec §8.11, Phase 8). */
+  daily0900: '0 9 * * *',
   reminderWindowMinutes: 15,
   batchSize: 500,
 });
@@ -340,6 +388,8 @@ export const SOCKET_EVENTS = Object.freeze({
   LAB_ORDER_CHANGED: 'lab.order.changed',
   /** A critical result was entered: the ordering doctor's alert (`{ orderId }`). */
   LAB_CRITICAL: 'lab.critical',
+  /** A follow-up request was created or changed (`{ requestId }`, Phase 8). */
+  FOLLOWUP_UPDATED: 'followup.updated',
   /** Client → server: join / leave a doctor's queue room for a date. */
   QUEUE_SUBSCRIBE: 'queue:subscribe',
   QUEUE_UNSUBSCRIBE: 'queue:unsubscribe',
@@ -350,6 +400,8 @@ export const SOCKET_ROOMS = Object.freeze({
   board: 'board',
   /** Every connected lab technician (worklist updates). */
   lab: 'lab',
+  /** Every connected user of a role (Phase 8: receptionists, for follow-up requests). */
+  role: (role: string) => `role:${role}`,
 });
 
 /** Token counter key per doctor per clinic day (spec §8.4): 'token:<doctorId>:<YYYY-MM-DD>'. */
@@ -416,6 +468,19 @@ export const STATE_MACHINES = Object.freeze({
     paid: ['partially_paid', 'issued'],
     void: [],
   } satisfies Record<InvoiceStatus, readonly InvoiceStatus[]>),
+  /**
+   * Spec §5.6 plus Phase 8 decisions: staff may answer, schedule or finish straight from 'open'
+   * (in_review is an optional "someone is on it"); a patient reply reopens a 'responded' request.
+   * Scheduled, closed and rejected are final.
+   */
+  followupRequest: Object.freeze({
+    open: ['in_review', 'responded', 'scheduled', 'closed', 'rejected'],
+    in_review: ['responded', 'scheduled', 'closed', 'rejected'],
+    responded: ['open', 'scheduled', 'closed', 'rejected'],
+    scheduled: [],
+    closed: [],
+    rejected: [],
+  } satisfies Record<FollowupRequestStatus, readonly FollowupRequestStatus[]>),
 });
 export type StateMachine = keyof typeof STATE_MACHINES;
 
@@ -566,6 +631,14 @@ export const AUDIT_ACTIONS = Object.freeze({
   PAYMENT_REFUND: 'payment.refund',
   PAYMENT_VIEW: 'payment.view',
   PAYMENT_RECEIPT_DOWNLOAD: 'payment.receipt_download',
+  FOLLOWUP_CREATE: 'followup.create',
+  FOLLOWUP_VIEW: 'followup.view',
+  FOLLOWUP_MESSAGE: 'followup.message',
+  FOLLOWUP_REVIEW: 'followup.review',
+  FOLLOWUP_ASSIGN: 'followup.assign',
+  FOLLOWUP_SCHEDULE: 'followup.schedule',
+  FOLLOWUP_CLOSE: 'followup.close',
+  FOLLOWUP_REJECT: 'followup.reject',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /**
@@ -883,6 +956,7 @@ export const ERROR_CODES = Object.freeze({
   OUTSIDE_BOOKING_WINDOW: 'OUTSIDE_BOOKING_WINDOW',
   // Not in §16 (Phase 4): the walk-in overbook allowance for the session is used up.
   OVERBOOK_LIMIT_REACHED: 'OVERBOOK_LIMIT_REACHED',
+  FOLLOWUP_LIMIT_REACHED: 'FOLLOWUP_LIMIT_REACHED',
   // Not in §16 (Phase 5): a note edited or signed after the late documentation window (§8.5).
   DOCUMENTATION_WINDOW_CLOSED: 'DOCUMENTATION_WINDOW_CLOSED',
   // Not in §16 (Phase 5): a prescription item matching an allergy was not acknowledged (§8.6).
@@ -940,6 +1014,7 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = Object.fre
   SELF_BOOKING_DISABLED: 403,
   OUTSIDE_BOOKING_WINDOW: 422,
   OVERBOOK_LIMIT_REACHED: 422,
+  FOLLOWUP_LIMIT_REACHED: 422,
   DOCUMENTATION_WINDOW_CLOSED: 422,
   ALLERGY_ACK_REQUIRED: 422,
   SIGN_VALIDATION_FAILED: 422,

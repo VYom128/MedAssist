@@ -22,7 +22,8 @@ import { setSocketServer } from './emitter.js';
 /**
  * Socket.IO (spec §7.9). Clients authenticate in the handshake:
  * - `auth: { token }` – an access token, with the same checks as `authenticate` (live session,
- *   active user, no pending password change). The socket joins `user:<userId>`, and may join
+ *   active user, no pending password change). The socket joins `user:<userId>` (lab technicians
+ *   also `lab`, receptionists `role:receptionist`), and may join
  *   `queue:<doctorId>:<date>` rooms with `queue:subscribe` (staff any doctor, a doctor their own,
  *   a patient the doctor they have an appointment with that day);
  * - `auth: { kioskKey }` – the queue board; joins `board` only.
@@ -149,6 +150,8 @@ export function initSocket(httpServer: HttpServer): Server {
     void socket.join(SOCKET_ROOMS.user(user.id));
     // Lab technicians follow the worklist (events carry order ids only).
     if (user.role === ROLES.LABTECH) void socket.join(SOCKET_ROOMS.lab);
+    // Receptionists triage every follow-up request (Phase 8; ids only).
+    if (user.role === ROLES.RECEPTIONIST) void socket.join(SOCKET_ROOMS.role(user.role));
     socket.on(SOCKET_EVENTS.QUEUE_SUBSCRIBE, onQueueSubscribe(socket));
     socket.on(SOCKET_EVENTS.QUEUE_UNSUBSCRIBE, (payload: unknown, ack?: Ack) => {
       const parsed = subscribeSchema.safeParse(payload);

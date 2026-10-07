@@ -30,6 +30,11 @@ export const links = {
     if (role === ROLES.PATIENT) return `${PORTAL}/invoices/${id}`;
     return role === ROLES.RECEPTIONIST ? `/reception/invoices/${id}` : null;
   },
+  followup(role: Role, id: string) {
+    if (role === ROLES.PATIENT) return `${PORTAL}/follow-ups/${id}`;
+    const base = staffBase(role);
+    return base ? `${base}/follow-ups/${id}` : null;
+  },
   documents(role: Role, patientId: string) {
     if (role === ROLES.PATIENT) return `${PORTAL}/documents`;
     if (role === ROLES.RECEPTIONIST) return `/reception/patients/${patientId}?tab=documents`;

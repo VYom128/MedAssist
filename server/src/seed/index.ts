@@ -13,6 +13,8 @@ import { Encounter } from '../modules/encounters/model.js';
 import { Invoice } from '../modules/invoices/model.js';
 import { LabOrder } from '../modules/labOrders/model.js';
 import { LabTest } from '../modules/labTests/model.js';
+import { FollowupReminder } from '../modules/followupReminders/model.js';
+import { FollowupRequest } from '../modules/followups/model.js';
 import { DoctorLeave } from '../modules/leaves/model.js';
 import { Patient } from '../modules/patients/model.js';
 import { Payment } from '../modules/payments/model.js';
@@ -31,6 +33,7 @@ import { seedAppointments } from './appointments.js';
 import { seedDepartments } from './departments.js';
 import { seedDocuments } from './documents.js';
 import { seedEncounters } from './encounters.js';
+import { seedFollowups } from './followups.js';
 import { seedInvoices } from './invoices.js';
 import { doctorLogins, seedDoctors } from './doctors.js';
 import { seedLabOrders } from './labOrders.js';
@@ -58,11 +61,12 @@ const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = 
   { name: 'labOrders', run: seedLabOrders },
   { name: 'documents', run: seedDocuments },
   { name: 'invoices', run: seedInvoices },
+  { name: 'followups', run: seedFollowups },
 ];
 
 /**
  * Collections `--reset` empties (raw driver for audit logs, notes, amendments, prescriptions, lab
- * orders, documents, invoices and payments: Mongoose blocks those deletes).
+ * orders, documents, invoices, payments and follow-up requests: Mongoose blocks those deletes).
  */
 async function resetData() {
   await Promise.all([
@@ -85,6 +89,8 @@ async function resetData() {
     Document.collection.deleteMany({}),
     Invoice.collection.deleteMany({}),
     Payment.collection.deleteMany({}),
+    FollowupRequest.collection.deleteMany({}),
+    FollowupReminder.deleteMany({}),
     Counter.deleteMany({}), // MRN, APT, ENC, RX, LAB, INV, PAY and sample numbers, queue tokens
   ]);
   // The stored files go with their records (development only – see runSeed).
@@ -144,8 +150,8 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
     await resetData();
     logger.info(
       'Wiped users, sessions, audit logs, clinic setup data, patients, appointments, clinical ' +
-        'notes, prescriptions, lab orders, documents (and their files), invoices, payments and ' +
-        'counters',
+        'notes, prescriptions, lab orders, documents (and their files), invoices, payments, ' +
+        'follow-up requests and reminders, and counters',
     );
   }
   await initStorage();

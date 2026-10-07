@@ -44,15 +44,17 @@ describe('appointment seed', () => {
   afterAll(() => emails.restore());
 
   it('creates about 300 appointments and reports counts by status', () => {
-    expect(all.length).toBeGreaterThanOrEqual(260);
-    expect(all.length).toBeLessThanOrEqual(340);
-    expect(summary.appointments).toMatchObject({ created: all.length, skipped: 0 });
+    // The follow-up seeder (Phase 8) books a few more through follow-up requests.
+    const own = all.length - summary.followups!.scheduled!;
+    expect(own).toBeGreaterThanOrEqual(260);
+    expect(own).toBeLessThanOrEqual(340);
+    expect(summary.appointments).toMatchObject({ created: own, skipped: 0 });
     const statuses = summary.appointments!;
     expect(
       ['scheduled', 'checked_in', 'in_consultation', 'completed', 'cancelled', 'no_show']
         .map((s) => statuses[s]!)
         .reduce((a, b) => a + b, 0),
-    ).toBe(all.length);
+    ).toBe(own);
   });
 
   it('sends no emails', () => {

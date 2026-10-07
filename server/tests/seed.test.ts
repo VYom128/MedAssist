@@ -58,6 +58,15 @@ describe('seed', { timeout: 120_000 }, () => {
         supplementary: 1,
         cancelledItemsFlagged: 1,
       }),
+      // Phase 8: 15 follow-up requests (two booked), planned follow-ups for the reminder job.
+      followups: {
+        created: 15,
+        scheduled: 2,
+        dueInTwoDays: 3,
+        overdue: 1,
+        remindersAdded: 0,
+        unchanged: 0,
+      },
     });
 
     const settings = await ClinicSettings.findOne().lean();
@@ -201,6 +210,14 @@ describe('seed', { timeout: 120_000 }, () => {
       labOrders: expect.objectContaining({ created: 0, unchanged: 81, released: 55 }),
       documents: { created: 0, unchanged: 3 },
       invoices: expect.objectContaining({ created: 0, unchanged: expect.any(Number) }),
+      followups: {
+        created: 0,
+        scheduled: 0,
+        dueInTwoDays: 0,
+        overdue: 0,
+        remindersAdded: 0,
+        unchanged: 15,
+      },
     });
     const countsAfter = await Promise.all(
       [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest, Patient].map(

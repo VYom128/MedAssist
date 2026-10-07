@@ -117,6 +117,8 @@ export interface Ctx {
   /** A partly paid invoice of patientId and its cash payment (refundable). */
   paidInvoiceId: string;
   paymentId: string;
+  /** An open follow-up request of patientId assigned to doctorId (Phase 8). */
+  followupId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -150,6 +152,9 @@ const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'
 const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
 const TIMELINE_READERS: readonly Role[] = ['doctor', 'receptionist'];
 const NOTE_READERS: readonly Role[] = ['doctor', 'patient'];
+const FOLLOWUP_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'patient'];
+const FOLLOWUP_REPLIERS: readonly Role[] = ['receptionist', 'doctor', 'patient'];
+const FOLLOWUP_HANDLERS: readonly Role[] = ['receptionist', 'doctor'];
 const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionist'];
 const LAB_ORDER_READERS: readonly Role[] = ['doctor', 'labtech', 'receptionist', 'patient'];
 const DOCTOR_LABTECH: readonly Role[] = ['doctor', 'labtech'];
@@ -406,6 +411,63 @@ export const ENDPOINTS: Row[] = [
     method: 'post',
     path: (c) => `/lab-tests/${c.inactiveLabTestId}/activate`,
     roles: ADMIN,
+    status: 200,
+  },
+  // Follow-up requests (spec §7.13, Phase 8): patients raise and follow their own; reception
+  // triages all (admins read only); doctors handle the requests assigned to them.
+  {
+    method: 'post',
+    path: () => '/follow-up-requests',
+    body: () => ({ type: 'question', message: 'Matrix question' }),
+    roles: PATIENT,
+    status: 201,
+  },
+  { method: 'get', path: () => '/follow-up-requests', roles: FOLLOWUP_READERS, status: 200 },
+  {
+    method: 'get',
+    path: (c) => `/follow-up-requests/${c.followupId}`,
+    roles: FOLLOWUP_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/messages`,
+    body: () => ({ text: 'Matrix reply' }),
+    roles: FOLLOWUP_REPLIERS,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/review`,
+    roles: FOLLOWUP_HANDLERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/assign`,
+    body: (c) => ({ doctorId: c.otherDoctorId }),
+    roles: RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/schedule`,
+    body: (c) => ({ startAt: c.bookStartAt, serviceId: c.serviceId }),
+    roles: FOLLOWUP_HANDLERS,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/close`,
+    body: () => ({ reason: 'Matrix close' }),
+    roles: FOLLOWUP_REPLIERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/reject`,
+    body: () => ({ reason: 'Matrix reject' }),
+    roles: FOLLOWUP_HANDLERS,
     status: 200,
   },
 ];
@@ -1070,6 +1132,7 @@ export const PATTERN_CTX = {
   issuedInvoiceId: ':id',
   paidInvoiceId: ':id',
   paymentId: ':id',
+  followupId: ':id',
   n: 0,
 } as unknown as Ctx;
 

@@ -2,6 +2,7 @@ import type { TimelineSource } from '../types.js';
 import { appointmentSource } from './appointments.js';
 import { documentSource } from './documents.js';
 import { encounterSource } from './encounters.js';
+import { followupSource } from './followups.js';
 import { invoiceSource } from './invoices.js';
 import { labOrderSource } from './labOrders.js';
 import { paymentSource } from './payments.js';
@@ -19,4 +20,5 @@ export const TIMELINE_SOURCES: readonly TimelineSource[] = [
   invoiceSource,
   paymentSource,
   documentSource,
+  followupSource,
 ];

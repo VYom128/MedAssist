@@ -3,6 +3,7 @@ import { JOB_RULES } from '../config/constants.js';
 import { config } from '../config/env.js';
 import { getSettings } from '../modules/settings/service.js';
 import { logger, serializeError } from '../utils/logger.js';
+import { runFollowUpReminderJob } from './followUpReminders.job.js';
 import { runLabTatJob } from './labTat.job.js';
 import { runNoShowJob } from './noShow.job.js';
 import { runPrescriptionCompletionJob } from './prescriptionCompletion.job.js';
@@ -24,6 +25,7 @@ export const JOBS = [
     run: runPrescriptionCompletionJob,
   },
   { name: 'lab-tat', rule: JOB_RULES.hourly, run: runLabTatJob },
+  { name: 'follow-up-reminders', rule: JOB_RULES.daily0900, run: runFollowUpReminderJob },
 ] as const;
 
 /** Runs a job; never throws (a failing job must not take the server down). */

@@ -6,6 +6,7 @@ import {
   canAccessPatient,
   CARE_RELATIONSHIP_CHECKS,
   hasAppointmentRelationship,
+  hasFollowUpAssignmentRelationship,
   hasLabOrderRelationship,
   patientListFilter,
   roleHasPatientScope,
@@ -95,8 +96,12 @@ describe('canAccessPatient – role scopes', () => {
 describe('canAccessPatient – doctor care relationship (spec §2.3)', () => {
   beforeEach(resetDb);
 
-  it('the checks are pluggable: an appointment, then a lab order', () => {
-    expect(CARE_RELATIONSHIP_CHECKS).toEqual([hasAppointmentRelationship, hasLabOrderRelationship]);
+  it('the checks are pluggable: an appointment, a lab order, an assigned follow-up request', () => {
+    expect(CARE_RELATIONSHIP_CHECKS).toEqual([
+      hasAppointmentRelationship,
+      hasLabOrderRelationship,
+      hasFollowUpAssignmentRelationship,
+    ]);
   });
 
   it('a lab order the doctor placed (any status, even cancelled) is a relationship; drafts are not', async () => {

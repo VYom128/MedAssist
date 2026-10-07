@@ -16,7 +16,7 @@ import { SEED_REQUEST, seedActor } from './context.js';
  */
 const file = (name: string) => fileURLToPath(new URL(`./files/${name}`, import.meta.url));
 
-async function patientActor(email: string): Promise<AuthUser & { patientId: string }> {
+export async function patientActor(email: string): Promise<AuthUser & { patientId: string }> {
   const u = await User.findOne({ email, role: ROLES.PATIENT }).lean();
   if (!u?.patient) throw new Error(`Seed patient ${email} is missing`);
   return {
