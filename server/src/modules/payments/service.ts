@@ -22,8 +22,8 @@ import { patientRecipient } from '../appointments/service.js';
 import { statusForAmounts } from '../invoices/calc.js';
 import { Invoice, paymentWriteOptions } from '../invoices/model.js';
 import { buildReceiptPdf } from '../invoices/pdf.js';
-import { resourceOf as invoiceResource, toView, type InvoiceLike } from '../invoices/serializer.js';
-import { loadInvoice } from '../invoices/service.js';
+import { resourceOf as invoiceResource, type InvoiceLike } from '../invoices/serializer.js';
+import { loadInvoice, viewFor } from '../invoices/service.js';
 import { resolveMyPatientId } from '../patients/portal.service.js';
 import { getSettings } from '../settings/service.js';
 import { Payment } from './model.js';
@@ -178,7 +178,7 @@ export async function recordPayment(
   if (!quiet) void notifyPaymentReceived(inv);
   return {
     payment: toPaymentView(payment as unknown as PaymentLike, user.role),
-    invoice: toView(await loadInvoice(inv._id), user.role),
+    invoice: await viewFor(user, await loadInvoice(inv._id)),
   };
 }
 
@@ -308,7 +308,7 @@ export async function refundPayment(
   });
   return {
     refund: toPaymentView(refund as unknown as PaymentLike, user.role),
-    invoice: toView(await loadInvoice(inv._id), user.role),
+    invoice: await viewFor(user, await loadInvoice(inv._id)),
   };
 }
 

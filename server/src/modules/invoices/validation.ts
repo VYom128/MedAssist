@@ -6,6 +6,7 @@ import {
   type InvoiceStatus,
 } from '../../config/constants.js';
 import {
+  booleanQuery,
   dateOnly,
   idParams,
   objectId,
@@ -19,7 +20,8 @@ import {
  * schema: `z.object` strips them, so client totals are ignored (spec §6.21).
  * - an existing line: `id` + the fields to change (visit lines: only `discountPaise`);
  * - a new consultation/procedure line: `kind` + `serviceId` (name, price and tax from the
- *   service), optional quantity/discount;
+ *   service), optional quantity/discount; a new lab test line: `kind` + `labTestId` (name and
+ *   price from the catalogue, the clinic's tax rate);
  * - a new 'other' line: `kind`, `description`, `unitPricePaise`, optional quantity, discount and
  *   tax rate (default: the clinic's).
  */
@@ -27,6 +29,7 @@ const lineInput = z.object({
   id: objectId.optional(),
   kind: z.enum(INVOICE_STAFF_LINE_KINDS).optional(),
   serviceId: objectId.optional(),
+  labTestId: objectId.optional(),
   description: z
     .string()
     .trim()
@@ -122,6 +125,8 @@ export const listInvoicesSchema = {
       from: dateOnly.optional(),
       to: dateOnly.optional(),
       q: z.string().trim().max(100).optional(),
+      /** Invoices listing cancelled tests that were billed (reception should refund them). */
+      needsAttention: booleanQuery,
       ...paginationQuery,
     })
     .refine((v) => !v.from || !v.to || v.from <= v.to, {

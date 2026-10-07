@@ -18,6 +18,47 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   other: 'Other',
 };
 
+/** Methods that need a reference: card slip, UPI transaction id, insurance claim number. */
+export const PAYMENT_METHODS_NEEDING_REFERENCE: readonly PaymentMethod[] = [
+  'card',
+  'upi',
+  'insurance',
+];
+
+/** Invoice enums (Phase 7, spec §6.21, §5.5). */
+export const INVOICE_STATUSES = ['draft', 'issued', 'partially_paid', 'paid', 'void'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+export const INVOICE_STATUS_LABELS: Record<InvoiceStatus, string> = {
+  draft: 'Draft',
+  issued: 'Unpaid',
+  partially_paid: 'Partly paid',
+  paid: 'Paid',
+  void: 'Void',
+};
+export const INVOICE_LINE_KINDS = ['consultation', 'lab_test', 'procedure', 'other'] as const;
+export type InvoiceLineKind = (typeof INVOICE_LINE_KINDS)[number];
+export const INVOICE_LINE_KIND_LABELS: Record<InvoiceLineKind, string> = {
+  consultation: 'Consultation',
+  lab_test: 'Lab test',
+  procedure: 'Procedure',
+  other: 'Other',
+};
+export const INVOICE_KIND_LABELS = {
+  appointment: 'Visit',
+  supplementary: 'Supplementary',
+  manual: 'Manual',
+} as const;
+export const BILLING_RULES = {
+  maxQuantity: 999,
+  maxLines: 50,
+  descriptionMax: 200,
+  notesMax: 1000,
+  voidReasonMin: 3,
+  refundReasonMin: 10,
+  reasonMax: 500,
+  referenceMax: 100,
+} as const;
+
 export const EXPLANATION_LANGUAGES = ['en', 'hi'] as const;
 export type ExplanationLanguage = (typeof EXPLANATION_LANGUAGES)[number];
 export const LANGUAGE_LABELS: Record<ExplanationLanguage, string> = { en: 'English', hi: 'Hindi' };

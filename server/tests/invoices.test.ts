@@ -1,4 +1,6 @@
+import { Types } from 'mongoose';
 import { Appointment } from '../src/modules/appointments/model.js';
+import { LabTest } from '../src/modules/labTests/model.js';
 import { Invoice, paymentWriteOptions } from '../src/modules/invoices/model.js';
 import { createOrUpdateDraftForAppointment } from '../src/modules/invoices/sync.service.js';
 import { clinicToday } from '../src/utils/dates.js';
@@ -651,5 +653,76 @@ describe('reading and listing', () => {
       expect((await get('/invoices', who.auth)).status).toBe(403);
       expect((await get(`/invoices/${inv.id}`, who.auth)).status).toBe(403);
     }
+  });
+});
+
+describe('desk extras (Phase 7 client)', () => {
+  it('a lab test line from the catalogue: name and price snapshotted, the default tax', async () => {
+    const test = await LabTest.create({
+      code: 'DESK1',
+      name: 'Blood sugar (random)',
+      category: 'biochemistry',
+      sampleType: 'blood',
+      pricePaise: 15_000,
+    });
+    const inv = await draft([
+      { kind: 'lab_test', labTestId: test._id.toString(), unitPricePaise: 1, quantity: 2 },
+    ]);
+    expect(inv.items[0]).toMatchObject({
+      kind: 'lab_test',
+      origin: 'staff',
+      description: 'Blood sugar (random)',
+      refId: test._id.toString(),
+      labOrderItemId: null,
+      unitPricePaise: 15_000,
+      quantity: 2,
+      taxRateBps: 1800,
+    });
+    const patientId = (await createPatient()).id;
+    const missing = await post('/invoices', reception.auth, {
+      patientId,
+      items: [{ kind: 'lab_test' }],
+    });
+    expect(expectErrorShape(missing.body, 'VALIDATION_ERROR').error.details).toEqual([
+      expect.objectContaining({ field: 'body.items.0.labTestId' }),
+    ]);
+  });
+
+  it('staff views carry the billing rules; the patient view does not', async () => {
+    await setSettings({ 'billing.paymentMethods': ['cash', 'upi'], 'billing.taxLabel': 'GST' });
+    const me = await loginAsPatient();
+    const inv = await issue(await draft([other(1000)], me.patientId));
+    expect(inv.rules).toEqual({
+      taxLabel: 'GST',
+      defaultTaxRateBps: 1800,
+      maxDiscountPercentWithoutAdmin: 10,
+      paymentMethods: ['cash', 'upi'],
+    });
+    const own = await get(`/invoices/${inv.id}`, me.auth);
+    expect(own.body.data).not.toHaveProperty('rules');
+  });
+
+  it('?needsAttention lists invoices with billed cancelled tests; rows name the doctor', async () => {
+    const plain = await issue(await draft([other(1000)]));
+    const flagged = await issue(await draft([other(2000)]));
+    await Invoice.updateOne(
+      { _id: flagged.id },
+      {
+        $push: {
+          cancelledItemsBilled: {
+            description: 'CBC',
+            lineTotalPaise: 2000,
+            labOrderId: new Types.ObjectId(),
+            itemId: new Types.ObjectId(),
+            at: new Date(),
+          },
+        },
+      },
+    );
+    const res = await get('/invoices?needsAttention=true', reception.auth);
+    expect(res.body.data.map((i: { id: string }) => i.id)).toEqual([flagged.id]);
+    expect(res.body.data[0].hasCancelledItemsBilled).toBe(true);
+    expect((await get('/invoices', reception.auth)).body.meta.total).toBe(2);
+    expect(plain.id).toBeDefined();
   });
 });

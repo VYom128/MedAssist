@@ -11,6 +11,7 @@ import Tabs from '../../../components/ui/Tabs';
 import { ROLES } from '../../../constants/roles';
 import { isApiQueryError } from '../../../utils/http';
 import { selectCurrentUser } from '../../auth/authSlice';
+import PatientBillingPanel from '../../billing/components/PatientBillingPanel';
 import DocumentsPanel from '../../documents/components/DocumentsPanel';
 import PatientLabOrders from '../../labs/components/PatientLabOrders';
 import { useGetPatientQuery } from '../api';
@@ -27,9 +28,10 @@ const BASE_TABS = [
   { id: 'portal', label: 'Portal access' },
   { id: 'history', label: 'Appointments & history' },
 ];
-/** Reception also handles documents and sees lab order statuses (billing, Phase 7). */
+/** Reception also handles documents, billing and sees lab order statuses. */
 const RECEPTION_TABS = [
   ...BASE_TABS,
+  { id: 'billing', label: 'Billing' },
   { id: 'documents', label: 'Documents' },
   { id: 'lab', label: 'Lab orders' },
 ];
@@ -110,6 +112,9 @@ export default function PatientDetailPage() {
           />
         )}
         {tab === 'portal' && <PortalAccessTab patient={patient} canInvite={isReception} />}
+        {tab === 'billing' && isReception && (
+          <PatientBillingPanel patientId={patient.id} base="/reception/invoices" />
+        )}
         {tab === 'documents' && isReception && (
           <DocumentsPanel patientId={patient.id} title="Documents" />
         )}

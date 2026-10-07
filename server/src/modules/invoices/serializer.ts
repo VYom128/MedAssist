@@ -29,7 +29,11 @@ export const INVOICE_POPULATE = [
 
 export const INVOICE_LIST_POPULATE = [
   { path: 'patient', select: 'mrn firstName lastName' },
-  { path: 'appointment', select: 'appointmentNumber startAt' },
+  {
+    path: 'appointment',
+    select: 'appointmentNumber startAt doctor',
+    populate: { path: 'doctor', select: NAME },
+  },
 ] as const;
 
 interface PersonRef {

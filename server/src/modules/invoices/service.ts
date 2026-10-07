@@ -21,6 +21,7 @@ import { assertTransition, invalidTransition } from '../../utils/stateMachine.js
 import { withTransaction } from '../../utils/transaction.js';
 import { Appointment } from '../appointments/model.js';
 import { patientRecipient } from '../appointments/service.js';
+import { LabTest } from '../labTests/model.js';
 import { Patient } from '../patients/model.js';
 import { Payment } from '../payments/model.js';
 import type { PaymentLike } from '../payments/serializer.js';
@@ -63,6 +64,26 @@ export async function loadInvoice(
 
 const patientIdOf = (i: InvoiceLike) => i.patient._id;
 
+/**
+ * The billing rules the desk works with (staff views only): tax label and default rate, the
+ * discount limit and the enabled payment methods. Not public settings.
+ */
+async function billingRules() {
+  const b = (await getSettings()).billing;
+  return {
+    taxLabel: b?.taxLabel || 'Tax',
+    defaultTaxRateBps: b?.defaultTaxRateBps ?? 0,
+    maxDiscountPercentWithoutAdmin: b?.maxDiscountPercentWithoutAdmin ?? 10,
+    paymentMethods: [...(b?.paymentMethods ?? [])],
+  };
+}
+
+/** The invoice view for `user` – staff also get the billing rules. */
+export async function viewFor(user: Pick<AuthUser, 'role'>, inv: InvoiceLike) {
+  const view = toView(inv, user.role);
+  return user.role === ROLES.PATIENT ? view : { ...view, rules: await billingRules() };
+}
+
 // ---- Lines from the desk ---------------------------------------------------------------------
 
 const fieldError = (field: string, message: string) =>
@@ -99,6 +120,24 @@ async function newStaffLine(
         unitPricePaise: input.unitPricePaise,
         discountPaise,
         taxRateBps: input.taxRateBps ?? defaultTax,
+      },
+      index,
+    );
+  }
+  if (input.kind === 'lab_test') {
+    if (!input.labTestId) throw fieldError(`${at}.labTestId`, 'Choose a lab test');
+    const test = await LabTest.findOne({ _id: input.labTestId, isActive: true }).lean();
+    if (!test) throw fieldError(`${at}.labTestId`, 'Not an active lab test');
+    return priceLine(
+      {
+        kind: 'lab_test',
+        origin: 'staff',
+        refId: test._id,
+        description: test.name,
+        quantity,
+        unitPricePaise: test.pricePaise,
+        discountPaise,
+        taxRateBps: defaultTax,
       },
       index,
     );
@@ -154,7 +193,7 @@ async function mergeLines(
     if (!line) throw fieldError(`${at}.id`, 'Not a line of this invoice');
     if (seen.has(input.id)) throw fieldError(`${at}.id`, 'This line is listed twice');
     seen.add(input.id);
-    if ((input.kind && input.kind !== line.kind) || input.serviceId) {
+    if ((input.kind && input.kind !== line.kind) || input.serviceId || input.labTestId) {
       throw fieldError(`${at}.kind`, 'A line cannot change what it is for – add a new line');
     }
     if (line.origin === 'visit') {
@@ -292,6 +331,7 @@ export async function listInvoices(
   if (query.appointment) and.push({ appointment: new Types.ObjectId(query.appointment) });
   if (query.status) and.push({ status: { $in: query.status } });
   if (query.q && staff) and.push(await searchFilter(query.q));
+  if (query.needsAttention && staff) and.push({ 'cancelledItemsBilled.0': { $exists: true } });
   if (query.from || query.to) {
     const { timezone } = await getSettings();
     const range: Record<string, Date> = {};
@@ -358,7 +398,7 @@ export async function getInvoice(user: AuthUser, id: string, meta: RequestMeta) 
     patient: patientIdOf(inv),
     request: meta,
   });
-  return toView(inv, user.role);
+  return viewFor(user, inv);
 }
 
 /** Loads an invoice a staff caller may change (404 otherwise). */
@@ -454,7 +494,7 @@ export async function createInvoice(user: AuthUser, input: CreateInvoiceInput, m
     changes: { fields: ['items'], after: summaryOf(created) },
     metadata: { via: 'manual', discountApproved: aboveLimit },
   });
-  return toView(await loadInvoice(created._id), user.role);
+  return viewFor(user, await loadInvoice(created._id));
 }
 
 /**
@@ -515,7 +555,7 @@ export async function updateInvoice(
     changes: { fields, before: summaryOf(inv), after: summaryOf(updated) },
     metadata: { discountApproved: aboveLimit && user.role === ROLES.ADMIN },
   });
-  return toView(await loadInvoice(inv._id), user.role);
+  return viewFor(user, await loadInvoice(inv._id));
 }
 
 /** The invoice number for an issue now: '<prefix>-<clinic year>-000001' (spec §8.10). */
@@ -597,7 +637,7 @@ export async function issueInvoice(
     metadata: { ...summaryOf(issued), status: issued.status },
   });
   if (!quiet) void notifyInvoiceIssued(issued);
-  return toView(await loadInvoice(inv._id), user.role);
+  return viewFor(user, await loadInvoice(inv._id));
 }
 
 /** Tells the patient an invoice is ready – the number only, no amounts or lines (§10.3). */
@@ -670,7 +710,7 @@ export async function voidInvoice(
     request: meta,
     metadata: { fromStatus: inv.status, totalPaise: inv.totalPaise, reasonGiven: true },
   });
-  return toView(await loadInvoice(inv._id), user.role);
+  return viewFor(user, await loadInvoice(inv._id));
 }
 
 /**

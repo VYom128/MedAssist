@@ -575,10 +575,14 @@ export const INVOICE_LINE_KINDS = Object.freeze([
   'other',
 ] as const);
 export type InvoiceLineKind = (typeof INVOICE_LINE_KINDS)[number];
-/** Kinds staff may add by hand (lab test lines come only from lab orders). */
+/**
+ * Kinds staff may add by hand: a consultation or procedure service, a lab test from the catalogue
+ * (e.g. an outside sample billed at the desk – no lab order), or an 'other' line.
+ */
 export const INVOICE_STAFF_LINE_KINDS = Object.freeze([
   'consultation',
   'procedure',
+  'lab_test',
   'other',
 ] as const);
 /**

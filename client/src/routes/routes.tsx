@@ -71,6 +71,17 @@ export const routes: RouteObject[] = [
         ],
       },
       {
+        element: <RoleRoute roles={[ROLES.RECEPTIONIST, ROLES.ADMIN]} />,
+        children: [
+          {
+            path: '/print/day-close',
+            lazy: async () => ({
+              Component: (await import('../features/billing/pages/PrintDayClosePage')).default,
+            }),
+          },
+        ],
+      },
+      {
         element: <RoleRoute roles={[ROLES.LABTECH]} />,
         children: [
           {
