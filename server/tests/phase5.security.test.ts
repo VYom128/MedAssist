@@ -146,6 +146,8 @@ describe('doctors without a care relationship', () => {
       ['post', `/lab-orders/${c.labOrderId}/acknowledge`],
       ['get', `/lab-orders/${c.labOrderId}/report.pdf`],
       ['get', `/documents?patient=${c.patientId}`],
+      // Phase 8: the timeline
+      ['get', `/patients/${c.patientId}/timeline`],
     ];
     const before = (await auditEntries('access.denied')).length;
     for (const [method, path, body] of reqs) {

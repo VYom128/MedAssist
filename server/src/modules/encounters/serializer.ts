@@ -3,8 +3,8 @@ import { calendarDateString } from '../../utils/dates.js';
 import type { EncounterDoc } from './model.js';
 
 /**
- * Encounter views (spec §2.4, §7.10). Only doctors read encounters in Phase 5 (patients get a
- * patient-safe view with the timeline in Phase 8). List items carry no clinical text, so lists
+ * Encounter views (spec §2.4, §7.10). Doctors read the full note; patients read their own signed
+ * notes through the patient-safe view (Phase 8). List items carry no clinical text, so lists
  * need no per-row read audit; the full note is audited as `encounter.view`.
  */
 
@@ -111,8 +111,101 @@ export function toDoctorView(e: EncounterLike) {
       date: e.followUp?.date ? calendarDateString(e.followUp.date) : null,
       instructions: orNull(e.followUp?.instructions),
     },
+    shareDiagnosisWithPatient: e.shareDiagnosisWithPatient ?? false,
     signedBy: idOf(e.signedBy),
     createdAt: orNull(e.createdAt),
     updatedAt: orNull(e.updatedAt),
+  };
+}
+
+// ---- Patient-safe view (Phase 8) -------------------------------------------------------------
+
+/** What the patient-safe view links to and shows besides the note itself. */
+export interface PatientViewExtras {
+  department: { id: string; name: string } | null;
+  /** The visit's issued (or completed) prescription. */
+  prescriptionId: string | null;
+  /** The visit's released lab orders. */
+  labOrders: { id: string; orderNumber: string | null }[];
+}
+
+const sharedDiagnoses = (e: Pick<EncounterLike, 'diagnoses' | 'shareDiagnosisWithPatient'>) =>
+  e.shareDiagnosisWithPatient
+    ? (e.diagnoses ?? []).map((d) => ({
+        description: d.description,
+        icd10Code: orNull(d.icd10Code),
+        type: d.type ?? 'provisional',
+        isPrimary: d.isPrimary ?? false,
+      }))
+    : null;
+
+/** The primary (else the first) diagnosis, if the doctor shared the diagnoses. */
+export function sharedPrimaryDiagnosis(e: {
+  diagnoses?: readonly { description: string; isPrimary?: boolean | null }[] | null;
+  shareDiagnosisWithPatient?: boolean | null;
+}): string | null {
+  if (!e.shareDiagnosisWithPatient) return null;
+  const primary = (e.diagnoses ?? []).find((d) => d.isPrimary) ?? e.diagnoses?.[0];
+  return primary?.description ?? null;
+}
+
+/**
+ * A signed note as the patient sees it (Phase 8 decision): the visit, doctor and department,
+ * vitals, advice and the follow-up plan, with links to the prescription and released lab
+ * orders. Diagnoses only when the doctor shared them. Never the history, examination,
+ * assessment, plan, chief complaint or who recorded what.
+ */
+export function toPatientSafeView(e: EncounterLike, extras: PatientViewExtras) {
+  const v = e.vitals ?? {};
+  return {
+    id: e._id.toString(),
+    encounterNumber: e.encounterNumber,
+    appointmentId: e.appointment.toString(),
+    visitAt: e.visitAt,
+    signedAt: orNull(e.signedAt),
+    status: e.status,
+    /** Corrected after signing (an amendment). */
+    amended: e.status === 'amended',
+    doctor: { id: e.doctor._id.toString(), name: `${e.doctor.firstName} ${e.doctor.lastName}` },
+    department: extras.department,
+    vitals: {
+      bpSystolic: orNull(v.bpSystolic),
+      bpDiastolic: orNull(v.bpDiastolic),
+      pulse: orNull(v.pulse),
+      temperatureC: orNull(v.temperatureC),
+      respiratoryRate: orNull(v.respiratoryRate),
+      spo2: orNull(v.spo2),
+      weightKg: orNull(v.weightKg),
+      heightCm: orNull(v.heightCm),
+      bmi: orNull(v.bmi),
+    },
+    diagnosisShared: Boolean(e.shareDiagnosisWithPatient),
+    diagnoses: sharedDiagnoses(e),
+    adviceToPatient: orNull(e.adviceToPatient),
+    followUp: {
+      required: e.followUp?.required ?? false,
+      afterDays: orNull(e.followUp?.afterDays),
+      date: e.followUp?.date ? calendarDateString(e.followUp.date) : null,
+      instructions: orNull(e.followUp?.instructions),
+    },
+    prescriptionId: extras.prescriptionId,
+    labOrders: extras.labOrders,
+  };
+}
+
+/** One row of GET /patients/me/visits: no clinical text except a shared primary diagnosis. */
+export function toPatientVisitItem(
+  e: EncounterLike,
+  department: { id: string; name: string } | null,
+) {
+  return {
+    id: e._id.toString(),
+    encounterNumber: e.encounterNumber,
+    visitAt: e.visitAt,
+    signedAt: orNull(e.signedAt),
+    status: e.status,
+    doctor: { id: e.doctor._id.toString(), name: `${e.doctor.firstName} ${e.doctor.lastName}` },
+    department,
+    primaryDiagnosis: sharedPrimaryDiagnosis(e),
   };
 }

@@ -15,40 +15,58 @@ import {
 } from './validation.js';
 
 /**
- * /encounters – clinical notes (spec §7.10). Doctors only in Phase 5: their own notes, and signed
- * notes of patients they have a care relationship with (policies/encounterAccess; others → 404).
- * Admins and receptionists never read notes; patients get a patient-safe view in Phase 8.
+ * /encounters – clinical notes (spec §7.10). Doctors: their own notes, and signed notes of
+ * patients they have a care relationship with (policies/encounterAccess; others → 404). Patients
+ * read their own signed notes as a patient-safe view (GET /:id only; Phase 8). Admins and
+ * receptionists never read notes.
  * GET /appointments/:id/encounter (the workspace's entry point) is in appointments/routes.ts.
  */
 const router = Router();
-router.use(authenticate, authorize(ROLES.DOCTOR));
+const doctor = [authenticate, authorize(ROLES.DOCTOR)];
 
-router.get('/', validate(listEncountersSchema), asyncHandler(encountersController.listEncounters));
-router.get('/:id', validate(encounterIdSchema), asyncHandler(encountersController.getEncounter));
+router.get(
+  '/',
+  ...doctor,
+  validate(listEncountersSchema),
+  asyncHandler(encountersController.listEncounters),
+);
+// Patients read their own signed notes as the patient-safe view (Phase 8).
+router.get(
+  '/:id',
+  authenticate,
+  authorize(ROLES.DOCTOR, ROLES.PATIENT),
+  validate(encounterIdSchema),
+  asyncHandler(encountersController.getEncounter),
+);
 router.patch(
   '/:id',
+  ...doctor,
   validate(updateEncounterSchema),
   asyncHandler(encountersController.updateEncounter),
 );
 
 router.post(
   '/:id/sign',
+  ...doctor,
   validate(signEncounterSchema),
   asyncHandler(encountersController.signEncounter),
 );
 router.post(
   '/:id/amendments',
+  ...doctor,
   validate(amendEncounterSchema),
   asyncHandler(encountersController.amendEncounter),
 );
 router.get(
   '/:id/amendments',
+  ...doctor,
   validate(encounterIdSchema),
   asyncHandler(encountersController.listAmendments),
 );
 // The draft prescription of the note (spec §7.12).
 router.put(
   '/:id/prescription',
+  ...doctor,
   validate(putPrescriptionSchema),
   asyncHandler(encountersController.putPrescription),
 );

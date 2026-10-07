@@ -20,13 +20,16 @@ export interface EncounterRefs {
 /**
  * Who may read a clinical note (spec §2.3, §2.4): its own doctor, always; another doctor only
  * once it is signed (drafts are private to their author) and only with a care relationship with
- * the patient. Nobody else in Phase 5 (patients read their signed notes from Phase 8; admins and
- * receptionists never).
+ * the patient; the patient their own signed (or amended) notes, through the patient-safe view
+ * (Phase 8). Admins, receptionists and lab technicians never.
  */
 export async function canReadEncounter(
   user: Pick<AuthUser, 'id' | 'role' | 'patientId'>,
   e: EncounterRefs,
 ): Promise<boolean> {
+  if (user.role === ROLES.PATIENT) {
+    return e.status !== 'draft' && user.patientId !== null && idOf(e.patient) === user.patientId;
+  }
   if (user.role !== ROLES.DOCTOR) return false;
   if (idOf(e.doctor) === user.id) return true;
   if (e.status === 'draft') return false;

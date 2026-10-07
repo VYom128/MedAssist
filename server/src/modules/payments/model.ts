@@ -38,6 +38,7 @@ const paymentSchema = new Schema(
 paymentSchema.index({ paymentNumber: 1 }, { unique: true });
 paymentSchema.index({ invoice: 1, receivedAt: 1 });
 paymentSchema.index({ receivedAt: 1 }); // day summary
+paymentSchema.index({ patient: 1, receivedAt: -1, _id: -1 }); // patient timeline (Phase 8)
 paymentSchema.index({ refundOf: 1 }, { sparse: true });
 
 paymentSchema.pre('validate', function kindMatchesAmount() {

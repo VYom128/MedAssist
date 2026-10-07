@@ -169,8 +169,32 @@ export const ENCOUNTER_EDITABLE_FIELDS = Object.freeze([
   'plan',
   'adviceToPatient',
   'followUp',
+  /** Phase 8: whether the patient-safe view shows the diagnoses (draft PATCH or amendment). */
+  'shareDiagnosisWithPatient',
 ] as const);
 export type EncounterEditableField = (typeof ENCOUNTER_EDITABLE_FIELDS)[number];
+
+/**
+ * Patient timeline (spec §8.8, Phase 8): the item types, in the order they sort on equal times
+ * (the cursor compares them as strings), and the page size.
+ */
+export const TIMELINE_TYPES = Object.freeze([
+  'appointment',
+  'document',
+  'encounter',
+  'followup_request',
+  'invoice',
+  'lab_order',
+  'payment',
+  'prescription',
+] as const);
+export type TimelineType = (typeof TIMELINE_TYPES)[number];
+export const TIMELINE_RULES = Object.freeze({ defaultLimit: 20, maxLimit: 50 });
+/**
+ * Planned follow-ups shown to the patient (GET /patients/me/follow-ups-due): upcoming, or overdue
+ * by at most `overdueDays`, and not yet booked.
+ */
+export const FOLLOW_UP_DUE_RULES = Object.freeze({ overdueDays: 14 });
 
 /** Prescription item enums (spec §6.16). */
 export const DRUG_FORMS = Object.freeze([
@@ -485,6 +509,8 @@ export const AUDIT_ACTIONS = Object.freeze({
   PATIENT_PORTAL_INVITE: 'patient.portal_invite',
   PATIENT_LINK_CONFIRM: 'patient.link_confirm',
   PATIENT_LINK_REJECT: 'patient.link_reject',
+  /** Phase 8: a read of a patient's timeline (debounced like other clinical reads). */
+  PATIENT_TIMELINE_VIEW: 'patient.timeline_view',
   APPOINTMENT_CREATE: 'appointment.create',
   APPOINTMENT_UPDATE: 'appointment.update',
   APPOINTMENT_RESCHEDULE: 'appointment.reschedule',

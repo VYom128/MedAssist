@@ -148,6 +148,8 @@ const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'pa
 const INVOICE_READERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
+const TIMELINE_READERS: readonly Role[] = ['doctor', 'receptionist'];
+const NOTE_READERS: readonly Role[] = ['doctor', 'patient'];
 const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionist'];
 const LAB_ORDER_READERS: readonly Role[] = ['doctor', 'labtech', 'receptionist', 'patient'];
 const DOCTOR_LABTECH: readonly Role[] = ['doctor', 'labtech'];
@@ -440,6 +442,24 @@ ENDPOINTS.push(
     roles: PATIENT,
     status: 200,
   },
+  // Phase 8: the patient's own timeline, signed visits and planned follow-ups to book.
+  { method: 'get', path: () => '/patients/me/timeline', roles: PATIENT, status: 200 },
+  { method: 'get', path: () => '/patients/me/visits', roles: PATIENT, status: 200 },
+  { method: 'get', path: () => '/patients/me/follow-ups-due', roles: PATIENT, status: 200 },
+  // A patient's timeline: doctors with a care relationship, reception (non-clinical items).
+  {
+    method: 'get',
+    path: (c) => `/patients/${c.patientId}/timeline`,
+    roles: TIMELINE_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/patients/${c.otherPatientId}/timeline`,
+    roles: TIMELINE_READERS,
+    status: 200,
+    statusFor: { doctor: 404 },
+  },
   { method: 'get', path: () => '/patients/pending-links', roles: ADMIN_RECEPTION, status: 200 },
   {
     method: 'post',
@@ -620,7 +640,21 @@ ENDPOINTS.push(
     status: 200,
   },
   { method: 'get', path: () => '/encounters', roles: DOCTOR, status: 200 },
-  { method: 'get', path: (c) => `/encounters/${c.encounterId}`, roles: DOCTOR, status: 200 },
+  // Patients read their own signed notes (patient-safe view, Phase 8): a draft of another
+  // patient's visit → 404; their own signed note → 200.
+  {
+    method: 'get',
+    path: (c) => `/encounters/${c.encounterId}`,
+    roles: NOTE_READERS,
+    status: 200,
+    statusFor: { patient: 404 },
+  },
+  {
+    method: 'get',
+    path: (c) => `/encounters/${c.signedEncounterId}`,
+    roles: NOTE_READERS,
+    status: 200,
+  },
   {
     method: 'patch',
     path: (c) => `/encounters/${c.encounterId}`,

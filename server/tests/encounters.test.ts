@@ -90,12 +90,15 @@ describe('GET /encounters/:id', () => {
     expect((await get(`/encounters/${encounterId}`, doctor)).status).toBe(404);
   });
 
-  it('admins, receptionists, lab techs and patients never read encounters (403)', async () => {
+  it('admins, receptionists and lab techs never read encounters (403); patients not others’ (404)', async () => {
     const { encounterId } = await startedConsultation();
     await markSigned(encounterId);
     for (const role of ['admin', 'receptionist', 'labtech', 'patient'] as const) {
       const who = await loginAs(role);
-      expect((await get(`/encounters/${encounterId}`, who)).status).toBe(403);
+      // Patients read their own signed notes (patient-safe view, Phase 8) – never someone else's.
+      expect((await get(`/encounters/${encounterId}`, who)).status).toBe(
+        role === 'patient' ? 404 : 403,
+      );
       expect((await get('/encounters', who)).status).toBe(403);
     }
   });

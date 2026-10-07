@@ -118,6 +118,7 @@ const invoiceSchema = new Schema(
 );
 
 invoiceSchema.index({ patient: 1, createdAt: -1 });
+invoiceSchema.index({ patient: 1, issuedAt: -1, _id: -1 }); // patient timeline (Phase 8)
 invoiceSchema.index({ appointment: 1 });
 invoiceSchema.index({ status: 1, issuedAt: -1 });
 invoiceSchema.index({ invoiceNumber: 1 }, { unique: true, sparse: true });

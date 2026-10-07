@@ -263,6 +263,9 @@ export const updateMyRecordSchema = {
 /** GET /patients/pending-links */
 export const pendingLinksSchema = { query: z.object({ ...paginationQuery }) };
 
+/** GET /patients/me/visits (Phase 8): the patient's signed visits, paginated. */
+export const myVisitsSchema = { query: z.object({ ...paginationQuery }) };
+
 /** POST /patients/:id/confirm-link */
 export const confirmLinkSchema = {
   params: idParams,

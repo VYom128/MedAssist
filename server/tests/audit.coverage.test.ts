@@ -373,6 +373,8 @@ describe('audit coverage', () => {
     });
     await post(`/lab-orders/${dropped.body.data.id}/discard`, drToday.auth);
     await post(`/encounters/${noteId}/sign`, drToday.auth, { expectedVersion: 1 });
+    // patient.timeline_view (Phase 8)
+    await api().get(`/api/v1/patients/${patientId}/timeline`).set(drToday.auth);
     // lab_order.submit (with the signing), .view, .item_cancel, .cancel (placed on the signed note)
     await api().get(`/api/v1/lab-orders/${labDraft.body.data.id}`).set(drToday.auth);
     const placed = await post('/lab-orders', drToday.auth, {

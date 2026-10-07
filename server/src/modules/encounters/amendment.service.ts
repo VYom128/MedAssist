@@ -21,6 +21,7 @@ type Changes = Omit<UpdateEncounterInput, 'expectedVersion'>;
 /** A note field as a plain JSON value, for comparing and for the amendment snapshot. */
 function snapshotOf(e: Partial<EncounterLike>, field: string): unknown {
   const value = (e as Record<string, unknown>)[field];
+  if (field === 'shareDiagnosisWithPatient') return Boolean(value); // older notes lack it
   if (value === undefined || value === null) return null;
   if (field === 'vitals') {
     const { recordedAt: _a, recordedBy: _b, ...vitals } = value as Record<string, unknown>;

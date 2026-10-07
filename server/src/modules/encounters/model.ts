@@ -112,6 +112,11 @@ const encounterSchema = new Schema(
     plan: text(LIMITS.plan),
     adviceToPatient: text(LIMITS.adviceToPatient),
     followUp: { type: followUpSchema, default: () => ({}) },
+    /**
+     * Phase 8: the patient-safe view shows the diagnoses only when the doctor ticked this (set on
+     * the draft; after signing only through an amendment).
+     */
+    shareDiagnosisWithPatient: { type: Boolean, default: false },
     signedAt: Date,
     signedBy: { type: ObjectId, ref: 'User' },
     lastAmendedAt: Date,
@@ -123,6 +128,7 @@ const encounterSchema = new Schema(
 
 encounterSchema.index({ doctor: 1, status: 1, visitAt: -1 });
 encounterSchema.index({ patient: 1, visitAt: -1 });
+encounterSchema.index({ patient: 1, signedAt: -1, _id: -1 }); // timeline (Phase 8)
 
 // ---- Immutability ---------------------------------------------------------------------------
 
