@@ -33,6 +33,7 @@ const FIELD_TAB: Record<NoteField, ConsultTab> = {
   plan: 'diagnosis',
   adviceToPatient: 'diagnosis',
   followUp: 'followup',
+  shareDiagnosisWithPatient: 'diagnosis',
 };
 
 /** Element id of a note field's control (links from problems focus it). */
@@ -230,6 +231,8 @@ export function formatNoteValue(field: NoteField, value: unknown): string {
       return (value as Diagnosis[]).map(formatDiagnosis).join('; ') || '—';
     case 'followUp':
       return formatFollowUp(value as FollowUp);
+    case 'shareDiagnosisWithPatient':
+      return value ? 'Shared with the patient' : 'Not shared';
     default:
       return String(value);
   }

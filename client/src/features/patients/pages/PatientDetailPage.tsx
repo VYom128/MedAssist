@@ -1,10 +1,9 @@
-import { History, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
 import Alert from '../../../components/ui/Alert';
 import BackLink from '../../../components/ui/BackLink';
 import Card from '../../../components/ui/Card';
-import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
 import Tabs from '../../../components/ui/Tabs';
@@ -14,6 +13,8 @@ import { selectCurrentUser } from '../../auth/authSlice';
 import PatientBillingPanel from '../../billing/components/PatientBillingPanel';
 import DocumentsPanel from '../../documents/components/DocumentsPanel';
 import PatientLabOrders from '../../labs/components/PatientLabOrders';
+import Timeline from '../../timeline/components/Timeline';
+import { TIMELINE_FILTERS } from '../../timeline/types';
 import { useGetPatientQuery } from '../api';
 import InviteButton from '../components/InviteButton';
 import OverviewTab from '../components/OverviewTab';
@@ -26,11 +27,14 @@ import { portalState } from '../portal';
 const BASE_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'portal', label: 'Portal access' },
-  { id: 'history', label: 'Appointments & history' },
 ];
-/** Reception also handles documents, billing and sees lab order statuses. */
+/**
+ * Reception also has the timeline (non-clinical items only – the server leaves the rest out),
+ * documents, billing and lab order statuses. Admins have no timeline (spec §8.8).
+ */
 const RECEPTION_TABS = [
   ...BASE_TABS,
+  { id: 'timeline', label: 'Timeline' },
   { id: 'billing', label: 'Billing' },
   { id: 'documents', label: 'Documents' },
   { id: 'lab', label: 'Lab orders' },
@@ -126,13 +130,9 @@ export default function PatientDetailPage() {
             <PatientLabOrders patientId={patient.id} view="reception" />
           </Card>
         )}
-        {tab === 'history' && (
+        {tab === 'timeline' && isReception && (
           <Card>
-            <EmptyState
-              icon={History}
-              title="Appointments and history"
-              description="Coming in Phases 4 and 8: appointments, visits and the patient timeline."
-            />
+            <Timeline patientId={patient.id} types={TIMELINE_FILTERS.receptionist} />
           </Card>
         )}
       </Tabs>

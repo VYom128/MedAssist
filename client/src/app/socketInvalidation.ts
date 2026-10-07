@@ -49,12 +49,15 @@ export const labTags = (orderIds: readonly string[]) => [
 export function attachInvalidation(source: EventSource, dispatch: Dispatch): () => void {
   const onQueue = (payload: QueueUpdated) =>
     dispatch(apiSlice.util.invalidateTags(queueUpdatedTags(payload)));
+  // Timelines show appointments and lab orders (Phase 8): refetch them too.
   const onAppointment = ({ appointmentId }: AppointmentChanged) =>
-    dispatch(apiSlice.util.invalidateTags([{ type: 'Appointment', id: appointmentId }]));
+    dispatch(
+      apiSlice.util.invalidateTags([{ type: 'Appointment', id: appointmentId }, 'Timeline']),
+    );
   const onWorklist = ({ orderIds }: LabWorklistUpdated) =>
     dispatch(apiSlice.util.invalidateTags(labTags(orderIds ?? [])));
   const onLabOrder = ({ orderId }: LabOrderChanged) =>
-    dispatch(apiSlice.util.invalidateTags(labTags([orderId])));
+    dispatch(apiSlice.util.invalidateTags([...labTags([orderId]), 'Timeline']));
   source.on('queue.updated', onQueue);
   source.on('appointment.changed', onAppointment);
   source.on('lab.worklist.updated', onWorklist);

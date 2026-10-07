@@ -1,37 +1,38 @@
-import { FilePen, FileText, FlaskConical, Pill, Printer } from 'lucide-react';
+import { FilePen, FlaskConical, History } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { useAppSelector } from '../../../app/hooks';
+import { useParams, useSearchParams } from 'react-router-dom';
 import Button from '../../../components/ui/Button';
 import Code from '../../../components/ui/Code';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
 import PageHeader from '../../../components/ui/PageHeader';
 import SectionCard from '../../../components/ui/SectionCard';
-import StatusPill from '../../../components/ui/StatusPill';
-import { linkClass } from '../../../components/ui/linkClass';
+import Tabs from '../../../components/ui/Tabs';
 import { BLOOD_GROUP_LABELS, GENDER_SHORT } from '../../../constants/catalog';
-import { formatDate } from '../../../utils/dates';
-import { selectCurrentUser } from '../../auth/authSlice';
-import { useListEncountersQuery } from '../../encounters/api';
 import AllergyBanner from '../../encounters/components/AllergyBanner';
 import { useGetPatientQuery } from '../../patients/api';
-import { useListPrescriptionsQuery } from '../../prescriptions/api';
 import DocumentsPanel from '../../documents/components/DocumentsPanel';
 import PatientLabOrders from '../../labs/components/PatientLabOrders';
+import Timeline from '../../timeline/components/Timeline';
+import { TIMELINE_FILTERS } from '../../timeline/types';
 import ClinicalProfileModal from '../components/ClinicalProfileModal';
+
+const TABS = [
+  { id: 'timeline', label: 'Timeline' },
+  { id: 'lab', label: 'Lab results' },
+  { id: 'documents', label: 'Documents' },
+];
 
 /**
  * /doctor/patients/:id – a patient the doctor cares for: allergies and chronic conditions
- * (editable), earlier visits, prescriptions, lab results and documents (with uploads). The full
- * timeline comes in Phase 8.
+ * (editable), then tabs: the timeline (default – visits, prescriptions, lab orders, documents,
+ * follow-ups; Phase 8), lab results and documents (with uploads).
  */
 export default function DoctorPatientPage() {
   const { id = '' } = useParams();
-  const user = useAppSelector(selectCurrentUser);
   const patient = useGetPatientQuery(id);
-  const visits = useListEncountersQuery({ patient: id, limit: 50 });
-  const rx = useListPrescriptionsQuery({ patient: id, limit: 50 });
+  const [params, setParams] = useSearchParams();
+  const tab = TABS.some((t) => t.id === params.get('tab')) ? params.get('tab')! : 'timeline';
   const [editing, setEditing] = useState(false);
   const p = patient.data;
 
@@ -78,78 +79,24 @@ export default function DoctorPatientPage() {
               </p>
             </div>
           </SectionCard>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <SectionCard title="Visits" icon={FileText} iconTone="info">
-              {visits.isLoading && <ListSkeleton label="Loading visits…" rows={3} />}
-              {visits.isError && (
-                <ErrorState error={visits.error} onRetry={() => void visits.refetch()} />
-              )}
-              {visits.data && visits.data.items.length === 0 && (
-                <p className="text-sm text-muted">No visit notes yet.</p>
-              )}
-              <ul className="divide-y divide-line">
-                {(visits.data?.items ?? []).map((e) => (
-                  <li key={e.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                    <div className="min-w-0">
-                      <Link
-                        to={
-                          e.status === 'draft' && e.doctor.id === user?.id
-                            ? `/doctor/consult/${e.appointmentId}`
-                            : `/doctor/encounters/${e.id}`
-                        }
-                        className={linkClass}
-                      >
-                        {e.primaryDiagnosis ??
-                          (e.status === 'draft' ? 'Draft note' : 'No diagnosis')}
-                      </Link>
-                      <p className="text-xs text-muted">
-                        {formatDate(e.visitAt)} · Dr {e.doctor.name}
-                      </p>
-                    </div>
-                    <StatusPill domain="encounter" status={e.status} size="sm" />
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-            <SectionCard title="Prescriptions" icon={Pill} iconTone="primary">
-              {rx.isLoading && <ListSkeleton label="Loading prescriptions…" rows={3} />}
-              {rx.isError && <ErrorState error={rx.error} onRetry={() => void rx.refetch()} />}
-              {rx.data && rx.data.items.length === 0 && (
-                <p className="text-sm text-muted">No prescriptions yet.</p>
-              )}
-              <ul className="divide-y divide-line">
-                {(rx.data?.items ?? []).map((r) => (
-                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                    <div>
-                      <p className="text-sm font-semibold text-ink">
-                        {r.prescriptionNumber ?? 'Draft'} · {r.itemCount} drug
-                        {r.itemCount === 1 ? '' : 's'}
-                      </p>
-                      <p className="text-xs text-muted">
-                        {r.issuedAt ? formatDate(r.issuedAt) : 'Not issued'} · Dr {r.doctor.name}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <StatusPill domain="prescription" status={r.status} size="sm" />
-                      {(r.status === 'issued' || r.status === 'completed') && (
-                        <Link
-                          to={`/print/prescriptions/${r.id}`}
-                          aria-label={`Print ${r.prescriptionNumber}`}
-                          className={linkClass}
-                        >
-                          <Printer className="h-4 w-4" aria-hidden="true" />
-                        </Link>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </SectionCard>
-          </div>
-          <SectionCard title="Lab results" icon={FlaskConical} iconTone="info">
-            <PatientLabOrders patientId={p.id} view="doctor" />
-          </SectionCard>
-          <DocumentsPanel patientId={p.id} />
+          <Tabs
+            label="Patient record"
+            tabs={TABS}
+            value={tab}
+            onChange={(next) => setParams({ tab: next }, { replace: true })}
+          >
+            {tab === 'timeline' && (
+              <SectionCard title="Timeline" icon={History} iconTone="primary">
+                <Timeline patientId={p.id} types={TIMELINE_FILTERS.doctor} />
+              </SectionCard>
+            )}
+            {tab === 'lab' && (
+              <SectionCard title="Lab results" icon={FlaskConical} iconTone="info">
+                <PatientLabOrders patientId={p.id} view="doctor" />
+              </SectionCard>
+            )}
+            {tab === 'documents' && <DocumentsPanel patientId={p.id} />}
+          </Tabs>
           <ClinicalProfileModal patient={p} open={editing} onClose={() => setEditing(false)} />
         </>
       )}

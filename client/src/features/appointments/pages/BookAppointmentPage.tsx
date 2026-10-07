@@ -1,7 +1,7 @@
 import { Building2, CalendarCheck, Stethoscope } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppSelector } from '../../../app/hooks';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
@@ -20,7 +20,7 @@ import { formatINR } from '../../../utils/money';
 import { formatPhone } from '../../../utils/phone';
 import { selectCurrentUser } from '../../auth/authSlice';
 import { useListDepartmentsQuery } from '../../departments/api';
-import { useListDoctorsQuery, type Doctor } from '../../doctors/api';
+import { useGetDoctorQuery, useListDoctorsQuery, type Doctor } from '../../doctors/api';
 import { useListServicesQuery } from '../../services/api';
 import { useGetPublicSettingsQuery } from '../../settings/api';
 import { useBookAppointmentMutation, useGetSlotsQuery } from '../api';
@@ -39,6 +39,10 @@ const choiceClass = (selected: boolean) =>
  * /patient/appointments/book (spec §13.4 #2): department → doctor → date (free times per day) →
  * time → reason → confirm. Server refusals get a plain explanation; a time taken meanwhile sends
  * the patient back to pick another (the free times refresh).
+ *
+ * Follow-ups (Phase 8): `?doctor=<id>&followUpOf=<appointmentId>` (the reminder email, the
+ * portal's "Book follow-up") preselects the doctor and their department, books a `follow_up`
+ * visit linked to the earlier one and starts at the date step.
  */
 export default function BookAppointmentPage() {
   const user = useAppSelector(selectCurrentUser);
@@ -54,6 +58,19 @@ export default function BookAppointmentPage() {
     null,
   );
   const [book, { isLoading: booking }] = useBookAppointmentMutation();
+  const [search] = useSearchParams();
+  const presetDoctorId = search.get('doctor');
+  const followUpOf = search.get('followUpOf');
+  const preset = useGetDoctorQuery(presetDoctorId ?? '', { skip: !presetDoctorId });
+  const [presetApplied, setPresetApplied] = useState(false);
+  // Apply the preset once, while rendering (no effect): doctor, department, then the date step.
+  if (preset.data && !presetApplied) {
+    setPresetApplied(true);
+    setDoctor(preset.data);
+    setDepartmentId(preset.data.department?.id ?? '');
+    setStep(2);
+  }
+  const isFollowUp = Boolean(followUpOf && doctor && doctor.id === presetDoctorId);
 
   const departments = useListDepartmentsQuery({ limit: 100 });
   const doctors = useListDoctorsQuery(
@@ -61,16 +78,21 @@ export default function BookAppointmentPage() {
     { skip: !departmentId },
   );
   const services = useListServicesQuery({ limit: 100 });
-  // The department's consultation (the service patients book online).
+  // The department's consultation (the service patients book online); its follow-up visit
+  // (code FUP-…) when booking a follow-up, if the clinic has one.
   const service = useMemo(() => {
     const items = services.data?.items ?? [];
     const dept = doctor?.department?.id;
+    const followUpService = isFollowUp
+      ? items.find((s) => s.code.startsWith('FUP-') && s.department?.id === dept)
+      : undefined;
     return (
+      followUpService ??
       items.find((s) => s.type === 'consultation' && s.department?.id === dept) ??
       items.find((s) => s.type === 'consultation' && !s.department) ??
       null
     );
-  }, [services.data, doctor]);
+  }, [services.data, doctor, isFollowUp]);
   const slots = useGetSlotsQuery(
     { doctorId: doctor?.id ?? '', date, serviceId: service?.id },
     { skip: !doctor || !date || !service },
@@ -127,7 +149,9 @@ export default function BookAppointmentPage() {
         doctorId: doctor.id,
         serviceId: service.id,
         startAt,
-        type: 'new',
+        ...(isFollowUp && followUpOf
+          ? { type: 'follow_up' as const, followUpOf }
+          : { type: 'new' as const }),
         ...(reason.trim() ? { reason: reason.trim() } : {}),
       }).unwrap();
       toast.success(`Booked for ${formatDateTime(created.startAt)} (${created.appointmentNumber})`);
@@ -177,6 +201,16 @@ export default function BookAppointmentPage() {
         title="Book an appointment"
         back={{ to: '/patient/appointments', label: 'My appointments' }}
       />
+      {isFollowUp && doctor && (
+        <Alert tone="info" title="Booking a follow-up visit">
+          With {doctor.name}, linked to your earlier visit. Choose a date and time that suits you.
+        </Alert>
+      )}
+      {presetDoctorId && preset.isError && (
+        <Alert tone="warning" title="We couldn't find that doctor">
+          Please choose a department and doctor below.
+        </Alert>
+      )}
       <ol className="flex flex-wrap gap-2 text-sm" aria-label="Steps">
         {STEPS.map((label, i) => (
           <li
@@ -352,6 +386,7 @@ export default function BookAppointmentPage() {
             <DescriptionList
               items={[
                 { label: 'Doctor', value: `${doctor.name} (${doctor.specialization})` },
+                ...(isFollowUp ? [{ label: 'Type', value: 'Follow-up visit' }] : []),
                 { label: 'Department', value: doctor.department?.name },
                 { label: 'When', value: startAt ? formatDateTime(startAt) : null },
                 {

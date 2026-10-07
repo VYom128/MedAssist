@@ -15,8 +15,9 @@ import OutstandingBalanceCard from '../../billing/components/OutstandingBalanceC
 import { useGetPublicSettingsQuery } from '../../settings/api';
 import DashboardPlaceholder, { TodayPill } from '../components/DashboardPlaceholder';
 import { linkClass } from '../../../components/ui/linkClass';
-
-const UPCOMING = ['Prescriptions and lab reports', 'Follow-up requests'];
+import NewLabReportsCard from '../../labs/components/NewLabReportsCard';
+import ActivePrescriptionsCard from '../../prescriptions/components/ActivePrescriptionsCard';
+import FollowUpDueCard from '../../visits/components/FollowUpDueCard';
 
 /** "My details" card: MRN and a link to the profile. */
 function MyDetailsCard() {
@@ -55,8 +56,10 @@ function MyDetailsCard() {
 }
 
 /**
- * Patient dashboard. While a self-signup waits for the ID check, only a banner is shown (no
- * record cards); once linked, "My details" shows the MRN.
+ * Patient home (Phase 8, from existing endpoints – Phase 10 replaces it with one dashboard call).
+ * While a self-signup waits for the ID check, only a banner is shown. Once linked: the token
+ * while checked in, the next appointment, follow-ups to book, new lab reports, active
+ * prescriptions and the outstanding balance – cards with nothing to show stay hidden.
  */
 export default function PatientDashboard() {
   const user = useAppSelector(selectCurrentUser);
@@ -85,16 +88,16 @@ export default function PatientDashboard() {
     );
   }
   return (
-    <DashboardPlaceholder
-      upcoming={UPCOMING}
-      hideLinksTo={user?.patientId ? ['/patient/profile'] : []}
-    >
+    <DashboardPlaceholder upcoming={[]} hideLinksTo={user?.patientId ? ['/patient/profile'] : []}>
       {user?.patientId && (
         <div className="space-y-4">
           <MyTokenCard />
           <OutstandingBalanceCard />
+          <FollowUpDueCard />
           <div className="grid gap-4 lg:grid-cols-2">
             <NextAppointmentCard canBook={clinic?.appointment.allowPatientSelfBooking !== false} />
+            <ActivePrescriptionsCard />
+            <NewLabReportsCard />
             <MyDetailsCard />
           </div>
         </div>

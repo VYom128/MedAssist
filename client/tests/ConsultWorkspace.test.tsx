@@ -124,6 +124,28 @@ describe('Consult workspace', () => {
     });
   });
 
+  it('"Share diagnosis with patient" saves at once and shows in the sign summary', async () => {
+    const { patches } = setup({ note: signableNote() });
+    open();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole('tab', { name: 'Diagnosis & plan' }, { timeout: 5000 }),
+    );
+    const share = screen.getByRole('checkbox', { name: /Share diagnosis with patient/ });
+    expect(share).not.toBeChecked();
+    await user.click(share);
+    await waitFor(() => expect(patches).toHaveLength(1));
+    expect(patches[0]).toEqual({ expectedVersion: 0, shareDiagnosisWithPatient: true });
+    // The panel re-renders after the save: query the checkbox again.
+    await waitFor(() =>
+      expect(screen.getByRole('checkbox', { name: /Share diagnosis with patient/ })).toBeChecked(),
+    );
+    await user.click(screen.getByRole('button', { name: /Review & sign/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Diagnosis shared with patient')).toBeInTheDocument();
+    expect(within(dialog).getByText(/Yes – shown on their visit summary/)).toBeInTheDocument();
+  });
+
   it('autosaves 2 s after typing stops, one request at a time', async () => {
     const { patches } = setup();
     open();

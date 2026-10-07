@@ -4,6 +4,9 @@ import {
   CalendarClock,
   CalendarDays,
   FileText,
+  History,
+  House,
+  Pill,
   FlaskConical,
   IdCard,
   FileStack,
@@ -69,11 +72,95 @@ export const APP_ROUTES: AppRoute[] = [
     '/lab/dashboard',
     () => import('../features/dashboards/pages/LabDashboard'),
   ),
-  dashboard(
-    ROLES.PATIENT,
-    '/patient/dashboard',
-    () => import('../features/dashboards/pages/PatientDashboard'),
-  ),
+  {
+    // The patient's dashboard is their home page.
+    ...dashboard(
+      ROLES.PATIENT,
+      '/patient/dashboard',
+      () => import('../features/dashboards/pages/PatientDashboard'),
+    ),
+    nav: { label: 'Home', icon: House },
+  },
+  // Patient portal, in menu order (Phase 8): Home, Appointments, Visits, Prescriptions, Lab
+  // reports, Invoices, Documents, Follow-ups, Timeline, Profile.
+  {
+    path: '/patient/appointments',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/appointments/pages/MyAppointmentsPage'),
+    nav: { label: 'Appointments', icon: CalendarDays },
+  },
+  {
+    path: '/patient/appointments/book',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/appointments/pages/BookAppointmentPage'),
+  },
+  {
+    path: '/patient/visits',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/visits/pages/MyVisitsPage'),
+    nav: { label: 'Visits', icon: FileText },
+  },
+  {
+    path: '/patient/visits/:id',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/visits/pages/MyVisitPage'),
+  },
+  {
+    path: '/patient/prescriptions',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/prescriptions/pages/MyPrescriptionsPage'),
+    nav: { label: 'Prescriptions', icon: Pill },
+  },
+  {
+    path: '/patient/prescriptions/:id',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/prescriptions/pages/MyPrescriptionPage'),
+  },
+  {
+    path: '/patient/lab-reports',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/labs/pages/MyLabReportsPage'),
+    nav: { label: 'Lab reports', icon: TestTubes },
+  },
+  {
+    path: '/patient/lab-reports/:id',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/labs/pages/MyLabReportPage'),
+  },
+  {
+    path: '/patient/invoices',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/billing/pages/MyInvoicesPage'),
+    nav: { label: 'Invoices', icon: ReceiptIndianRupee },
+  },
+  {
+    path: '/patient/invoices/:id',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/billing/pages/InvoiceDetailPage'),
+  },
+  {
+    path: '/patient/documents',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/documents/pages/MyDocumentsPage'),
+    nav: { label: 'Documents', icon: FileStack },
+  },
+  {
+    path: '/patient/timeline',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/timeline/pages/MyTimelinePage'),
+    nav: { label: 'Timeline', icon: History },
+  },
+  {
+    path: '/patient/profile',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/patients/pages/MyPatientProfilePage'),
+    nav: { label: 'My details', icon: UserRound },
+  },
+  {
+    path: '/patient/verify-identity',
+    roles: [ROLES.PATIENT],
+    load: () => import('../features/patients/pages/PendingVerificationPage'),
+  },
   {
     path: '/reception/appointments',
     roles: [ROLES.RECEPTIONIST],
@@ -137,17 +224,6 @@ export const APP_ROUTES: AppRoute[] = [
   },
 
   {
-    path: '/patient/appointments',
-    roles: [ROLES.PATIENT],
-    load: () => import('../features/appointments/pages/MyAppointmentsPage'),
-    nav: { label: 'Appointments', icon: CalendarDays },
-  },
-  {
-    path: '/patient/appointments/book',
-    roles: [ROLES.PATIENT],
-    load: () => import('../features/appointments/pages/BookAppointmentPage'),
-  },
-  {
     path: '/admin/appointments',
     roles: [ROLES.ADMIN],
     load: () => import('../features/appointments/pages/AdminAppointmentsPage'),
@@ -196,17 +272,6 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.RECEPTIONIST],
     load: () => import('../features/billing/pages/DayClosePage'),
     nav: { label: 'Day close', icon: CalendarCheck2 },
-  },
-  {
-    path: '/patient/profile',
-    roles: [ROLES.PATIENT],
-    load: () => import('../features/patients/pages/MyPatientProfilePage'),
-    nav: { label: 'My details', icon: UserRound },
-  },
-  {
-    path: '/patient/verify-identity',
-    roles: [ROLES.PATIENT],
-    load: () => import('../features/patients/pages/PendingVerificationPage'),
   },
   {
     path: '/admin/users',
@@ -296,34 +361,6 @@ export const APP_ROUTES: AppRoute[] = [
     path: '/doctor/lab-orders/:id',
     roles: [ROLES.DOCTOR],
     load: () => import('../features/labs/pages/DoctorLabOrderPage'),
-  },
-  {
-    path: '/patient/lab-reports',
-    roles: [ROLES.PATIENT],
-    load: () => import('../features/labs/pages/MyLabReportsPage'),
-    nav: { label: 'Lab reports', icon: TestTubes },
-  },
-  {
-    path: '/patient/lab-reports/:id',
-    roles: [ROLES.PATIENT],
-    load: () => import('../features/labs/pages/MyLabReportPage'),
-  },
-  {
-    path: '/patient/documents',
-    roles: [ROLES.PATIENT],
-    load: () => import('../features/documents/pages/MyDocumentsPage'),
-    nav: { label: 'Documents', icon: FileStack },
-  },
-  {
-    path: '/patient/invoices',
-    roles: [ROLES.PATIENT],
-    load: () => import('../features/billing/pages/MyInvoicesPage'),
-    nav: { label: 'Invoices', icon: ReceiptIndianRupee },
-  },
-  {
-    path: '/patient/invoices/:id',
-    roles: [ROLES.PATIENT],
-    load: () => import('../features/billing/pages/InvoiceDetailPage'),
   },
   {
     path: '/lab/worklist',

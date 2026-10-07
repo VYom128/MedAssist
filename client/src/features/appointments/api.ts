@@ -188,6 +188,8 @@ const changed = (id?: string) => [
   AVAILABILITY,
   QUEUE,
   'QueueBoard' as const,
+  // Patient timelines show appointments (Phase 8).
+  'Timeline' as const,
 ];
 
 /** Dates from `from` to `to` inclusive ('YYYY-MM-DD'). */

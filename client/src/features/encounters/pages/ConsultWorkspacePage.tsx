@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
+import Timeline from '../../timeline/components/Timeline';
 import Alert from '../../../components/ui/Alert';
 import Button from '../../../components/ui/Button';
 import { buttonClass } from '../../../components/ui/buttonClass';
@@ -34,10 +35,10 @@ import AutosaveStatus from '../components/AutosaveStatus';
 import ConsultHeader from '../components/ConsultHeader';
 import DiagnosesEditor from '../components/DiagnosesEditor';
 import FollowUpFields from '../components/FollowUpFields';
-import HistoryPanel from '../components/HistoryPanel';
 import NoteTextField from '../components/NoteTextField';
 import PrescriptionTab from '../components/PrescriptionTab';
 import SignDialog from '../components/SignDialog';
+import ShareDiagnosisField from '../components/ShareDiagnosisField';
 import SignedNoteView from '../components/SignedNoteView';
 import VitalsFields from '../components/VitalsFields';
 import { rxClosed } from '../../prescriptions/rxDraftSlice';
@@ -47,16 +48,8 @@ import { applyChanges, closed, discarded, hasChanges, opened } from '../consultD
 import { CONSULT_TABS, fieldTarget, type ConsultTab } from '../fields';
 import { useAutosave } from '../useAutosave';
 
-/** Side panel: a column from `lg`, a drawer below (spec: usable on mobile). */
-function WithHistory({
-  patientId,
-  encounterId,
-  children,
-}: {
-  patientId: string;
-  encounterId: string;
-  children: React.ReactNode;
-}) {
+/** Side panel with the compact patient timeline: a column from `lg`, a drawer below. */
+function WithHistory({ patientId, children }: { patientId: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -69,12 +62,13 @@ function WithHistory({
         {children}
       </div>
       <aside aria-label="Patient history" className="hidden lg:block">
-        <div className="sticky top-40 rounded-card border border-line bg-surface p-4 shadow-card">
-          <HistoryPanel patientId={patientId} currentEncounterId={encounterId} />
+        <div className="sticky top-40 max-h-[calc(100vh-11rem)] overflow-y-auto rounded-card border border-line bg-surface p-4 shadow-card">
+          <h2 className="mb-3 text-card text-ink">Patient timeline</h2>
+          <Timeline patientId={patientId} compact label="Patient timeline" />
         </div>
       </aside>
       <Modal open={open} onClose={() => setOpen(false)} variant="drawer" title="Patient history">
-        <HistoryPanel patientId={patientId} currentEncounterId={encounterId} />
+        <Timeline patientId={patientId} compact label="Patient timeline" />
       </Modal>
     </div>
   );
@@ -160,7 +154,7 @@ function DraftWorkspace({
         }
       />
       <div className="mt-6">
-        <WithHistory patientId={patient.id} encounterId={id}>
+        <WithHistory patientId={patient.id}>
           {blocked && (
             <Alert tone="error" title="This note was changed in another tab or window">
               <p>
@@ -253,6 +247,13 @@ function DraftWorkspace({
                 {tab === 'diagnosis' && (
                   <>
                     <DiagnosesEditor diagnoses={note.diagnoses} onChange={change} onBlur={save} />
+                    <ShareDiagnosisField
+                      checked={note.shareDiagnosisWithPatient ?? false}
+                      onChange={(c) => {
+                        change(c);
+                        save();
+                      }}
+                    />
                     <NoteTextField
                       field="assessment"
                       value={note.assessment}
@@ -473,7 +474,7 @@ export default function ConsultWorkspacePage() {
     <section className="space-y-6">
       <ConsultHeader patient={patient.data} appointment={appointment.data} />
       {signed && <SignedNext result={signed} />}
-      <WithHistory patientId={patient.data.id} encounterId={encounter.id}>
+      <WithHistory patientId={patient.data.id}>
         <SignedNoteView encounter={encounter} canAmend={encounter.doctor.id === user?.id} />
         <SectionCard title="Lab orders" icon={FlaskConical} iconTone="info">
           <EncounterLabOrders

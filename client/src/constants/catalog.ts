@@ -272,6 +272,7 @@ export const NOTE_FIELD_LABELS = {
   plan: 'Plan',
   adviceToPatient: 'Advice to patient',
   followUp: 'Follow-up',
+  shareDiagnosisWithPatient: 'Share diagnosis with patient',
 } as const;
 export type NoteField = keyof typeof NOTE_FIELD_LABELS;
 

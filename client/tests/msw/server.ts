@@ -74,6 +74,10 @@ export const handlers = [
       },
     }),
   ),
+  // Patient timelines (consult side panel, patient pages; Phase 8) and the patient home's
+  // follow-ups to book.
+  http.get(url('/patients/:id/timeline'), () => ok([], { meta: { limit: 20, nextCursor: null } })),
+  http.get(url('/patients/me/follow-ups-due'), () => ok([])),
   // Reception's sidebar badge.
   http.get(url('/patients/pending-links'), () =>
     ok([], { meta: { page: 1, limit: 1, total: 0, totalPages: 0 } }),

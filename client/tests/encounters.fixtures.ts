@@ -59,6 +59,7 @@ export function encounter(over: Partial<Encounter> = {}): Encounter {
     plan: null,
     adviceToPatient: null,
     followUp: { required: false, afterDays: null, date: null, instructions: null },
+    shareDiagnosisWithPatient: false,
     signedBy: null,
     createdAt: null,
     updatedAt: null,

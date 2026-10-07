@@ -167,6 +167,10 @@ export default function SignDialog({
                 : '—',
             },
             {
+              label: 'Diagnosis shared with patient',
+              value: note.shareDiagnosisWithPatient ? 'Yes – shown on their visit summary' : 'No',
+            },
+            {
               label: 'Prescription',
               value: drugs.length ? (
                 <ul className="space-y-0.5">
