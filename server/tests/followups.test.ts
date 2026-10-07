@@ -16,6 +16,7 @@ import {
   insertAppointment,
   loginAsDoctor,
   loginAsPatient,
+  nextWeekday,
   TEST_TZ,
 } from './helpers/fixtures.js';
 import { api, expectErrorShape } from './helpers/testApp.js';
@@ -417,8 +418,9 @@ describe('POST /follow-up-requests/:id/assign', () => {
 });
 
 describe('POST /follow-up-requests/:id/schedule', () => {
+  // A Tuesday at least 3 days ahead (+1 = Wednesday): always a clinic working day.
   const slot = (days: number, time: string) =>
-    at(addDaysToDate(clinicToday(TEST_TZ), days), time).toISOString();
+    at(addDaysToDate(nextWeekday(2, 3), days - 3), time).toISOString();
 
   it('books a follow-up appointment and marks the request scheduled in one go', async () => {
     const s = await setup();
