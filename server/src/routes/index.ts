@@ -6,6 +6,7 @@ import departmentRoutes from '../modules/departments/routes.js';
 import doctorRoutes from '../modules/doctors/routes.js';
 import documentRoutes from '../modules/documents/routes.js';
 import encounterRoutes from '../modules/encounters/routes.js';
+import summaryRoutes from '../modules/summaries/routes.js';
 import formularyRoutes from '../modules/formulary/routes.js';
 import followupRoutes from '../modules/followups/routes.js';
 import healthRoutes from '../modules/health/routes.js';
@@ -36,6 +37,8 @@ router.use('/patients', patientRoutes);
 router.use('/appointments', appointmentRoutes);
 router.use('/queue', queueRoutes);
 router.use('/encounters', encounterRoutes);
+// AI clinical summaries of a note (Phase 9): /encounters/:id/summary…
+router.use('/encounters', summaryRoutes);
 router.use('/formulary', formularyRoutes);
 router.use('/prescriptions', prescriptionRoutes);
 router.use('/lab-orders', labOrderRoutes);

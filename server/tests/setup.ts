@@ -9,6 +9,13 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import { afterAll, beforeAll } from 'vitest';
 
+// No test may reach the network (Phase 9: AI providers). A test that needs fetch stubs it
+// itself (vi.stubGlobal or the provider's `fetch` option); anything else fails loudly here.
+globalThis.fetch = (async (input: unknown) => {
+  const target = input instanceof Request ? input.url : String(input);
+  throw new Error(`Network call without a mock in a test: ${target}`);
+}) as typeof fetch;
+
 let replSet: MongoMemoryReplSet | undefined;
 
 /** URI of this test file's in-memory replica set (for tests that reconnect). */

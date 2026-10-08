@@ -380,6 +380,19 @@ describe('audit coverage', () => {
     await post(`/encounters/${noteId}/sign`, drToday.auth, { expectedVersion: 1 });
     // patient.timeline_view (Phase 8)
     await api().get(`/api/v1/patients/${patientId}/timeline`).set(drToday.auth);
+    // Phase 9: ai.call and summary.generate, .view, .update, .approve; a newer draft rejected
+    const summaries = `/encounters/${noteId}/summary`;
+    const summary = await post(`${summaries}/generate`, drToday.auth);
+    await api().get(`/api/v1${summaries}`).set(drToday.auth);
+    await api()
+      .patch(`/api/v1${summaries}/${summary.body.data.id}`)
+      .set(drToday.auth)
+      .send({ expectedVersion: 0, finalText: 'Reviewed summary' });
+    await post(`${summaries}/${summary.body.data.id}/approve`, drToday.auth);
+    const newer = await post(`${summaries}/generate`, drToday.auth);
+    await post(`${summaries}/${newer.body.data.id}/reject`, drToday.auth, {
+      reason: 'Not needed this time',
+    });
     // lab_order.submit (with the signing), .view, .item_cancel, .cancel (placed on the signed note)
     await api().get(`/api/v1/lab-orders/${labDraft.body.data.id}`).set(drToday.auth);
     const placed = await post('/lab-orders', drToday.auth, {

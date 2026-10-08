@@ -99,8 +99,14 @@ async function careRecord() {
     message: 'Wheezing again at night',
     status: 'open',
   });
+  // Phase 9: a draft AI summary of the note (mock provider).
+  const summary = await api()
+    .post(`/api/v1/encounters/${c.encounterId}/summary/generate`)
+    .set(c.doctor.auth);
+  expect(summary.status).toBe(201);
   return {
     ...c,
+    summaryId: summary.body.data.id as string,
     followupId: followup._id.toString(),
     patientId,
     prescriptionId: c.prescriptionId!,
@@ -170,6 +176,20 @@ describe('doctors without a care relationship', () => {
       ],
       ['post', `/follow-up-requests/${c.followupId}/close`, { reason: 'Not my patient here' }],
       ['post', `/follow-up-requests/${c.followupId}/reject`, { reason: 'Not my patient here' }],
+      // Phase 9: AI clinical summaries of the note
+      ['post', `/encounters/${c.encounterId}/summary/generate`],
+      ['get', `/encounters/${c.encounterId}/summary`],
+      [
+        'patch',
+        `/encounters/${c.encounterId}/summary/${c.summaryId}`,
+        { expectedVersion: 0, finalText: 'x' },
+      ],
+      ['post', `/encounters/${c.encounterId}/summary/${c.summaryId}/approve`, {}],
+      [
+        'post',
+        `/encounters/${c.encounterId}/summary/${c.summaryId}/reject`,
+        { reason: 'Not my patient at all' },
+      ],
     ];
     const before = (await auditEntries('access.denied')).length;
     for (const [method, path, body] of reqs) {

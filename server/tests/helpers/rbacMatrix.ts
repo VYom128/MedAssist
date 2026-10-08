@@ -119,6 +119,8 @@ export interface Ctx {
   paymentId: string;
   /** An open follow-up request of patientId assigned to doctorId (Phase 8). */
   followupId: string;
+  /** An up-to-date draft AI summary of `signedEncounterId` (Phase 9). */
+  summaryId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -761,6 +763,40 @@ ENDPOINTS.push(
     status: 200,
   },
   { method: 'get', path: () => '/formulary?q=para', roles: DOCTOR, status: 200 },
+  // AI clinical summaries (spec §7.11, Phase 9): the note's own doctor; mock provider.
+  {
+    method: 'post',
+    path: (c) => `/encounters/${c.signedEncounterId}/summary/generate`,
+    roles: DOCTOR,
+    status: 201,
+  },
+  {
+    method: 'get',
+    path: (c) => `/encounters/${c.signedEncounterId}/summary`,
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'patch',
+    path: (c) => `/encounters/${c.signedEncounterId}/summary/${c.summaryId}`,
+    body: (c) => ({ expectedVersion: 0, finalText: `Matrix summary ${c.n}` }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/encounters/${c.signedEncounterId}/summary/${c.summaryId}/approve`,
+    body: () => ({ shareWithPatient: false }),
+    roles: DOCTOR,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/encounters/${c.signedEncounterId}/summary/${c.summaryId}/reject`,
+    body: () => ({ reason: 'Matrix rejection reason' }),
+    roles: DOCTOR,
+    status: 200,
+  },
   // Prescriptions (spec §7.12): doctors, patients (own issued) and reception (print); never admin.
   {
     method: 'get',
@@ -1133,6 +1169,7 @@ export const PATTERN_CTX = {
   paidInvoiceId: ':id',
   paymentId: ':id',
   followupId: ':id',
+  summaryId: ':summaryId',
   n: 0,
 } as unknown as Ctx;
 

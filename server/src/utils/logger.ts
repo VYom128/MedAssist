@@ -14,6 +14,15 @@ const redactPaths = [
   '*.token',
   '*.accessToken',
   '*.refreshToken',
+  '*.apiKey',
+  // AI requests and responses (spec §9.1: prompts and outputs are never logged).
+  '*.messages',
+  '*.system',
+  '*.prompt',
+  '*.content',
+  '*.output',
+  '*.aiDraft',
+  '*.finalText',
 ];
 
 const options: LoggerOptions = {
