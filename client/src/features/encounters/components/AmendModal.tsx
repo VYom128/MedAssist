@@ -15,6 +15,7 @@ import { mergeChanges } from '../consultDraftSlice';
 import { diagnosisProblems, followUpProblem, toBody } from '../fields';
 import DiagnosesEditor from './DiagnosesEditor';
 import FollowUpFields from './FollowUpFields';
+import ShareDiagnosisField from './ShareDiagnosisField';
 import NoteTextField, { type TextNoteField } from './NoteTextField';
 import VitalsFields from './VitalsFields';
 
@@ -141,6 +142,11 @@ export default function AmendModal({
               <DiagnosesEditor diagnoses={view.diagnoses} onChange={change} />
             ) : f === 'followUp' ? (
               <FollowUpFields followUp={view.followUp} onChange={change} />
+            ) : f === 'shareDiagnosisWithPatient' ? (
+              <ShareDiagnosisField
+                checked={view.shareDiagnosisWithPatient ?? false}
+                onChange={change}
+              />
             ) : (
               <NoteTextField
                 field={f as TextNoteField}

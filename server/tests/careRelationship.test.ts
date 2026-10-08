@@ -1,6 +1,8 @@
 import { Types } from 'mongoose';
 import { Appointment } from '../src/modules/appointments/model.js';
+import { FollowupRequest } from '../src/modules/followups/model.js';
 import { Patient } from '../src/modules/patients/model.js';
+import { relatedPatientIds } from '../src/policies/patientAccess.js';
 import { auditEntries, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
 import {
   createPatient,
@@ -63,6 +65,27 @@ describe('GET /patients/:id as a doctor', () => {
     expect((await get(`/patients/${id}`)).status).toBe(404);
     await insertLabOrder({ patient: id, doctor: doctor.id, status: 'released' });
     expect((await get(`/patients/${id}`)).status).toBe(200);
+  });
+
+  it('a follow-up request assigned to the doctor is enough (spec §2.3, Phase 8)', async () => {
+    const { id } = await createPatient();
+    const request = await FollowupRequest.create({
+      requestNumber: 'FUR-1999-000001',
+      patient: id,
+      type: 'question',
+      message: 'A question',
+      status: 'closed',
+    });
+    expect((await get(`/patients/${id}`)).status).toBe(404);
+    await FollowupRequest.updateOne({ _id: request._id }, { $set: { assignedDoctor: doctor.id } });
+    expect((await get(`/patients/${id}`)).status).toBe(200);
+    // List filters (relatedPatientIds) include the patient too.
+    expect((await relatedPatientIds(doctor.id)).map(String)).toEqual([id]);
+    // Reassigned to someone else: the relationship goes with the assignment.
+    const other = await loginAsDoctor();
+    await FollowupRequest.updateOne({ _id: request._id }, { $set: { assignedDoctor: other.id } });
+    expect((await get(`/patients/${id}`)).status).toBe(404);
+    expect((await get(`/patients/${id}`, other)).status).toBe(200);
   });
 
   it('a future appointment is enough (e.g. reviewing before the visit)', async () => {

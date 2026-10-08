@@ -5,6 +5,7 @@ import { parsePagination } from '../../utils/pagination.js';
 import { buildRequestMeta } from '../../utils/requestContext.js';
 import * as prescriptionsService from '../prescriptions/service.js';
 import * as amendmentService from './amendment.service.js';
+import * as patientVisits from './patient.service.js';
 import * as encountersService from './service.js';
 import * as signService from './sign.service.js';
 import type { ListEncountersQuery } from './validation.js';
@@ -91,4 +92,18 @@ export async function putPrescription(req: Request, res: Response) {
     buildRequestMeta(req),
   );
   return sendSuccess(res, { message: 'Prescription saved', data });
+}
+
+export async function listMyVisits(req: Request, res: Response) {
+  const { items, meta } = await patientVisits.listMyVisits(
+    currentUser(req),
+    parsePagination(req.query),
+    buildRequestMeta(req),
+  );
+  return sendSuccess(res, { data: items, meta });
+}
+
+export async function listMyFollowUpsDue(req: Request, res: Response) {
+  const data = await patientVisits.listFollowUpsDue(currentUser(req), buildRequestMeta(req));
+  return sendSuccess(res, { data });
 }

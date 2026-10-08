@@ -1,9 +1,11 @@
+import { Types } from 'mongoose';
 import { symbols } from 'pino';
 import type { Server } from 'socket.io';
 import { runPrescriptionCompletionJob } from '../src/jobs/prescriptionCompletion.job.js';
 import { Appointment } from '../src/modules/appointments/model.js';
 import { AuditLog } from '../src/modules/audit/model.js';
 import { NoteAmendment } from '../src/modules/encounters/amendment.model.js';
+import { FollowupRequest } from '../src/modules/followups/model.js';
 import { Encounter } from '../src/modules/encounters/model.js';
 import { Prescription } from '../src/modules/prescriptions/model.js';
 import { flushAudit } from '../src/services/audit.service.js';
@@ -88,8 +90,18 @@ async function careRecord() {
       clinicalNotes: 'Wheezing – check eosinophils',
     });
   expect(lab.status).toBe(201);
+  // Phase 8: a follow-up request of the patient assigned to the doctor.
+  const followup = await FollowupRequest.create({
+    requestNumber: `FUR-1999-${new Types.ObjectId().toString().slice(-6)}`,
+    patient: patientId,
+    assignedDoctor: c.doctor.id,
+    type: 'new_or_worse_symptoms',
+    message: 'Wheezing again at night',
+    status: 'open',
+  });
   return {
     ...c,
+    followupId: followup._id.toString(),
     patientId,
     prescriptionId: c.prescriptionId!,
     testId: test._id.toString(),
@@ -146,6 +158,18 @@ describe('doctors without a care relationship', () => {
       ['post', `/lab-orders/${c.labOrderId}/acknowledge`],
       ['get', `/lab-orders/${c.labOrderId}/report.pdf`],
       ['get', `/documents?patient=${c.patientId}`],
+      // Phase 8: the timeline and follow-up requests assigned to another doctor
+      ['get', `/patients/${c.patientId}/timeline`],
+      ['get', `/follow-up-requests/${c.followupId}`],
+      ['post', `/follow-up-requests/${c.followupId}/messages`, { text: 'Hello' }],
+      ['post', `/follow-up-requests/${c.followupId}/review`],
+      [
+        'post',
+        `/follow-up-requests/${c.followupId}/schedule`,
+        { startAt: new Date(Date.now() + 3 * 86_400_000).toISOString(), serviceId: c.testId },
+      ],
+      ['post', `/follow-up-requests/${c.followupId}/close`, { reason: 'Not my patient here' }],
+      ['post', `/follow-up-requests/${c.followupId}/reject`, { reason: 'Not my patient here' }],
     ];
     const before = (await auditEntries('access.denied')).length;
     for (const [method, path, body] of reqs) {

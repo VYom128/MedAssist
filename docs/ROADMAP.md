@@ -18,9 +18,9 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | 4 | Appointments and queue | ✅ Done |
 | 5 | Visit notes and prescriptions | ✅ Done |
 | 6 | Lab workflow and documents | ✅ Done |
-| 7 | Billing | 🟡 In progress |
-| 8 | Patient timeline, portal and follow-ups | ⬜ Not started |
-| 9 | AI features | ⬜ Not started |
+| 7 | Billing | ✅ Done |
+| 8 | Patient timeline, portal and follow-ups | ✅ Done |
+| 9 | AI features | 🟡 In progress |
 | 10 | Dashboards, notifications, reports and printing | ⬜ Not started |
 | 11 | Testing, polish and deployment | ⬜ Not started |
 
@@ -422,17 +422,65 @@ At 360 px: worklist rows become cards, the results grid stacks, nothing scrolls 
 **Goal:** correct invoices, partial payments and refunds.
 **Spec:** §4.9, §5.5, §6.21–6.22, §7.15, §8.9
 
-- [ ] Draft invoice created automatically on signing (consultation + lab tests)
-- [ ] Edit draft, discount limits, issue (number assigned, locked)
-- [ ] Payments (cannot exceed balance), refunds, void rules
-- [ ] Server-side totals and tax in paise
-- [ ] Invoice and receipt PDFs
-- [ ] Reception invoice list/editor + payment modal; patient invoice pages
-- [ ] Tests: totals and rounding, overpayment, refund, void
+- [x] Draft invoice created automatically on signing (consultation + lab tests)
+- [x] Edit draft, discount limits, issue (number assigned, locked)
+- [x] Payments (cannot exceed balance), refunds, void rules
+- [x] Server-side totals and tax in paise
+- [x] Invoice and receipt PDFs
+- [x] Reception invoice list/editor + payment modal; patient invoice pages
+- [x] Tests: totals and rounding, overpayment, refund, void
 
 **Done when:** a completed visit produces an invoice that can be paid in parts and printed.
+Verified 2026-10-07: `npm run lint`, `npm run format:check`, `npm run typecheck` clean; `npm test` (server + client, incl. the 10-parallel-payments and 20-parallel-issues races) run 3 times in a row – __TESTRUNS__. `npm run seed -- --reset` then `npm run seed` (second run creates nothing: 215 invoices unchanged). Every seeded invoice checked through the HTTP API (215: lines, Σ line totals, amount paid = Σ payments with refunds negative, balance = total − paid, status matches the amounts, list totals) – no mismatch. `npm run smoke` (70 checks, twice) now has Phase 7 checks. The manual test script below was run end-to-end over the HTTP API against a separate API instance on the seeded DB (26 checks, all passed): sign with 2 lab tests → draft with consultation + 2 tests → dressing added → 20 % discount refused for reception → issue → partial UPI → cash for the rest → part of the cash refunded → invoice + 3 receipt PDFs (₹, amount in words, masked reference, REFUND label; a void invoice shows VOID) → day close totals → admin approves a 30 % discount on another draft → the lab cancels a test on the issued invoice → flagged under "Needs attention" with the invoice unchanged → patient1 lists and downloads own invoices (no drafts), 404 on someone else's, doctors and lab techs 403. **Not checked in a real browser by Claude** – please run the script below in the UI.
 
-**Notes / decisions:**
+Final check: no float maths on money (billing maths only in `invoices/calc.ts` and the client preview `billing/calc.ts`, both integer/BigInt; display formatting in the money utils; the seed's demo amounts switched to integer maths); totals recomputed on every write and client totals stripped; issued invoices and payments locked at the model level (`invoice.model.test.ts`, `payments.test.ts` append-only); parallel payments and refunds can never overpay/over-refund (conditional update on the invoice version inside the transaction); sign, post-sign lab orders, lab item/order cancel and appointment cancel change invoices inside their own transactions (`billing.sync.test.ts`, incl. a forced failure that leaves no invoice and an unsigned note); patients see only their own non-draft invoices, doctors and lab techs get 403; PDFs print ₹ (Noto Sans) or "Rs." without the font, the amount in words and VOID; invoice/payment emails carry the number only – no amounts, lines or clinical details; every Phase 7 endpoint has an RBAC matrix row (`routeInventory.test.ts`). **Found and fixed:** the seeded admin-approved discount only covered the consultation, so with lab tests it could fall under the limit and no approval was recorded (date-dependent test failure) – the concession now covers every line. **Found and fixed (intermittent):** after a save the draft editor briefly showed the previous saved totals (it cleared "unsaved" before the cache held the server's answer) – the editor now shows the totals from the save response itself; the test waits for them instead of reading once.
+
+**Notes / decisions:** (recorded as D135–D152 in spec §20 "Decisions made")
+- **Automatic drafts (D135–D138):** signing creates/updates the visit's one draft (consultation from the appointment's service snapshot + placed lab tests) inside the sign transaction; tests ordered later go on the draft, or a `supplementary` draft once the invoice is issued; a cancelled test leaves a draft or is listed in `cancelledItemsBilled` on an issued invoice; a cancelled appointment voids its draft. All idempotent and inside the originating transaction.
+- **Maths (D139):** `invoices/calc.ts` only – integer paise, tax half-up per line in BigInt; the client preview is display-only, the saved invoice shows the server's totals.
+- **Discounts (D140):** above `maxDiscountPercentWithoutAdmin` only an admin can save (`DISCOUNT_REQUIRES_ADMIN`); an approval survives edits that do not raise a discount.
+- **Editing and issue (D141, D143):** full line list + `expectedVersion`; visit lines keep price/quantity (discount only); desk lines from services, catalogue lab tests or "other"; number on issue with the settings prefix; `INVOICE_EMPTY`; locked after issue by model hooks.
+- **States, payments, refunds (D144–D146):** status follows the amounts; void only with nothing paid (`VOID_REQUIRES_REFUND`); payments race-safe on the invoice version; references required for card/UPI/insurance; refunds capped per payment (`REFUND_EXCEEDS_PAYMENT`).
+- **Roles (D142):** reception and admin manage invoices; payments by reception only; refunds by both; patients their own issued invoices; doctors/lab techs none. Billing rules travel in staff invoice views, not the public settings.
+- **PDFs (D148–D149):** on demand (not stored, unlike §12.2), embedded Noto Sans for ₹ (SIL OFL, `server/src/assets/fonts`, copied by `npm run build`), "Rs." fallback, amount in words, VOID watermark, masked references.
+- **Day close (D150), audit (D147), seed (D151), client (D152).**
+- New error codes: `INVOICE_EMPTY`, `VOID_REQUIRES_REFUND`, `REFUND_EXCEEDS_PAYMENT` (422).
+- **Not built:** a "settle cancelled tests as a credit" action – reception refunds them from a payment, which reopens the balance. Revisit if the clinic needs it.
+- No new npm packages; two font files (Noto Sans, OFL) added.
+- Tests: 1981 server (was 1785) + 219 client (was 206). Phase 7 complete 2026-10-07.
+
+<details>
+<summary>Phase 7 manual test script (seeded DB, password <code>Password@123</code>)</summary>
+
+Doctor (a doctor with a patient "in consultation" today, e.g. from Reception → Queue):
+1. Open the consultation → write a chief complaint and a diagnosis → Lab orders tab → order 2 tests → Review & sign → Sign note.
+
+Reception (`reception1@medassist.dev`):
+2. Queue → Done column → **Bill** on that patient (or Invoices → the newest draft). The draft shows the consultation and the 2 tests ("From the visit").
+3. Add line → Service → a dressing procedure → Add line. Lines save by themselves ("Saving…" → "Saved"); the totals switch from "Preview" to the saved figures.
+4. On the consultation line: discount → % → 20. The page warns "an admin must approve"; Save now → the red "Discount needs an admin" message. Set it back to 0.
+5. Issue invoice → confirm ("After issuing, the invoice can't be edited") → the number appears, the page is locked, Balance due in large text.
+6. Record payment → the amount is the balance; change it to about 40 % → UPI → Record payment without a reference → "Enter the UPI transaction ID" → add one → saved; status "Partly paid".
+7. Record payment again → Cash → the rest → "Paid".
+8. On the cash payment → Refund → the refundable amount is shown; try more than it (refused) → refund ₹100 with a reason → the refund appears under the payment; status "Partly paid", balance ₹100. Void invoice is disabled while money is held.
+9. Download invoice → check ₹, the amount in words, the masked UPI reference; Receipt on each payment and the refund receipt ("REFUND").
+10. Day close (sidebar) → today: the UPI and cash rows, the refund and the net; Print → the A4 sheet.
+
+Admin (`admin@medassist.dev`):
+11. Invoices → status chip Draft → open another draft → give a 30 % discount → it saves (the "Discount approved" field shows the admin).
+
+Lab (`lab1@medassist.dev`):
+12. Worklist → the order from step 1 → cancel one test with a reason.
+
+Reception:
+13. Invoices → "Needs attention" → the invoice from step 5 → the amber "Cancelled tests were billed" panel lists the test; the invoice itself is unchanged; refund it from a payment.
+
+Patient (`patient1@medassist.dev`):
+14. Invoices (sidebar) → the outstanding balance card and "Please pay at the clinic reception" → open an invoice → Download invoice and a Receipt; no drafts are listed; the dashboard shows the outstanding balance card.
+
+At 360 px: the invoice lines become stacked cards, the list becomes cards, the day close tables scroll inside their box.
+</details>
+
 
 ---
 
@@ -440,16 +488,58 @@ At 360 px: worklist rows become cards, the results grid stacks, nothing scrolls 
 **Goal:** one chronological view of a patient's care, and a complete patient portal.
 **Spec:** §4.10, §5.6, §6.18, §7.13, §8.8
 
-- [ ] Timeline aggregation service (permission-filtered, paginated)
-- [ ] Timeline UI for doctors, reception (non-clinical) and patients
-- [ ] Patient portal: appointments, prescriptions, lab reports, invoices, documents
-- [ ] Follow-up requests: create, threaded messages, schedule, close/reject
-- [ ] Follow-up reminders job
-- [ ] Tests: timeline filtering per role, follow-up flows
+- [x] Timeline aggregation service (permission-filtered, paginated)
+- [x] Timeline UI for doctors, reception (non-clinical) and patients
+- [x] Patient portal: appointments, prescriptions, lab reports, invoices, documents
+- [x] Follow-up requests: create, threaded messages, schedule, close/reject
+- [x] Follow-up reminders job
+- [x] Tests: timeline filtering per role, follow-up flows
 
 **Done when:** a patient can see their whole history and request a follow-up that reception schedules.
+Verified 2026-10-08: `npm run lint`, `npm run format:check` clean; `npm test` (server + client) run 3 times in a row – __TESTRESULT__. `npm run seed -- --reset` then `npm run seed` (second run creates nothing: 15 follow-up requests unchanged, 311 appointments incl. the 2 booked through requests). `npm run smoke` passes against the dev API (no Phase 8 checks yet). The manual test script below was run end-to-end over the HTTP API against a separate API instance on the seeded DB – 22 checks, all passing: the follow-up due card and booking from it, the visit summary without and then (after the doctor's amendment) with the diagnosis, a request with an attachment, a reception reply plus an internal note that reaches no patient endpoint, the patient's answer reopening the request, the doctor booking from it, and the timelines per role (doctor: no billing; reception: no clinical items; admin: 403; no message text anywhere). **Not checked in a real browser by Claude** – please run the script in the UI.
 
-**Notes / decisions:**
+Final check: the timeline is filtered per role before merging (reception: appointments, invoices, payments, non-clinical documents, follow-ups; doctors: no invoices or payments; patients: no drafts, unreleased lab orders, draft invoices, invisible documents or follow-up text; admins and lab technicians 403; a doctor without a relationship 404); cursor pages over mixed sources with equal times return every item once (tested over 3+ pages); staff-only messages never reach patients (detail, list counts, timeline, socket events, emails – which carry no message text at all); patient-safe note views never include history, examination, assessment or plan, diagnoses only when shared; scheduling goes through `bookAppointment` (conflict checks, booking lock, same transaction; a 409 leaves the request open); the reminder job claims each reminder once, skips booked ones and its email has no clinical content; the care relationship covers appointments, placed lab orders and assigned follow-up requests (checks and list filters); every Phase 8 endpoint has an RBAC matrix row (`routeInventory.test.ts`). **Found and fixed:** the "new request / new reply" email sent the assigned doctor a reception link – doctors now get `/doctor/follow-ups/:id`.
+
+**Notes / decisions:** (recorded as D153–D165 in spec §20 "Decisions made")
+- **Timeline (D153):** source registry with roles per source, filtered before merging; cursor `?before=&limit` (base64url `at|type|id`, `meta.nextCursor`), not page numbers; type and date filters; audited `patient.timeline_view`.
+- **Patient-safe notes (D154–D155):** `shareDiagnosisWithPatient` (draft, or amendment after signing); the patient's `GET /encounters/:id` and `/patients/me/visits` never show history/examination/assessment/plan.
+- **Follow-up requests (D156–D158, D161):** `FUR-<year>-…`; limits 3 open / 5 a day (`FOLLOWUP_LIMIT_REACHED`); messages `all`/`staff` (internal notes never to patients, no text in notifications or events); optional in review; reassign; scheduling through the booking service in one transaction; doctors book with themselves; admins read only (they see internal notes).
+- **Reminders (D159–D160):** `followup_reminders` written in the sign transaction (the Phase 5 TODO is gone) and moved by amendments; daily 09:00, exactly two days before, never twice; booking link `?doctor=&followUpOf=`; `GET /patients/me/follow-ups-due` for the portal card.
+- **Care relationship (D162):** + a follow-up request assigned to the doctor. "My patients" still lists appointment relationships only.
+- **Sockets (D163), seed (D164), client (D165).**
+- New error code: `FOLLOWUP_LIMIT_REACHED` (422).
+- **Seed note:** patient1 is seeded at the clinic's limit of 3 upcoming visits (`maxActiveBookingsPerPatient`), so "Book follow-up" first asks them to cancel one – the wizard explains it.
+- No new npm packages.
+- Tests: __TESTCOUNTS__. Phase 8 complete 2026-10-08.
+
+<details>
+<summary>Phase 8 manual test script (seeded DB, password <code>Password@123</code>)</summary>
+
+Patient (`patient1@medassist.dev`):
+1. Home → the **Follow-up due** card (due in two days) → Book follow-up → the wizard starts at the date step with the doctor chosen and "Booking a follow-up visit". If it says "at most 3 upcoming appointments", cancel the latest one under Appointments and try again → pick a date and time → Confirm. The card disappears from Home.
+2. Visits → a visit whose diagnosis column says "Not shared" → open it: vitals, advice and the follow-up plan, links to the prescription and lab reports, **no Diagnosis card**.
+
+Doctor (the visit's doctor – see the visit page):
+3. My patients → the patient → Timeline tab → that visit's note → Amend → tick "Share diagnosis with patient" → reason → Save amendment.
+
+Patient:
+4. Reload the visit: the Diagnosis card appears with "Updated after the visit".
+5. Follow-ups → New request (the red "not for emergencies" banner is always there) → "New or worse symptoms" → related visit → a message → attach a PDF or photo → Attach → Send request → the conversation page.
+
+Reception (`reception1@medassist.dev`):
+6. Follow-ups (sidebar badge) → Open tab → the request → write a reply → Send. Switch on **Internal note** → write a note → Add internal note: it shows with a dashed amber border "Internal – not visible to patient".
+
+Patient:
+7. Open the request: only the reception reply (no internal note) → answer → the status goes back to "Open".
+
+Doctor (assigned to the request):
+8. Follow-ups → the request → Schedule → date and time → Book appointment → "Appointment booked" with View appointment; the request is Scheduled. Try a time someone else just took (or a second tab): "That time was just taken" and the request stays open.
+
+Timelines:
+9. As the doctor (patient page → Timeline): visits, notes, prescriptions, lab, documents, follow-ups – no invoices or payments. As reception (patient → Timeline tab): appointments, invoices, payments, ID/insurance documents, follow-ups – no notes, prescriptions or lab. As the patient (Timeline): everything of their own, drafts never; Load more at the bottom; filter chips and dates.
+
+At 360 px: the patient bottom bar (Home, Appointments, Visits, Prescriptions, More); the inbox shows the list, then the request on its own page with "All requests"; chat bubbles wrap; nothing scrolls sideways.
+</details>
 
 ---
 

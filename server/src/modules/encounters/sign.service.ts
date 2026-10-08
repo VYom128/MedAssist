@@ -14,9 +14,11 @@ import {
   resourceOf as appointmentResource,
 } from '../appointments/service.js';
 import { applyTransition } from '../appointments/status.service.js';
+import { syncFollowUpReminder } from '../followupReminders/service.js';
 import { afterInvoiceSync, createOrUpdateDraftForAppointment } from '../invoices/sync.service.js';
 import { afterDraftsSubmitted, submitDraftOrdersInSession } from '../labOrders/service.js';
 import { Prescription } from '../prescriptions/model.js';
+import { getSettings } from '../settings/service.js';
 import {
   afterIssued,
   allergyAckRequired,
@@ -118,6 +120,7 @@ export async function signEncounter(
   }
 
   const now = new Date();
+  const { timezone } = await getSettings();
   const result = await withTransaction(async (session) => {
     const signed = await Encounter.findOneAndUpdate(
       { _id: e._id, status: 'draft', __v: expectedVersion },
@@ -164,7 +167,8 @@ export async function signEncounter(
       by: user.id,
       now,
     });
-    // TODO(Phase 8): schedule the follow-up reminder from `followUp` (§8.11).
+    // The follow-up reminder (§8.11): a pending reminder for the plan's due date.
+    await syncFollowUpReminder({ ...e, signedAt: now }, { session, timezone });
     return { prescriptionId, appointmentCompleted, labOrders, invoice };
   });
 

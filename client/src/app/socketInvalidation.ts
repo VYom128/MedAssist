@@ -2,6 +2,11 @@ import type { Dispatch } from '@reduxjs/toolkit';
 import type { Socket } from 'socket.io-client';
 import { apiSlice } from './apiSlice';
 
+/** A follow-up request changed (Phase 8): ids only. */
+export interface FollowupUpdated {
+  requestId: string;
+}
+
 /** What the server sends (ids only, spec §7.9). */
 export interface QueueUpdated {
   doctorId: string;
@@ -43,25 +48,39 @@ export const labTags = (orderIds: readonly string[]) => [
  * Maps socket events to RTK Query invalidation: `queue.updated` → that doctor's queue, the
  * calendars showing that date, appointment lists, free slots; `appointment.changed` → that
  * appointment; `lab.worklist.updated` → the lab lists and those orders; `lab.order.changed` and
- * `lab.critical` → that order and the lists (the doctor's critical alert reads them). Returns a
- * function that removes the listeners.
+ * `lab.critical` → that order and the lists (the doctor's critical alert reads them);
+ * `followup.updated` → that request, the follow-up lists and timelines. Returns a function that
+ * removes the listeners.
  */
 export function attachInvalidation(source: EventSource, dispatch: Dispatch): () => void {
   const onQueue = (payload: QueueUpdated) =>
     dispatch(apiSlice.util.invalidateTags(queueUpdatedTags(payload)));
+  // Timelines show appointments and lab orders (Phase 8): refetch them too.
   const onAppointment = ({ appointmentId }: AppointmentChanged) =>
-    dispatch(apiSlice.util.invalidateTags([{ type: 'Appointment', id: appointmentId }]));
+    dispatch(
+      apiSlice.util.invalidateTags([{ type: 'Appointment', id: appointmentId }, 'Timeline']),
+    );
   const onWorklist = ({ orderIds }: LabWorklistUpdated) =>
     dispatch(apiSlice.util.invalidateTags(labTags(orderIds ?? [])));
   const onLabOrder = ({ orderId }: LabOrderChanged) =>
-    dispatch(apiSlice.util.invalidateTags(labTags([orderId])));
+    dispatch(apiSlice.util.invalidateTags([...labTags([orderId]), 'Timeline']));
+  const onFollowup = ({ requestId }: FollowupUpdated) =>
+    dispatch(
+      apiSlice.util.invalidateTags([
+        { type: 'FollowUp', id: requestId },
+        { type: 'FollowUpList', id: 'LIST' },
+        'Timeline',
+      ]),
+    );
   source.on('queue.updated', onQueue);
+  source.on('followup.updated', onFollowup);
   source.on('appointment.changed', onAppointment);
   source.on('lab.worklist.updated', onWorklist);
   source.on('lab.order.changed', onLabOrder);
   source.on('lab.critical', onLabOrder);
   return () => {
     source.off('queue.updated', onQueue);
+    source.off('followup.updated', onFollowup);
     source.off('appointment.changed', onAppointment);
     source.off('lab.worklist.updated', onWorklist);
     source.off('lab.order.changed', onLabOrder);

@@ -9,6 +9,8 @@ import { calendarDateString } from '../../utils/dates.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { assertTransition } from '../../utils/stateMachine.js';
 import { withTransaction } from '../../utils/transaction.js';
+import { syncFollowUpReminder } from '../followupReminders/service.js';
+import { getSettings } from '../settings/service.js';
 import { User } from '../users/model.js';
 import { NoteAmendment } from './amendment.model.js';
 import { amendmentWriteOptions, Encounter } from './model.js';
@@ -21,6 +23,7 @@ type Changes = Omit<UpdateEncounterInput, 'expectedVersion'>;
 /** A note field as a plain JSON value, for comparing and for the amendment snapshot. */
 function snapshotOf(e: Partial<EncounterLike>, field: string): unknown {
   const value = (e as Record<string, unknown>)[field];
+  if (field === 'shareDiagnosisWithPatient') return Boolean(value); // older notes lack it
   if (value === undefined || value === null) return null;
   if (field === 'vitals') {
     const { recordedAt: _a, recordedBy: _b, ...vitals } = value as Record<string, unknown>;
@@ -92,6 +95,7 @@ export async function amendEncounter(
     for (const key of Object.keys($unset)) if (key.startsWith('vitals.')) delete $unset[key];
   }
   const version = e.version + 1;
+  const { timezone } = await getSettings();
 
   try {
     await withTransaction(async (session) => {
@@ -121,6 +125,10 @@ export async function amendEncounter(
         ],
         { session },
       );
+      // A changed follow-up plan moves (or cancels) a reminder that was not sent yet.
+      if (changedFields.includes('followUp')) {
+        await syncFollowUpReminder(updated, { session, timezone });
+      }
     });
   } catch (err) {
     if ((err as { code?: number }).code === 11000) {

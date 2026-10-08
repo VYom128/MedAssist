@@ -86,7 +86,9 @@ function paymentMethod(): { method: PaymentMethod; reference: string | undefined
 
 /** Whole rupees of `percent` of the line (never more than the line). */
 const percentOf = (paise: number, percent: number) =>
-  Math.min(paise, Math.round((paise * percent) / 100 / 100) * 100);
+  Math.min(paise, Number(((BigInt(paise) * BigInt(percent) + 5000n) / 10000n) * 100n));
+/** Rupees (truncated) from paise, in integers – for the seed summary only. */
+const rupeesOf = (paise: number) => Number(BigInt(paise) / 100n);
 
 export async function seedInvoices(): Promise<Record<string, number>> {
   const existing = await Invoice.estimatedDocumentCount();
@@ -239,7 +241,8 @@ export async function seedInvoices(): Promise<Record<string, number>> {
     const paidAt = new Date(issuedAt.getTime() + 5 * MINUTE);
     const amount =
       outcome === 'partial'
-        ? Math.max(100, Math.round((issued.totalPaise * 0.4) / 10_000) * 10_000)
+        ? // ~40 %, to the nearest ₹100 (integers only).
+          Math.max(100, Number(((BigInt(issued.totalPaise) * 4n + 50_000n) / 100_000n) * 10_000n))
         : issued.balancePaise;
     if (amount <= 0 || amount > issued.balancePaise) continue;
     const { payment } = await recordPayment(
@@ -280,7 +283,8 @@ export async function seedInvoices(): Promise<Record<string, number>> {
         reception,
         payment.id as string,
         {
-          amountPaise: Math.round(amount / 4 / 100) * 100,
+          // A quarter, to the nearest rupee (integers only).
+          amountPaise: Number(((BigInt(amount) + 200n) / 400n) * 100n),
           reason: 'Goodwill refund – long waiting time at the clinic',
         },
         SEED_REQUEST,
@@ -399,7 +403,7 @@ async function billingCounts(): Promise<Record<string, number>> {
     ),
     paymentRecords: kind('payment')?.n ?? 0,
     refundRecords: kind('refund')?.n ?? 0,
-    billedRupees: Math.round((money[0]?.billed ?? 0) / 100),
-    collectedRupees: Math.round(collected / 100),
+    billedRupees: rupeesOf(money[0]?.billed ?? 0),
+    collectedRupees: rupeesOf(collected),
   };
 }

@@ -117,6 +117,8 @@ export interface Ctx {
   /** A partly paid invoice of patientId and its cash payment (refundable). */
   paidInvoiceId: string;
   paymentId: string;
+  /** An open follow-up request of patientId assigned to doctorId (Phase 8). */
+  followupId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -148,6 +150,11 @@ const PATIENT_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'pa
 const INVOICE_READERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 const APPOINTMENT_BOOKERS: readonly Role[] = ['admin', 'receptionist', 'patient'];
 const RECEPTION_ONLY: readonly Role[] = ['receptionist'];
+const TIMELINE_READERS: readonly Role[] = ['doctor', 'receptionist'];
+const NOTE_READERS: readonly Role[] = ['doctor', 'patient'];
+const FOLLOWUP_READERS: readonly Role[] = ['admin', 'receptionist', 'doctor', 'patient'];
+const FOLLOWUP_REPLIERS: readonly Role[] = ['receptionist', 'doctor', 'patient'];
+const FOLLOWUP_HANDLERS: readonly Role[] = ['receptionist', 'doctor'];
 const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionist'];
 const LAB_ORDER_READERS: readonly Role[] = ['doctor', 'labtech', 'receptionist', 'patient'];
 const DOCTOR_LABTECH: readonly Role[] = ['doctor', 'labtech'];
@@ -406,6 +413,63 @@ export const ENDPOINTS: Row[] = [
     roles: ADMIN,
     status: 200,
   },
+  // Follow-up requests (spec §7.13, Phase 8): patients raise and follow their own; reception
+  // triages all (admins read only); doctors handle the requests assigned to them.
+  {
+    method: 'post',
+    path: () => '/follow-up-requests',
+    body: () => ({ type: 'question', message: 'Matrix question' }),
+    roles: PATIENT,
+    status: 201,
+  },
+  { method: 'get', path: () => '/follow-up-requests', roles: FOLLOWUP_READERS, status: 200 },
+  {
+    method: 'get',
+    path: (c) => `/follow-up-requests/${c.followupId}`,
+    roles: FOLLOWUP_READERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/messages`,
+    body: () => ({ text: 'Matrix reply' }),
+    roles: FOLLOWUP_REPLIERS,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/review`,
+    roles: FOLLOWUP_HANDLERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/assign`,
+    body: (c) => ({ doctorId: c.otherDoctorId }),
+    roles: RECEPTION,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/schedule`,
+    body: (c) => ({ startAt: c.bookStartAt, serviceId: c.serviceId }),
+    roles: FOLLOWUP_HANDLERS,
+    status: 201,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/close`,
+    body: () => ({ reason: 'Matrix close' }),
+    roles: FOLLOWUP_REPLIERS,
+    status: 200,
+  },
+  {
+    method: 'post',
+    path: (c) => `/follow-up-requests/${c.followupId}/reject`,
+    body: () => ({ reason: 'Matrix reject' }),
+    roles: FOLLOWUP_HANDLERS,
+    status: 200,
+  },
 ];
 
 ENDPOINTS.push(
@@ -439,6 +503,24 @@ ENDPOINTS.push(
     body: () => ({ preferredLanguage: 'hi' }),
     roles: PATIENT,
     status: 200,
+  },
+  // Phase 8: the patient's own timeline, signed visits and planned follow-ups to book.
+  { method: 'get', path: () => '/patients/me/timeline', roles: PATIENT, status: 200 },
+  { method: 'get', path: () => '/patients/me/visits', roles: PATIENT, status: 200 },
+  { method: 'get', path: () => '/patients/me/follow-ups-due', roles: PATIENT, status: 200 },
+  // A patient's timeline: doctors with a care relationship, reception (non-clinical items).
+  {
+    method: 'get',
+    path: (c) => `/patients/${c.patientId}/timeline`,
+    roles: TIMELINE_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/patients/${c.otherPatientId}/timeline`,
+    roles: TIMELINE_READERS,
+    status: 200,
+    statusFor: { doctor: 404 },
   },
   { method: 'get', path: () => '/patients/pending-links', roles: ADMIN_RECEPTION, status: 200 },
   {
@@ -620,7 +702,21 @@ ENDPOINTS.push(
     status: 200,
   },
   { method: 'get', path: () => '/encounters', roles: DOCTOR, status: 200 },
-  { method: 'get', path: (c) => `/encounters/${c.encounterId}`, roles: DOCTOR, status: 200 },
+  // Patients read their own signed notes (patient-safe view, Phase 8): a draft of another
+  // patient's visit → 404; their own signed note → 200.
+  {
+    method: 'get',
+    path: (c) => `/encounters/${c.encounterId}`,
+    roles: NOTE_READERS,
+    status: 200,
+    statusFor: { patient: 404 },
+  },
+  {
+    method: 'get',
+    path: (c) => `/encounters/${c.signedEncounterId}`,
+    roles: NOTE_READERS,
+    status: 200,
+  },
   {
     method: 'patch',
     path: (c) => `/encounters/${c.encounterId}`,
@@ -1036,6 +1132,7 @@ export const PATTERN_CTX = {
   issuedInvoiceId: ':id',
   paidInvoiceId: ':id',
   paymentId: ':id',
+  followupId: ':id',
   n: 0,
 } as unknown as Ctx;
 

@@ -36,6 +36,9 @@ import {
   Receipt,
   HandCoins,
   Minus,
+  Inbox,
+  Eye,
+  MessageSquareReply,
   type LucideIcon,
 } from 'lucide-react';
 import type { LeaveType } from '../../constants/catalog';
@@ -207,6 +210,15 @@ export const STATUS_STYLES = {
   payment: {
     payment: { tone: 'success', label: 'Payment', icon: CircleDollarSign },
     refund: { tone: 'warning', label: 'Refund', icon: Undo },
+  },
+  /** Follow-up request (Phase 8, spec §5.6). */
+  followup: {
+    open: { tone: 'info', label: 'Open', icon: Inbox },
+    in_review: { tone: 'consult', label: 'In review', icon: Eye },
+    responded: { tone: 'primary', label: 'Replied', icon: MessageSquareReply },
+    scheduled: { tone: 'success', label: 'Scheduled', icon: CalendarCheck },
+    closed: { tone: 'neutral', label: 'Closed', icon: CircleCheck },
+    rejected: { tone: 'neutral', label: 'Rejected', icon: Ban },
   },
   /** Queue priority and clinical flags. */
   priority: {

@@ -6,6 +6,7 @@ import type { AuthUser } from '../../types/express.js';
 import { clinicToday, toClinicDate } from '../../utils/dates.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { withTransaction } from '../../utils/transaction.js';
+import { syncFollowUpReminder } from '../followupReminders/service.js';
 import { getSettings } from '../settings/service.js';
 import { Prescription } from '../prescriptions/model.js';
 import { Encounter } from './model.js';
@@ -66,6 +67,8 @@ export async function insertSignedNoteForSeed(input: SeedSignedNoteInput) {
       ],
       { session },
     );
+    // The follow-up reminder, as signing does (Phase 8).
+    await syncFollowUpReminder(encounter!, { session, timezone });
     let rx: { _id: Types.ObjectId; prescriptionNumber?: string | null } | null = null;
     if (prescription && prescription.items.length > 0) {
       const rxYear = Number(clinicToday(timezone, signedAt).slice(0, 4));

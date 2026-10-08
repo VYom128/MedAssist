@@ -7,6 +7,7 @@ import {
   type Role,
 } from '../config/constants.js';
 import { Appointment } from '../modules/appointments/model.js';
+import { FollowupRequest } from '../modules/followups/model.js';
 import { LabOrder } from '../modules/labOrders/model.js';
 import * as audit from '../services/audit.service.js';
 import type { AuthUser } from '../types/express.js';
@@ -98,12 +99,24 @@ export async function hasLabOrderRelationship(
 }
 
 /**
- * The care relationship checks, tried in order until one says yes. Phase 8 appends "an assigned
- * follow-up request". Break-glass access (§2.3 stretch goal) is not built.
+ * A follow-up request from the patient is assigned to the doctor (spec §2.3, Phase 8) – in any
+ * status: like a past appointment, a handled request keeps the relationship.
+ */
+export async function hasFollowUpAssignmentRelationship(
+  doctorId: Types.ObjectId,
+  patientId: Types.ObjectId,
+): Promise<boolean> {
+  return Boolean(await FollowupRequest.exists({ patient: patientId, assignedDoctor: doctorId }));
+}
+
+/**
+ * The care relationship checks, tried in order until one says yes. Break-glass access (§2.3
+ * stretch goal) is not built.
  */
 export const CARE_RELATIONSHIP_CHECKS: readonly RelationshipCheck[] = [
   hasAppointmentRelationship,
   hasLabOrderRelationship,
+  hasFollowUpAssignmentRelationship,
 ];
 
 /**
@@ -230,16 +243,17 @@ export function roleHasPatientScope(
 
 /**
  * The ids of the patients a doctor has a care relationship with, for list filters. Must mirror
- * CARE_RELATIONSHIP_CHECKS (Phase 8 adds its source here too).
+ * CARE_RELATIONSHIP_CHECKS.
  */
 export async function relatedPatientIds(doctorId: string): Promise<Types.ObjectId[]> {
   const doctor = new Types.ObjectId(doctorId);
-  const [byAppointment, byLabOrder] = await Promise.all([
+  const [byAppointment, byLabOrder, byFollowUp] = await Promise.all([
     Appointment.distinct('patient', { doctor, status: { $nin: NO_RELATIONSHIP_STATUSES } }),
     LabOrder.distinct('patient', { orderedBy: doctor, ...PLACED_LAB_ORDER }),
+    FollowupRequest.distinct('patient', { assignedDoctor: doctor }),
   ]);
   const unique = new Map<string, Types.ObjectId>();
-  for (const id of [...byAppointment, ...byLabOrder]) unique.set(id.toString(), id);
+  for (const id of [...byAppointment, ...byLabOrder, ...byFollowUp]) unique.set(id.toString(), id);
   return [...unique.values()];
 }
 

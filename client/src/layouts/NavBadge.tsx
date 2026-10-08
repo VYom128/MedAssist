@@ -1,4 +1,5 @@
 import { useResultsToReview } from '../features/labs/review';
+import { useListFollowupsQuery } from '../features/followups/api';
 import { usePendingLinksQuery } from '../features/patients/api';
 import type { NavBadgeKind } from '../routes/routeConfig';
 
@@ -38,6 +39,24 @@ function LabResultsCount({ className }: { className: string }) {
   );
 }
 
+/** Open follow-up requests (reception: all; doctors: assigned to them – the server filters). */
+function FollowupsCount({ className }: { className: string }) {
+  const { data } = useListFollowupsQuery(
+    { status: 'open', limit: 1 },
+    { pollingInterval: POLL_MS },
+  );
+  const total = data?.meta.total ?? 0;
+  if (total === 0) return null;
+  return (
+    <span
+      className={`tabular ml-auto rounded-full bg-info-50 px-2 py-0.5 text-xs font-semibold text-info-700 ring-1 ring-info-100 ring-inset ${className}`}
+    >
+      {total}
+      <span className="sr-only"> open</span>
+    </span>
+  );
+}
+
 /**
  * A live count next to a sidebar entry. `className` repositions it (e.g. as a bubble on the
  * icon in the icon-only sidebar).
@@ -51,5 +70,6 @@ export default function NavBadge({
 }) {
   if (kind === 'pendingLinks') return <PendingLinksCount className={className} />;
   if (kind === 'labResults') return <LabResultsCount className={className} />;
+  if (kind === 'followups') return <FollowupsCount className={className} />;
   return null;
 }

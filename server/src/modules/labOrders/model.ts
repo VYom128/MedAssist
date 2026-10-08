@@ -164,6 +164,9 @@ const labOrderSchema = new Schema(
 
 labOrderSchema.index({ status: 1, priority: -1, createdAt: 1 }); // lab worklist
 labOrderSchema.index({ patient: 1, createdAt: -1 });
+// Patient timeline (Phase 8): doctors by order time, patients by release time.
+labOrderSchema.index({ patient: 1, orderedAt: -1, _id: -1 });
+labOrderSchema.index({ patient: 1, releasedAt: -1, _id: -1 });
 labOrderSchema.index({ orderedBy: 1, status: 1 });
 labOrderSchema.index({ encounter: 1 });
 labOrderSchema.index({ 'sample.sampleId': 1 }, { unique: true, sparse: true });

@@ -21,7 +21,12 @@ import {
 } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
 import { pdfBytes } from './helpers/files.js';
-import { createLabTest, insertAppointment, loginAsDoctor } from './helpers/fixtures.js';
+import {
+  createLabTest,
+  insertAppointment,
+  loginAsDoctor,
+  loginAsPatient,
+} from './helpers/fixtures.js';
 import { api } from './helpers/testApp.js';
 
 /**
@@ -373,6 +378,8 @@ describe('audit coverage', () => {
     });
     await post(`/lab-orders/${dropped.body.data.id}/discard`, drToday.auth);
     await post(`/encounters/${noteId}/sign`, drToday.auth, { expectedVersion: 1 });
+    // patient.timeline_view (Phase 8)
+    await api().get(`/api/v1/patients/${patientId}/timeline`).set(drToday.auth);
     // lab_order.submit (with the signing), .view, .item_cancel, .cancel (placed on the signed note)
     await api().get(`/api/v1/lab-orders/${labDraft.body.data.id}`).set(drToday.auth);
     const placed = await post('/lab-orders', drToday.auth, {
@@ -485,6 +492,41 @@ describe('audit coverage', () => {
       items: [{ kind: 'other', description: 'Certificate', unitPricePaise: 20_000 }],
     });
     await post(`/invoices/${manual.body.data.id}/void`, reception.auth, { reason: 'Not needed' });
+    // Phase 8: followup.create, .view, .message, .review, .assign, .schedule, .close, .reject
+    const anita = await loginAsPatient();
+    keep(anita.token, anita.refreshToken);
+    const seen = await insertAppointment({
+      patient: anita.patientId,
+      doctor: drToday.id,
+      startAt: new Date(Date.now() - 3 * 86_400_000),
+      status: 'completed',
+      isSlotActive: false,
+    });
+    const ask = (message: string) =>
+      post('/follow-up-requests', anita.auth, {
+        relatedAppointmentId: seen._id.toString(),
+        type: 'question',
+        message,
+      });
+    const request = await ask('Is the rash normal?');
+    const requestId = request.body.data.id as string;
+    await api().get(`/api/v1/follow-up-requests/${requestId}`).set(reception.auth);
+    await post(`/follow-up-requests/${requestId}/messages`, reception.auth, { text: 'Yes.' });
+    await post(`/follow-up-requests/${requestId}/messages`, anita.auth, { text: 'It spreads.' });
+    await post(`/follow-up-requests/${requestId}/review`, drToday.auth);
+    await post(`/follow-up-requests/${requestId}/assign`, reception.auth, { doctorId: drId });
+    await post(`/follow-up-requests/${requestId}/schedule`, reception.auth, {
+      startAt: zonedDateTimeToUtc(monday, '10:00', 'Asia/Kolkata'),
+      serviceId: svcId,
+    });
+    const toClose = await ask('Never mind');
+    await post(`/follow-up-requests/${toClose.body.data.id}/close`, anita.auth, {
+      reason: 'Feeling better',
+    });
+    const toReject = await ask('Can I get a certificate?');
+    await post(`/follow-up-requests/${toReject.body.data.id}/reject`, reception.auth, {
+      reason: 'Please visit the desk',
+    });
     emails.restore();
 
     await flushAudit();

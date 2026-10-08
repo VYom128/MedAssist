@@ -6,6 +6,7 @@ import { LabOrder } from '../src/modules/labOrders/model.js';
 import { getStorage } from '../src/services/storage/index.js';
 import { LabTest } from '../src/modules/labTests/model.js';
 import { DoctorLeave } from '../src/modules/leaves/model.js';
+import { FollowupRequest } from '../src/modules/followups/model.js';
 import { Invoice } from '../src/modules/invoices/model.js';
 import { Payment } from '../src/modules/payments/model.js';
 import { Patient } from '../src/modules/patients/model.js';
@@ -357,6 +358,16 @@ async function buildContext(role: Role): Promise<Ctx> {
     receivedBy: target._id,
     receivedAt: new Date(),
   });
+  // Phase 8: an open follow-up request of `patient` assigned to doctorId.
+  const followup = await FollowupRequest.create({
+    requestNumber: `FUR-1999-${String(n).padStart(6, '0')}`,
+    patient: patient.id,
+    assignedDoctor: doctorId,
+    type: 'question',
+    message: 'Matrix question',
+    status: 'open',
+    statusHistory: [{ status: 'open', at: new Date() }],
+  });
   return {
     me,
     targetId: target._id.toString(),
@@ -411,6 +422,7 @@ async function buildContext(role: Role): Promise<Ctx> {
     issuedInvoiceId: issuedInvoice!._id.toString(),
     paidInvoiceId: paidInvoice!._id.toString(),
     paymentId: payment._id.toString(),
+    followupId: followup._id.toString(),
     n,
   };
 }
@@ -472,6 +484,7 @@ const send = (row: Row, c: Ctx | null) => {
       issuedInvoiceId: zero,
       paidInvoiceId: zero,
       paymentId: zero,
+      followupId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);

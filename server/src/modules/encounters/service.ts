@@ -1,5 +1,5 @@
 import { Types, type FilterQuery } from 'mongoose';
-import { AUDIT_ACTIONS, ENCOUNTER_RULES, ERROR_CODES } from '../../config/constants.js';
+import { AUDIT_ACTIONS, ENCOUNTER_RULES, ERROR_CODES, ROLES } from '../../config/constants.js';
 import { assertCanViewAppointment } from '../../policies/appointmentAccess.js';
 import {
   assertCanReadEncounter,
@@ -15,9 +15,17 @@ import { buildMeta, type Pagination } from '../../utils/pagination.js';
 import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { Appointment } from '../appointments/model.js';
 import { loadAppointment } from '../appointments/service.js';
+import { resolveMyPatientId } from '../patients/portal.service.js';
 import { getSettings } from '../settings/service.js';
 import { Encounter, type EncounterDoc } from './model.js';
-import { ENCOUNTER_POPULATE, toDoctorView, toListItem, type EncounterLike } from './serializer.js';
+import { patientViewExtras } from './patient.service.js';
+import {
+  ENCOUNTER_POPULATE,
+  toDoctorView,
+  toListItem,
+  toPatientSafeView,
+  type EncounterLike,
+} from './serializer.js';
 import type { ListEncountersQuery, UpdateEncounterInput } from './validation.js';
 import { computeBmi } from './vitals.js';
 
@@ -96,12 +104,15 @@ async function auditView(user: AuthUser, e: EncounterLike, meta: RequestMeta) {
 
 /**
  * GET /encounters/:id – the note's doctor, or (signed notes only) a doctor with a care
- * relationship; others 404. Audited `encounter.view`, debounced 5 min per user + note.
+ * relationship; the patient their own signed note as the patient-safe view (Phase 8); others
+ * 404. Audited `encounter.view`, debounced 5 min per user + note.
  */
 export async function getEncounter(user: AuthUser, id: string, meta: RequestMeta) {
+  if (user.role === ROLES.PATIENT) await resolveMyPatientId(user);
   const e = await loadEncounter(id);
   await assertCanReadEncounter(user, e, meta);
   await auditView(user, e, meta);
+  if (user.role === ROLES.PATIENT) return toPatientSafeView(e, await patientViewExtras(e));
   return toDoctorView(e);
 }
 
@@ -220,6 +231,9 @@ export function buildNoteUpdate(
       ...(f.date !== null ? { date: f.date } : {}),
       ...(f.instructions !== null ? { instructions: f.instructions } : {}),
     };
+  }
+  if (changes.shareDiagnosisWithPatient !== undefined) {
+    $set.shareDiagnosisWithPatient = changes.shareDiagnosisWithPatient;
   }
   if (changes.vitals !== undefined && Object.keys(changes.vitals).length > 0) {
     const merged = { ...(current.vitals ?? {}) } as Record<string, number | null | undefined>;

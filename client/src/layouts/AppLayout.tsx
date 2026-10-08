@@ -8,6 +8,7 @@ import CriticalLabBanner from '../features/labs/components/CriticalLabBanner';
 import { useSocketInvalidation } from '../hooks/useSocketInvalidation';
 import { navItemsFor, type NavItem } from '../routes/routeConfig';
 import { ACCOUNT_LINKS } from './accountLinks';
+import BottomNav from './BottomNav';
 import MobileNav from './MobileNav';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
@@ -45,6 +46,8 @@ export default function AppLayout() {
   const forced = user.mustChangePassword;
   const home = forced ? '/change-password' : ROLE_HOME[user.role];
   const items = navItemsFor(user.role);
+  // Patients get a bottom bar on phones (the top 4 entries + More).
+  const bottomNav = user.role === 'patient' && !forced;
 
   const onLogout = async () => {
     await logout()
@@ -85,7 +88,7 @@ export default function AppLayout() {
           <main id="main-content" tabIndex={-1} className="flex-1 focus:outline-none">
             <div
               ref={pageRef}
-              className="mx-auto w-full max-w-content px-4 py-6 sm:px-6 lg:py-8 xl:px-8"
+              className={`mx-auto w-full max-w-content px-4 py-6 sm:px-6 lg:py-8 xl:px-8 ${bottomNav ? 'pb-24 md:pb-6' : ''}`}
             >
               {/* Doctors: critical lab values stay on screen until acknowledged. */}
               {user.role === 'doctor' && !forced && <CriticalLabBanner />}
@@ -94,6 +97,13 @@ export default function AppLayout() {
           </main>
         </div>
       </div>
+      {bottomNav && (
+        <BottomNav
+          items={items}
+          moreOpen={menuOpen}
+          onMore={() => setMenuOpenedAt(location.pathname)}
+        />
+      )}
       {!forced && (
         <MobileNav
           open={menuOpen}

@@ -86,6 +86,9 @@ const doubleBooked = (message: string, appointmentId: Types.ObjectId) =>
   });
 
 const isPatient = (user: Pick<AuthUser, 'role'>) => user.role === ROLES.PATIENT;
+/** Who booked: the portal, a doctor (follow-up requests, Phase 8) or the front desk. */
+const sourceOf = (user: Pick<AuthUser, 'role'>) =>
+  isPatient(user) ? 'patient_portal' : user.role === ROLES.DOCTOR ? 'doctor' : 'reception';
 
 /** Duplicate key on the `{ doctor, startAt }` slot index. */
 const isSlotIndexClash = (err: unknown) =>
@@ -313,8 +316,18 @@ export async function bookAppointment(
   user: AuthUser,
   input: BookAppointmentInput,
   meta: RequestMeta,
-  /** The seed books without emailing anyone. */
-  { notify = true }: { notify?: boolean } = {},
+  {
+    notify = true,
+    inTransaction,
+  }: {
+    /** The seed books without emailing anyone. */
+    notify?: boolean;
+    /**
+     * Runs inside the booking transaction after the appointment is created (follow-up requests
+     * mark themselves scheduled in the same commit, Phase 8). Throwing aborts the booking.
+     */
+    inTransaction?: (session: ClientSession, created: { _id: Types.ObjectId }) => Promise<void>;
+  } = {},
 ) {
   const settings = await getSettings();
   const { timezone } = settings;
@@ -362,7 +375,7 @@ export async function bookAppointment(
           startAt: slot.startAt,
           endAt: slot.endAt,
           type: input.type,
-          source: isPatient(user) ? 'patient_portal' : 'reception',
+          source: sourceOf(user),
           reason: input.reason ?? undefined,
           status: 'scheduled',
           followUpOf: input.followUpOf,
@@ -372,6 +385,7 @@ export async function bookAppointment(
       ],
       { session },
     );
+    if (inTransaction) await inTransaction(session, doc!);
     return doc!;
   });
 

@@ -140,6 +140,10 @@ describe('Socket.IO', () => {
     it('a user joins their own user room; the kiosk joins the board room only', async () => {
       await connected(client({ token: reception.token }));
       expect(await inRoom(`user:${reception.user._id}`)).toBe(1);
+      // Receptionists also join their role room (follow-up requests, Phase 8); doctors do not.
+      expect(await inRoom('role:receptionist')).toBe(1);
+      await connected(client({ token: doctor.token }));
+      expect(await inRoom('role:receptionist')).toBe(1);
       await connected(client({ kioskKey: config.kiosk.key }));
       expect(await inRoom('board')).toBe(1);
     });
@@ -207,6 +211,33 @@ describe('Socket.IO', () => {
   });
 
   describe('events', () => {
+    it('followup.updated reaches reception and the assigned doctor, with the id only', async () => {
+      const me = await loginAsPatient();
+      const visit = await insertAppointment({
+        patient: me.patientId,
+        doctor: doctor.id,
+        startAt: new Date(Date.now() - 86_400_000),
+        status: 'completed',
+        isSlotActive: false,
+      });
+      const staff = client({ token: reception.token });
+      const assigned = client({ token: doctor.token });
+      const otherDoctor = await loginAsDoctor();
+      const bystander = client({ token: otherDoctor.token });
+      await Promise.all([staff, assigned, bystander].map(connected));
+      const staffEvent = nextEvent(staff, 'followup.updated');
+      const doctorEvent = nextEvent(assigned, 'followup.updated');
+      const quiet = noEvent(bystander, 'followup.updated');
+      const res = await api()
+        .post('/api/v1/follow-up-requests')
+        .set(me.auth)
+        .send({ relatedAppointmentId: visit._id.toString(), type: 'question', message: 'Secret?' });
+      expect(res.status).toBe(201);
+      expect(await staffEvent).toEqual({ requestId: res.body.data.id });
+      expect(await doctorEvent).toEqual({ requestId: res.body.data.id });
+      await quiet;
+    });
+
     it('check-in: queue.updated to the queue room and the board, appointment.changed to the patient – after commit, ids only', async () => {
       const me = await loginAsPatient();
       const appt = await insertAppointment({

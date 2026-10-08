@@ -200,6 +200,8 @@ export async function seedEncounters(): Promise<Record<string, number>> {
       assessment: t.assessment,
       plan: t.plan,
       adviceToPatient: t.adviceToPatient,
+      // About half the notes share the diagnosis with the patient (Phase 8).
+      shareDiagnosisWithPatient: seed % 2 === 0,
       followUp: withFollowUp
         ? {
             required: true,

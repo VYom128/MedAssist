@@ -77,13 +77,18 @@ describe('encounter seed', () => {
     expect(summary.encounters).toMatchObject({ acknowledgedWarnings: 1 });
   });
 
-  it('amends three notes with reasons; drafts for today’s consultations', async () => {
+  it('amends three notes with reasons (+ four planned follow-ups); drafts for today’s consultations', async () => {
+    // Three corrections from the encounters seeder; the follow-ups seeder (Phase 8) amends four
+    // more notes to plan follow-ups due in two days (three) and overdue (one).
     const amended = await Encounter.find({ status: 'amended' }).lean();
-    expect(amended).toHaveLength(3);
+    expect(amended).toHaveLength(7);
     expect(amended.every((e) => e.version === 2)).toBe(true);
     const entries = await NoteAmendment.find().lean();
-    expect(entries).toHaveLength(3);
+    expect(entries).toHaveLength(7);
     expect(entries.every((a) => a.reason.length >= 10 && a.changedFields.length > 0)).toBe(true);
+    expect(
+      entries.filter((a) => a.changedFields.join() === 'followUp').length,
+    ).toBeGreaterThanOrEqual(4);
 
     const underWay = await Appointment.find({ status: 'in_consultation' }).select('_id').lean();
     const drafts = await Encounter.find({

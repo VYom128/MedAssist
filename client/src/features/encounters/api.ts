@@ -58,6 +58,8 @@ export interface Encounter extends EncounterBase {
   plan: string | null;
   adviceToPatient: string | null;
   followUp: FollowUp;
+  /** The patient sees the diagnoses on their visit summary only when this is on (Phase 8). */
+  shareDiagnosisWithPatient: boolean;
   signedBy: string | null;
   createdAt: string | null;
   updatedAt: string | null;
@@ -75,6 +77,7 @@ export interface NoteChanges {
   plan?: string | null;
   adviceToPatient?: string | null;
   followUp?: FollowUp;
+  shareDiagnosisWithPatient?: boolean;
 }
 
 export interface SignResult {

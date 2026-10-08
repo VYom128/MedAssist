@@ -8,6 +8,7 @@ import { doctorView, encounter, listOf, prescription, signableNote } from './enc
 import { authState, makeUser, renderRoutes } from './helpers';
 import { ok, server, url } from './msw/server';
 import { listItem } from './patients.fixtures';
+import { timelineItem } from './timeline.fixtures';
 
 const doctor = makeUser('doctor', { id: 'dr1', firstName: 'Anil', lastName: 'Mehta' });
 
@@ -47,25 +48,25 @@ describe('My patients', () => {
 });
 
 describe('Patient page (doctor)', () => {
-  it('shows allergies and conditions and edits them through the clinical profile', async () => {
+  it('shows allergies and conditions, the timeline, and edits them through the clinical profile', async () => {
     let body: unknown;
     server.use(
       http.get(url('/patients/p1'), () => ok(doctorView())),
-      http.get(url('/encounters'), () => {
-        const items = [
-          { ...encounter({ status: 'signed' }), primaryDiagnosis: 'Viral fever', updatedAt: null },
-        ];
-        return ok(items, { meta: listOf(items).meta });
-      }),
-      http.get(url('/prescriptions'), () => {
-        const items = [
-          {
-            ...prescription({ status: 'issued', prescriptionNumber: 'RX-2026-000009' }),
-            itemCount: 1,
-          },
-        ];
-        return ok(items, { meta: listOf(items).meta });
-      }),
+      http.get(url('/patients/p1/timeline'), () =>
+        ok(
+          [
+            timelineItem({
+              type: 'encounter',
+              id: 'e1',
+              title: 'Clinical note ENC-2026-000007',
+              subtitle: 'Dr Anil Mehta · Viral fever',
+              status: 'signed',
+              link: '/doctor/encounters/e1',
+            }),
+          ],
+          { meta: { limit: 20, nextCursor: null } },
+        ),
+      ),
       http.patch(url('/patients/p1/clinical-profile'), async ({ request }) => {
         body = await request.json();
         return ok(doctorView());
@@ -77,14 +78,12 @@ describe('Patient page (doctor)', () => {
       await screen.findByRole('alert', { name: 'Allergies' }, { timeout: 5000 }),
     ).toHaveTextContent('Penicillin');
     expect(screen.getByText('Hypertension')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Viral fever' })).toHaveAttribute(
-      'href',
-      '/doctor/encounters/e1',
-    );
-    expect(screen.getByRole('link', { name: 'Print RX-2026-000009' })).toHaveAttribute(
-      'href',
-      '/print/prescriptions/rx1',
-    );
+    // The timeline is the default tab (Phase 8).
+    expect(screen.getByRole('tab', { name: 'Timeline', selected: true })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('link', { name: 'Clinical note ENC-2026-000007' }),
+    ).toHaveAttribute('href', '/doctor/encounters/e1');
+    expect(screen.getByText('Dr Anil Mehta · Viral fever')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Edit allergies and conditions' }));
     const dialog = await screen.findByRole('dialog', { name: 'Allergies and chronic conditions' });

@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import { SOCKET_EVENTS, SOCKET_ROOMS } from '../config/constants.js';
+import { ROLES, SOCKET_EVENTS, SOCKET_ROOMS } from '../config/constants.js';
 
 /**
  * Real-time events (spec §7.9). Payloads carry ids only – never patient data; clients refetch
@@ -40,6 +40,18 @@ export function emitLabWorklistUpdated(orderIds: readonly string[]): void {
 export function emitLabOrderChanged(orderId: string, userIds: readonly string[]): void {
   if (!io || userIds.length === 0) return;
   io.to(userIds.map(SOCKET_ROOMS.user)).emit(SOCKET_EVENTS.LAB_ORDER_CHANGED, { orderId });
+}
+
+/**
+ * A follow-up request was created or changed (Phase 8): the given users (assigned doctor(s),
+ * the patient's account) and every receptionist refetch it. Ids only – never message text.
+ */
+export function emitFollowupUpdated(requestId: string, userIds: readonly string[]): void {
+  if (!io) return;
+  io.to([...userIds.map(SOCKET_ROOMS.user), SOCKET_ROOMS.role(ROLES.RECEPTIONIST)]).emit(
+    SOCKET_EVENTS.FOLLOWUP_UPDATED,
+    { requestId },
+  );
 }
 
 /** A critical value was entered: the ordering doctor's alert (ids only, spec §8.7). */

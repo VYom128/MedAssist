@@ -4,6 +4,9 @@ import { authenticate } from '../../middlewares/authenticate.js';
 import { authorize } from '../../middlewares/authorize.js';
 import { validate } from '../../middlewares/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
+import * as encountersController from '../encounters/controller.js';
+import * as timelineController from '../timeline/controller.js';
+import { myTimelineSchema, patientTimelineSchema } from '../timeline/validation.js';
 import * as patientsController from './controller.js';
 import {
   checkDuplicateSchema,
@@ -13,6 +16,7 @@ import {
   listPatientsSchema,
   patientIdSchema,
   patientStatusSchema,
+  myVisitsSchema,
   pendingLinksSchema,
   rejectLinkSchema,
   updateMyRecordSchema,
@@ -57,6 +61,27 @@ router.patch(
   validate(updateMyRecordSchema),
   asyncHandler(patientsController.updateMyRecord),
 );
+// The patient's own history (Phase 8): timeline, signed visits, planned follow-ups to book.
+router.get(
+  '/me/timeline',
+  authenticate,
+  authorize(PATIENT),
+  validate(myTimelineSchema),
+  asyncHandler(timelineController.getMyTimeline),
+);
+router.get(
+  '/me/visits',
+  authenticate,
+  authorize(PATIENT),
+  validate(myVisitsSchema),
+  asyncHandler(encountersController.listMyVisits),
+);
+router.get(
+  '/me/follow-ups-due',
+  authenticate,
+  authorize(PATIENT),
+  asyncHandler(encountersController.listMyFollowUpsDue),
+);
 router.get(
   '/pending-links',
   ...frontDesk,
@@ -75,6 +100,14 @@ router.patch(
   ...frontDesk,
   validate(updatePatientSchema),
   asyncHandler(patientsController.updatePatient),
+);
+// Patient timeline (spec §8.8): doctors with a care relationship, reception (non-clinical items).
+router.get(
+  '/:id/timeline',
+  authenticate,
+  authorize(DOCTOR, RECEPTIONIST),
+  validate(patientTimelineSchema),
+  asyncHandler(timelineController.getPatientTimeline),
 );
 router.patch(
   '/:id/clinical-profile',

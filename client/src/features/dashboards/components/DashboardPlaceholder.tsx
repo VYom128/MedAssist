@@ -88,29 +88,31 @@ export default function DashboardPlaceholder({
         </ul>
       </section>
 
-      <section
-        aria-labelledby="upcoming-title"
-        className="rounded-card border border-dashed border-line-strong bg-surface-muted p-5 lg:p-6"
-      >
-        <div className="flex items-start gap-3">
-          <IconChip icon={Hourglass} tone="neutral" size="sm" />
-          <div className="min-w-0">
-            <h2 id="upcoming-title" className="text-card">
-              Coming in later phases
-            </h2>
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {upcoming.map((item) => (
-                <li
-                  key={item}
-                  className="rounded-full border border-line bg-surface px-3 py-1 text-sm text-muted"
-                >
-                  {item}
-                </li>
-              ))}
-            </ul>
+      {upcoming.length > 0 && (
+        <section
+          aria-labelledby="upcoming-title"
+          className="rounded-card border border-dashed border-line-strong bg-surface-muted p-5 lg:p-6"
+        >
+          <div className="flex items-start gap-3">
+            <IconChip icon={Hourglass} tone="neutral" size="sm" />
+            <div className="min-w-0">
+              <h2 id="upcoming-title" className="text-card">
+                Coming in later phases
+              </h2>
+              <ul className="mt-3 flex flex-wrap gap-2">
+                {upcoming.map((item) => (
+                  <li
+                    key={item}
+                    className="rounded-full border border-line bg-surface px-3 py-1 text-sm text-muted"
+                  >
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
     </section>
   );
 }

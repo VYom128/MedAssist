@@ -125,6 +125,7 @@ export const encounterFields = {
   plan: optionalText(LIMITS.plan),
   adviceToPatient: optionalText(LIMITS.adviceToPatient),
   followUp: followUp.optional(),
+  shareDiagnosisWithPatient: z.boolean().optional(),
 };
 
 /** `revision` from the last read; a different stored one → 409 CONFLICT. */

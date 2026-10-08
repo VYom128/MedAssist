@@ -9,6 +9,17 @@ import { fail, ok, server, url } from './msw/server';
 
 /** Billing screens (Phase 7): editor, payments, refunds, void, patient view, money formatting. */
 
+// The pages are lazy routes: load them once up front, so the first test does not wait for a
+// cold compile of the chunk (that made the first test time out intermittently).
+beforeAll(async () => {
+  await Promise.all([
+    import('../src/features/billing/pages/InvoiceDetailPage'),
+    import('../src/features/billing/pages/InvoicesListPage'),
+    import('../src/features/billing/pages/MyInvoicesPage'),
+    import('../src/features/billing/pages/DayClosePage'),
+  ]);
+}, 30_000);
+
 const reception = makeUser('receptionist', { id: 'r1', firstName: 'Riya', lastName: 'Desk' });
 const admin = makeUser('admin', { id: 'ad1' });
 const patient = makeUser('patient', { id: 'pu1', patientId: 'p1', patientLinkStatus: 'linked' });
@@ -81,8 +92,9 @@ describe('draft invoice editor', () => {
     expect(within(preview).getByText('₹90.00')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /save now/i }));
-    const totals = await screen.findByTestId('totals');
-    expect(within(totals).getByText('₹106.20')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(screen.getByTestId('totals')).getByText('₹106.20')).toBeInTheDocument(),
+    );
     expect(screen.queryByTestId('totals-preview')).not.toBeInTheDocument();
     expect(screen.getByRole('status')).toHaveTextContent('Saved');
     // Only the line ids and inputs were sent – never totals.
@@ -175,8 +187,9 @@ describe('draft invoice editor', () => {
     expect(await screen.findByText(/As an admin you can approve discounts/)).toBeInTheDocument();
     await user.type(await screenFind(), '25');
     await user.click(screen.getByRole('button', { name: /save now/i }));
-    const totals = await screen.findByTestId('totals');
-    expect(within(totals).getByText('₹75.00')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(screen.getByTestId('totals')).getByText('₹75.00')).toBeInTheDocument(),
+    );
     expect(screen.queryByText(/An admin must approve a discount above/)).not.toBeInTheDocument();
   });
 });
