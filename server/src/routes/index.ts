@@ -7,6 +7,11 @@ import doctorRoutes from '../modules/doctors/routes.js';
 import documentRoutes from '../modules/documents/routes.js';
 import encounterRoutes from '../modules/encounters/routes.js';
 import summaryRoutes from '../modules/summaries/routes.js';
+import {
+  followUpExplainRoutes,
+  prescriptionExplainRoutes,
+} from '../modules/explanations/routes.js';
+import aiRoutes from '../modules/aiInteractions/routes.js';
 import formularyRoutes from '../modules/formulary/routes.js';
 import followupRoutes from '../modules/followups/routes.js';
 import healthRoutes from '../modules/health/routes.js';
@@ -39,12 +44,17 @@ router.use('/queue', queueRoutes);
 router.use('/encounters', encounterRoutes);
 // AI clinical summaries of a note (Phase 9): /encounters/:id/summary…
 router.use('/encounters', summaryRoutes);
+// AI patient explanations (Phase 9): /encounters/:id/follow-up/explain, /prescriptions/:id/explain…
+router.use('/encounters', followUpExplainRoutes);
 router.use('/formulary', formularyRoutes);
 router.use('/prescriptions', prescriptionRoutes);
+router.use('/prescriptions', prescriptionExplainRoutes);
 router.use('/lab-orders', labOrderRoutes);
 router.use('/documents', documentRoutes);
 router.use('/invoices', invoiceRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/follow-up-requests', followupRoutes);
+// Admin AI monitor (Phase 9)
+router.use('/ai', aiRoutes);
 
 export default router;

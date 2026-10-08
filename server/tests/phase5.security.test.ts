@@ -190,6 +190,9 @@ describe('doctors without a care relationship', () => {
         `/encounters/${c.encounterId}/summary/${c.summaryId}/reject`,
         { reason: 'Not my patient at all' },
       ],
+      // Phase 9: patient explanations (doctor preview)
+      ['post', `/prescriptions/${c.prescriptionId}/explain`, { language: 'en' }],
+      ['post', `/encounters/${c.encounterId}/follow-up/explain`, { language: 'en' }],
     ];
     const before = (await auditEntries('access.denied')).length;
     for (const [method, path, body] of reqs) {

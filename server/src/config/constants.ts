@@ -256,8 +256,11 @@ export type ClinicalSummaryStatus = (typeof CLINICAL_SUMMARY_STATUSES)[number];
 /** AI features (spec §6.26); each has a kill switch in settings.ai. */
 export const AI_FEATURES = Object.freeze(['clinical_summary', 'patient_explanation'] as const);
 export type AiFeature = (typeof AI_FEATURES)[number];
-/** One provider attempt: success = usable output; failed = provider error or invalid output. */
-export const AI_INTERACTION_STATUSES = Object.freeze(['success', 'failed'] as const);
+/**
+ * One provider attempt: success = usable output; failed = provider error or invalid output;
+ * blocked = valid JSON that the guardrails refused (patient explanations).
+ */
+export const AI_INTERACTION_STATUSES = Object.freeze(['success', 'failed', 'blocked'] as const);
 export type AiInteractionStatus = (typeof AI_INTERACTION_STATUSES)[number];
 /** Why an attempt failed (machine tags only – never provider messages or content). */
 export const AI_FAILURE_REASONS = Object.freeze([
@@ -278,7 +281,23 @@ export const AI_GUARDRAIL_FLAGS = Object.freeze({
   UNVERIFIED_MEDICATION_REMOVED: 'unverified_medication_removed',
   OUTPUT_RETRIED: 'output_retried',
   FALLBACK_MODEL: 'fallback_model',
+  // Patient explanations (spec §9.3)
+  MEDICINE_NOT_PRESCRIBED: 'medicine_not_prescribed',
+  MEDICINE_MISSING: 'medicine_missing',
+  NUMBER_MISMATCH: 'number_mismatch',
+  FORBIDDEN_PHRASE: 'forbidden_phrase',
+  REGENERATED: 'regenerated',
+  FALLBACK_TEMPLATE: 'fallback_template',
+  AI_UNAVAILABLE: 'ai_unavailable',
+  AI_OUTPUT_INVALID: 'ai_output_invalid',
+  DAILY_LIMIT: 'daily_limit',
 });
+/** What a patient explanation explains (spec §6.17). */
+export const EXPLANATION_SOURCE_TYPES = Object.freeze(['prescription', 'follow_up_plan'] as const);
+export type ExplanationSourceType = (typeof EXPLANATION_SOURCE_TYPES)[number];
+/** How an explanation was produced: the model's text, or the template after a block / failure. */
+export const EXPLANATION_OUTCOMES = Object.freeze(['success', 'blocked', 'failed'] as const);
+export type ExplanationOutcome = (typeof EXPLANATION_OUTCOMES)[number];
 export const AI_RULES = Object.freeze({
   /** POST /encounters/:id/summary/generate per doctor (spec §7.11). */
   summaryGenerationsPerMinute: 10,
@@ -289,6 +308,10 @@ export const AI_RULES = Object.freeze({
   rejectionReasonMax: 500,
   /** Invalid output is retried once on the same model, with the validation problems. */
   attemptsPerModel: 2,
+  /** NEW patient explanations per user per hour (cached answers are free; spec §9.3). */
+  explanationsPerHour: 10,
+  explanationReadingAge: 12,
+  feedbackCommentMax: 500,
 });
 
 /** Prescription item enums (spec §6.16). */
@@ -709,6 +732,11 @@ export const AUDIT_ACTIONS = Object.freeze({
   SUMMARY_UPDATE: 'summary.update',
   SUMMARY_APPROVE: 'summary.approve',
   SUMMARY_REJECT: 'summary.reject',
+  /** Phase 9: patient explanations (source, language, flags only – never the text). */
+  EXPLANATION_GENERATE: 'explanation.generate',
+  EXPLANATION_BLOCKED: 'explanation.blocked',
+  EXPLANATION_VIEW: 'explanation.view',
+  EXPLANATION_FEEDBACK: 'explanation.feedback',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /**
@@ -796,6 +824,7 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 /** Languages AI patient explanations support (spec §9.3). */
 export const EXPLANATION_LANGUAGES = Object.freeze(['en', 'hi'] as const);
+export type ExplanationLanguage = (typeof EXPLANATION_LANGUAGES)[number];
 
 /** Billable service types (spec §6.7). */
 export const SERVICE_TYPES = Object.freeze(['consultation', 'procedure', 'other'] as const);

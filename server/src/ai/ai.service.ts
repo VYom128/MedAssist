@@ -53,6 +53,17 @@ export interface AiCallRequest<T> {
   patient?: Id | null;
   source?: { type: string; id: Id; version?: number };
   meta?: RequestMeta;
+  /**
+   * Guardrails run on a valid reply (patient explanations): the flags they raise. Any flag marks
+   * the attempt `blocked` (with the flags) and the call returns it as `blockedFlags` – it does
+   * not try other models; the caller decides (regenerate once, then the template).
+   */
+  check?: (data: T) => string[];
+  /**
+   * Continues an earlier call (a regeneration): same callId, attempt numbers go on, so the
+   * per-user rate limit (first attempts only) counts the request once.
+   */
+  continueFrom?: { callId: string; attempts: number };
 }
 
 export interface AiCallResult<T> {
@@ -71,6 +82,8 @@ export interface AiCallResult<T> {
   latencyMs: number;
   /** The ai_interactions row of the successful attempt. */
   interactionId: Types.ObjectId | null;
+  /** Flags `check` raised (empty = the reply passed). */
+  blockedFlags: string[];
 }
 
 /** A failed AI call (503), with what the caller may record about it – never content. */
@@ -100,7 +113,7 @@ interface AttemptRow {
   attempt: number;
   model: string;
   isFallback: boolean;
-  status: 'success' | 'failed';
+  status: 'success' | 'failed' | 'blocked';
   errorReason?: AiFailureReason;
   guardrailFlags?: string[];
   usage: TokenUsage;
@@ -119,7 +132,7 @@ const STOP_CHAIN: ReadonlySet<AiFailureReason> = new Set(['auth']);
 const RETRY_SAME_MODEL: ReadonlySet<AiFailureReason> = new Set(['invalid_output', 'truncated']);
 
 export async function generateJson<T>(request: AiCallRequest<T>): Promise<AiCallResult<T>> {
-  const callId = randomUUID();
+  const callId = request.continueFrom?.callId ?? randomUUID();
   const inputHash = hashInput(request.input);
   const provider = getProvider();
   const providerName = provider?.name ?? 'none';
@@ -129,7 +142,7 @@ export async function generateJson<T>(request: AiCallRequest<T>): Promise<AiCall
   const total: TokenUsage = { inputTokens: 0, outputTokens: 0 };
   const reasons: AiFailureReason[] = [];
   const modelsTried: string[] = [];
-  let attempt = 0;
+  let attempt = request.continueFrom?.attempts ?? 0;
   let retryAfter: number | undefined;
 
   const record = async (row: AttemptRow) => {
@@ -218,15 +231,17 @@ export async function generateJson<T>(request: AiCallRequest<T>): Promise<AiCall
         });
         total.inputTokens += reply.usage.inputTokens;
         total.outputTokens += reply.usage.outputTokens;
+        const blockedFlags = request.check?.(reply.data) ?? [];
         const interactionId = await record({
           attempt,
           model: reply.model,
           isFallback,
-          status: 'success',
+          status: blockedFlags.length ? 'blocked' : 'success',
+          guardrailFlags: blockedFlags,
           usage: reply.usage,
           latencyMs: reply.latencyMs,
         });
-        await finish('success', { model: reply.model, isFallback });
+        await finish('success', { model: reply.model, isFallback, blockedFlags });
         return {
           data: reply.data,
           callId,
@@ -238,6 +253,7 @@ export async function generateJson<T>(request: AiCallRequest<T>): Promise<AiCall
           usage: total,
           latencyMs: Date.now() - started,
           interactionId,
+          blockedFlags,
         };
       } catch (err) {
         if (!(err instanceof AiProviderError)) throw err;

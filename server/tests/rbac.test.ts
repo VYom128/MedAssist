@@ -35,6 +35,7 @@ import { Prescription } from '../src/modules/prescriptions/model.js';
 import { loadEncounter } from '../src/modules/encounters/service.js';
 import { buildSummaryInput } from '../src/modules/summaries/input.js';
 import { ClinicalSummary } from '../src/modules/summaries/model.js';
+import { PatientExplanation } from '../src/modules/explanations/model.js';
 import { withTransaction } from '../src/utils/transaction.js';
 import {
   ALL,
@@ -373,6 +374,22 @@ async function buildContext(role: Role): Promise<Ctx> {
   });
   // Phase 9: an up-to-date draft AI summary of the signed note (built last: its input hash covers
   // the note's prescription and lab orders).
+  await Encounter.collection.updateOne(
+    { _id: signedEncounter },
+    { $set: { 'followUp.required': true, 'followUp.afterDays': 7 } },
+  );
+  await PatientExplanation.create({
+    sourceType: 'prescription',
+    sourceId: prescription._id,
+    sourceVersion: 1,
+    patient: patient.id,
+    language: 'en',
+    content: { overview: 'Matrix explanation', medicines: [] },
+    disclaimer: 'Matrix disclaimer',
+    outcome: 'success',
+    cached: true,
+    requestedBy: me.user._id,
+  });
   const signedNote = await loadEncounter(signedEncounter);
   const { inputHash } = await buildSummaryInput(signedNote);
   const summary = await ClinicalSummary.create({
@@ -549,6 +566,7 @@ describe('RBAC matrix', () => {
       Invoice.init(),
       Payment.init(),
       ClinicalSummary.init(),
+      PatientExplanation.init(),
     ]);
     await resetDb();
     emails = captureEmails(); // welcome and reset emails are sent in the background

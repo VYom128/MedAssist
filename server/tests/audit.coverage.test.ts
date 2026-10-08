@@ -1,6 +1,8 @@
 import { AUDIT_ACTIONS } from '../src/config/constants.js';
 import { AuditLog } from '../src/modules/audit/model.js';
 import { Session } from '../src/modules/sessions/model.js';
+import { User } from '../src/modules/users/model.js';
+import { hashPassword } from '../src/utils/password.js';
 import { flushAudit } from '../src/services/audit.service.js';
 import {
   addDaysToDate,
@@ -11,6 +13,7 @@ import {
 } from '../src/utils/dates.js';
 import { hashToken, verifyAccessToken } from '../src/utils/tokens.js';
 import { runPrescriptionCompletionJob } from '../src/jobs/prescriptionCompletion.job.js';
+import { resetMock, setMockBehaviour } from '../src/ai/providers/mock.js';
 import {
   createUser,
   loginAs,
@@ -393,6 +396,24 @@ describe('audit coverage', () => {
     await post(`${summaries}/${newer.body.data.id}/reject`, drToday.auth, {
       reason: 'Not needed this time',
     });
+    // Phase 9: explanation.generate (the doctor's preview), explanation.blocked (unsafe output
+    // twice → the template, cached), explanation.view (the cache), explanation.feedback
+    const explain = `/prescriptions/${rx.body.data.id}/explain`;
+    await post(explain, drToday.auth, { language: 'en' });
+    // The patient's portal account (from the invite) – log in with a known password.
+    const portal = await User.findOne({ patient: patientId });
+    portal!.set({ passwordHash: await hashPassword(TEST_PASSWORD), patientLinkStatus: 'linked' });
+    await portal!.save();
+    const login = await api()
+      .post('/api/v1/auth/login')
+      .send({ email: portal!.email, password: TEST_PASSWORD });
+    const rxOwner = { auth: { Authorization: `Bearer ${login.body.data.accessToken as string}` } };
+    keep(login.body.data.accessToken as string);
+    setMockBehaviour('unsafe');
+    await post(explain, rxOwner.auth, { language: 'en' });
+    resetMock();
+    await post(explain, rxOwner.auth, { language: 'en' });
+    await post(`${explain}/feedback`, rxOwner.auth, { language: 'en', helpful: true });
     // lab_order.submit (with the signing), .view, .item_cancel, .cancel (placed on the signed note)
     await api().get(`/api/v1/lab-orders/${labDraft.body.data.id}`).set(drToday.auth);
     const placed = await post('/lab-orders', drToday.auth, {
