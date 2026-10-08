@@ -796,6 +796,8 @@ hooks: any update when status !== 'draft' throws RECORD_LOCKED unless done by th
 ```
 Phase 5 (D100, D105): `visitAt` (the appointment's start, for lists and history) is stored too; the API exposes `__v` as `revision`, sent back as `expectedVersion`. The amendment service passes an internal option (`amendmentWriteOptions`); notes are never deleted.
 
+Phase 8 (D154): `shareDiagnosisWithPatient: Boolean, default false` – set on the draft (autosave PATCH), changeable after signing only through an amendment (it is one of the amendable fields). The patient-safe view shows the diagnoses only when it is on. Index `{ patient, signedAt, _id }` for the timeline and the patient's visit list.
+
 ### 6.14 `note_amendments`
 ```js
 {
@@ -901,6 +903,23 @@ indexes: { sourceType: 1, sourceId: 1, sourceVersion: 1, language: 1 } unique
   statusHistory: [{ status, at, by, note }]
 }
 ```
+Phase 8 (D156–D158): numbers `FUR-<clinic year>-000001` (counter); `assignedDoctor` = the related appointment's doctor (reception reassigns; unassigned without a related visit). Each message also has `_id` and **`visibility: 'all' | 'staff'`** – `staff` messages are internal notes: the patient's views never contain them (detail, list counts, timeline), and emails/socket events never carry any message text. `attachments` are the patient's own documents (linked with `linked.type = 'followup_request'`). Indexes `{ requestNumber }` (unique), `{ patient, createdAt }`, `{ status, createdAt }`, `{ assignedDoctor, status }`. Never deleted.
+
+### 6.18a `followup_reminders` (Phase 8)
+```js
+{
+  encounter: ObjectId ref Encounter, required, unique
+  appointment: ObjectId ref Appointment     // the visit (followUpOf of the booking link)
+  patient: ObjectId ref Patient
+  doctor: ObjectId ref User
+  visitAt: Date                             // a later appointment with this doctor counts as booked
+  dueDate: Date                             // clinic calendar date the follow-up is due
+  status: enum ['pending','sent','skipped'], default 'pending'
+  skipReason: 'booked' | 'no_contact' | 'cancelled'
+  sentAt: Date
+}
+```
+Signed notes are immutable, so the reminder state lives here (D159): written in the sign transaction (`dueDate` = `followUp.date`, else the signing clinic day + `afterDays`), moved or cancelled by amendments while still pending, never touched after it was sent. Index `{ status, dueDate }`.
 
 ### 6.19 `lab_tests` (catalogue)
 ```js
@@ -975,29 +994,36 @@ rules: items of a released order change only through the revision service (inter
 ### 6.21 `invoices`
 ```js
 {
-  invoiceNumber: String, unique             // assigned on ISSUE, not on draft: 'INV-2026-000045'
+  invoiceNumber: String, unique sparse      // assigned on ISSUE, not on draft: '<billing.invoicePrefix>-2026-000045' (D143)
+  kind: enum ['appointment','supplementary','manual']   // Phase 7 (D135–D136): the visit's invoice, tests ordered after it was issued, or a desk invoice
   patient: ObjectId ref Patient, required, indexed
-  appointment: ObjectId ref Appointment, indexed
+  appointment: ObjectId ref Appointment, indexed   // at most one draft per appointment (partial unique index)
   status: enum ['draft','issued','partially_paid','paid','void']
   items: [{
     kind: enum ['consultation','lab_test','procedure','other']
+    origin: enum ['visit','staff']          // Phase 7 (D141): visit = from the appointment / a lab order – only the discount can change
     refId: ObjectId                         // service / lab test id
+    labOrder: ObjectId, labOrderItem: ObjectId   // Phase 7 (D135): lab test lines from a lab order (a cancelled test finds its line)
     description: String, required
-    quantity: Number, integer ≥ 1
+    quantity: Number, integer 1–999
     unitPricePaise: Number, integer ≥ 0
-    discountPaise: Number, integer ≥ 0
-    taxRateBps: Number
+    discountPaise: Number, integer ≥ 0, ≤ quantity × unitPrice
+    taxRateBps: Number 0–10000
     taxPaise: Number, lineTotalPaise: Number   // computed on server
   }]
   subtotalPaise, discountTotalPaise, taxTotalPaise, totalPaise, amountPaidPaise, balancePaise: Number
   currency: String, default 'INR'
-  issuedAt: Date, issuedBy: ref User, dueDate: Date
+  issuedAt: Date, issuedBy: ref User, dueDate: Date (calendar date; default = issue date)
   void: { by, at, reason }
   notes: String
+  discountApproval: { by: ref User, at }    // Phase 7 (D140): an admin saved a discount above the limit
+  cancelledItemsBilled: [{ lineId, description, lineTotalPaise, labOrderId, itemId, at }]   // Phase 7 (D137): tests cancelled after issue – reception refunds them
   statusHistory: [{ status, at, by, note }]
+  __v                                       // the version: sent back as `expectedVersion` (API `revision`) on PATCH and issue (D141, D143)
 }
 options: optimisticConcurrency: true
 rule: totals are ALWAYS recomputed on the server from items; client totals are ignored
+rule (D143): after issue only status bookkeeping changes (status, statusHistory, void, cancelledItemsBilled); the paid amounts only through the payment service; never deleted
 ```
 
 ### 6.22 `payments`
@@ -1014,7 +1040,7 @@ rule: totals are ALWAYS recomputed on the server from items; client totals are i
   reason: String                             // required for refunds
   receivedBy: ObjectId ref User, receivedAt: Date
 }
-append-only
+append-only (Phase 7: hooks refuse every update/delete; a refund needs `refundOf` and `reason`; numbers 'PAY-<year>-000001' shared by payments and refunds – D145–D146)
 ```
 
 ### 6.23 `documents`
@@ -1200,7 +1226,10 @@ GET /api/v1/doctors/66f…/slots?date=2026-10-05&serviceId=66a…
 | POST | `/patients/:id/portal-invite` | R, A | Patient needs an email and no portal account; creates a linked patient user and emails a 72 h set-password link. |
 | POST | `/patients/:id/confirm-link` | R | `{ userId }` – confirm a pending self-signup after checking photo ID; emails "records available". |
 | POST | `/patients/:id/reject-link` | R | `{ userId, reason }` – not this person: a new patient record (new MRN) is created from the signup and linked (D64). |
-| GET | `/patients/:id/timeline` | D (rel), P (own via `/patients/me/timeline`), R (non-clinical items only) | Phase 8. §8.8. `?types=appointment,encounter,prescription,lab,invoice,document&from&to&page`. |
+| GET | `/patients/:id/timeline` | D (rel), R (non-clinical items only); A and L → 403 | Phase 8, §8.8. `?types=appointment,encounter,prescription,lab_order,invoice,payment,document,followup_request&from&to&before&limit` – **cursor pages** (`before` = the previous page's `meta.nextCursor`; `limit` ≤ 50, default 20); no `page` (D153). Audited `patient.timeline_view` (debounced). |
+| GET | `/patients/me/timeline` | P (linked) | The patient's own timeline (same query). 403 `PATIENT_LINK_PENDING` while pending. |
+| GET | `/patients/me/visits` | P (linked) | Signed visits, newest first (`page`/`limit`): date, doctor, department, primary diagnosis only when shared (D155). |
+| GET | `/patients/me/follow-ups-due` | P (linked) | Planned follow-ups upcoming or overdue by ≤ 14 days and not booked yet, with the booking parameters (`doctorId`, `followUpOf`) (D160). |
 | POST | `/patients/:id/deactivate` | A | `{ reason }` (≥ 5 chars). Hidden from default lists. |
 | POST | `/patients/:id/activate` | A | `{ reason }`. |
 
@@ -1252,7 +1281,9 @@ Socket.IO rooms: `queue:<doctorId>:<date>`, `user:<userId>`. Events: `queue.upda
 | GET | `/encounters/:id/amendments` | D (rel) | Version history. |
 | GET | `/encounters/:id/visit-summary.pdf` | D (rel), P (own) | Printable summary. |
 
-Phase 5 (D99–D107): also `GET /appointments/:id/encounter` (D own – the consult workspace); `GET /encounters?mine=true`; `PATCH` sends `expectedVersion` (not `__v`); `POST /sign` needs `{ expectedVersion }`; `POST /amendments` returns 201. Patient views of encounters and `visit-summary.pdf` come with Phases 8 and 10.
+Phase 5 (D99–D107): also `GET /appointments/:id/encounter` (D own – the consult workspace); `GET /encounters?mine=true`; `PATCH` sends `expectedVersion` (not `__v`); `POST /sign` needs `{ expectedVersion }`; `POST /amendments` returns 201. `visit-summary.pdf` comes with Phase 10.
+
+Phase 8 (D155): `GET /encounters/:id` for the patient returns the **patient-safe view** of their own signed/amended notes (drafts and others' → 404): date, doctor, department, vitals, `adviceToPatient`, the follow-up plan, links to the issued prescription and released lab orders, and the diagnoses only when `shareDiagnosisWithPatient` – never the chief complaint, history, examination, assessment or plan. All other `/encounters` routes stay doctor-only.
 
 ### 7.11 AI clinical summaries
 | Method | Path | Roles | Description |
@@ -1301,6 +1332,8 @@ Phase 5 (D108–D112): also `POST /prescriptions/:id/issue` (D own – issues a 
 | POST | `/follow-up-requests/:id/schedule` | R, D | Creates appointment (same checks as booking). |
 | POST | `/follow-up-requests/:id/close` \| `/reject` | R, D | `{ reason }` |
 
+Phase 8 (D156–D162): `GET` lists also filter `assignedDoctor` and `q` (request number, or the patient's MRN/phone/name); rows carry no message text; admins read everything but act on nothing. `POST /` → 422 `FOLLOWUP_LIMIT_REACHED` beyond 3 open (open/in review/responded) or 5 new per clinic day; `relatedAppointmentId` and `attachmentIds` must be the patient's own (422). `POST /:id/messages` `{ text, visibility: 'all' | 'staff' }` – patients `all` only (their reply reopens a `responded` request); a staff `all` reply moves open/in review → `responded`; `staff` notes change nothing; nobody replies on a finished request (409). New: `POST /:id/review` (R, assigned D: open → in_review) and `POST /:id/assign` `{ doctorId }` (R; an active doctor). `POST /:id/schedule` `{ startAt, serviceId, doctorId? }` books through the booking service (all conflict checks, the booking lock; `type: follow_up`, `followUpOf` = the related visit when completed) in the same transaction as the status change (a booking 409 leaves the request unchanged); doctors book with themselves only. `POST /:id/close` is also open to the patient (own); `/reject` is staff only. `POST /encounters/:id/follow-up/explain` comes with Phase 9.
+
 ### 7.14 Lab tests & orders
 | Method | Path | Roles | Description |
 |---|---|---|---|
@@ -1335,6 +1368,9 @@ Phase 5 (D108–D112): also `POST /prescriptions/:id/issue` (D own – issues a 
 | POST | `/invoices/:id/payments` | R | `{ amountPaise, method, reference }` — cannot exceed balance. |
 | POST | `/payments/:id/refund` | R (with reason), A | `{ amountPaise, reason }` |
 | GET | `/payments/:id/receipt.pdf` | R, P (own) | |
+| GET | `/payments/summary` | R, A | Phase 7 (D150): `?date=YYYY-MM-DD` – the clinic day's payments and refunds per method, for the day close. |
+
+Phase 7 changes (D142–D150): admins may also create, edit (discounts above the limit) and issue drafts; `PATCH` and `issue` take `expectedVersion`; `GET /invoices` also filters `?needsAttention=true` and returns `meta.totals` (billed, collected, outstanding); `GET /invoices/:id/pdf` and `/payments/:id/receipt.pdf` also allow admins, never drafts, `?download=true` → attachment; `GET /invoices/:id/payments` returns refunds nested by `refundOf` with `refundedPaise`/`refundablePaise`; recording payments is reception only. Doctors and lab technicians have no billing endpoints (the §2.4 doctor "summary" is deferred).
 
 ### 7.16 Documents — `/documents`
 | Method | Path | Roles | Description |
@@ -1424,6 +1460,7 @@ Inside a MongoDB transaction:
   appointments (startAt), encounters (signedAt), approved AI summaries, prescriptions (issuedAt), lab orders (createdAt; results at releasedAt), invoices (issuedAt), payments, documents, follow-up requests.
 - Items are filtered by the caller's permissions **before** merging (receptionists get no clinical items; patients get only released/issued/approved items).
 - Sorted newest first, paginated server-side (fetch `limit` from each source, merge, cut).
+- Phase 8 (D153): **cursor pagination** – items are ordered by `(at, type, id)` descending; the cursor is an opaque base64url of `at|type|id` (validated, 400 otherwise). Each source asks for `limit + 1` items strictly after the cursor (a source whose type sorts before the cursor's keeps items at the cursor's time, one sorting after drops them, the same type compares ids), the results are merged and cut to `limit`, and `meta.nextCursor` is the last item's cursor when more remain (else null) – equal timestamps never skip or repeat an item. Sources are a registry (`modules/timeline/sources`: appointments by `startAt`, signed notes by `signedAt`, prescriptions by `issuedAt`, lab orders by `orderedAt` (doctors) / `releasedAt` (patients), invoices by `issuedAt`, payments by `receivedAt`, documents and follow-up requests by `createdAt`), each with the roles allowed and an index on patient + time field. Per role: doctors – appointments, signed notes, issued prescriptions, placed lab orders, documents, follow-ups (no billing); reception – appointments, invoices, payments, non-clinical documents, follow-ups; patients – their own appointments, signed notes, issued/completed prescriptions, released lab orders, non-draft invoices, payments, visible documents, follow-ups. Items `{ type, id, at, title, subtitle, status, link, flags }` with no clinical free text for non-clinical roles and never any follow-up message text.
 
 ### 8.9 Billing calculations
 - Line: `gross = quantity × unitPrice`; `taxable = gross − discount`; `tax = round(taxable × taxRateBps / 10000)`; `lineTotal = taxable + tax`.
@@ -1439,7 +1476,7 @@ Inside a MongoDB transaction:
 |---|---|---|
 | Appointment reminders | every 15 min | Notify patients `reminderHoursBefore` before start (once). |
 | No-show marking | every 15 min | `scheduled` and `endAt + noShowGraceMinutes` passed → `no_show`. |
-| Follow-up reminders | daily 09:00 | Planned follow-up in 2 days and not yet booked → notify patient. |
+| Follow-up reminders | daily 09:00 | Planned follow-up in 2 days and not yet booked → notify patient. Phase 8 (D159): pending `followup_reminders` due exactly two clinic days ahead; booked (an appointment linked with `followUpOf`, or a later one with the same doctor, not cancelled or missed) → skipped; no portal email → skipped; else claimed (`pending → sent`, conditional) before the email – never twice. The email links to `/patient/appointments/book?doctor=<id>&followUpOf=<appointmentId>`, no clinical details. |
 | Prescription completion | daily 02:00 | Mark issued prescriptions `completed` after the longest duration. |
 | Lab TAT alerts | hourly | Orders past `turnaroundHours` → notify lab techs. |
 | Session cleanup | TTL index | – |
@@ -1580,7 +1617,7 @@ Rules: record **who, what, which record, which patient, when, from where, outcom
 
 ### 12.2 Documents
 - Upload UI with drag-and-drop, progress bar, category select; preview for PDF/images in a modal.
-- System-generated PDFs (lab reports, prescriptions, invoices, visit summaries) are saved as Documents with `isGenerated: true`.
+- System-generated PDFs (lab reports, prescriptions, invoices, visit summaries) are saved as Documents with `isGenerated: true`. **Except invoices and receipts (Phase 7, D148):** they are generated on demand from the locked data (an issued invoice and its payments never change), so they are not stored.
 
 ### 12.3 Printable outputs (PDFKit, server-side)
 | Document | Contents |
@@ -1736,8 +1773,12 @@ Reports (§7.18) render as table + chart, filterable by date range, exportable t
 | `SIGN_VALIDATION_FAILED` | 422 | The note (or prescription) lacks what signing/issuing needs; `details` list the fields (Phase 5, D106) |
 | `SELF_VERIFICATION_NOT_ALLOWED` | 422 | Same lab tech entering and verifying – results (`verify`) or a revision (`verify-revision`), while dual verification is on (Phase 6, D124) |
 | `RESULTS_INCOMPLETE` | 422 | Lab results miss values the action needs (verify with tests not fully entered; a revision without every parameter); `details` list them (Phase 6, D123) |
-| `PAYMENT_EXCEEDS_BALANCE` | 422 | Overpayment |
-| `DISCOUNT_REQUIRES_ADMIN` | 422 | Discount over allowed limit |
+| `INVOICE_EMPTY` | 422 | Issuing an invoice without lines (Phase 7, D143) |
+| `VOID_REQUIRES_REFUND` | 422 | Voiding an invoice with money still paid on it; `details.amountPaidPaise` (Phase 7, D144) |
+| `REFUND_EXCEEDS_PAYMENT` | 422 | A refund larger than what is left of the payment; `details.refundablePaise` (Phase 7, D146) |
+| `PAYMENT_EXCEEDS_BALANCE` | 422 | Overpayment; `details.balancePaise` (Phase 7) |
+| `DISCOUNT_REQUIRES_ADMIN` | 422 | Discount over allowed limit; `details.maxPercent` (Phase 7, D140) |
+| `FOLLOWUP_LIMIT_REACHED` | 422 | A patient's 4th open follow-up request, or 6th new one in a clinic day; `details: { kind: 'open' \| 'daily', limit }` (Phase 8, D157) |
 | `PAYLOAD_TOO_LARGE` | 413 | JSON body over the size limit (Phase 0) |
 | `FILE_TOO_LARGE` | 413 | Upload over `MAX_UPLOAD_MB` (Phase 6) |
 | `UNSUPPORTED_FILE_TYPE` | 415 | Not PDF/JPG/PNG by its first bytes (magic numbers) – the name and Content-Type are ignored (Phase 6, D129) |
@@ -1955,3 +1996,34 @@ Phase 1 key decisions: patient self-registration creates a User only, with no Pa
 | D132 | 2026-10-06 | **Notifications** (§11): sample rejected → patient + receptionists; released/revised → patient + ordering doctor; critical → ordering doctor. Titles and bodies never name tests, values or flags. | §10.3. |
 | D133 | 2026-10-06 | **Seed**: ~80 lab orders from suitable signed notes run through the lab services (released with PDFs, criticals, a revision, cancelled tests, acknowledgements; patient1 always has a report) and 3 demo documents; notifications muted while seeding; `--reset` clears lab orders, documents and the upload directory. | §15.3. |
 | D134 | 2026-10-06 | **Client**: lab worklist (status tabs, urgent first, overdue badges, live), order page (timeline, next-step actions, results grid with ranges and live flag preview, revisions), sample label print page (large-text sample ID, no barcode package), consult Lab orders tab, doctor "Lab results" (critical first) with a persistent critical banner, patient lab reports (+ "Corrected") and documents, reception Documents and status-only Lab orders tabs, shared FileUpload/DocumentList/FilePreview (object URLs from the authorised download, never stored). | §13.4. |
+| D135 | 2026-10-07 | **Draft invoice on signing** (§4.9 step 1): inside the sign transaction `createOrUpdateDraftForAppointment` creates or updates the visit's one draft (partial unique index on `appointment` for drafts): a consultation line from the appointment's service snapshot (tax: the service's `taxRateBps`, else `billing.defaultTaxRateBps`) and one line per placed, uncancelled lab test at `testSnapshot.pricePaise` (default tax). Lines are matched by lab order item, one consultation per visit, so a second run adds nothing. A failing invoice write rolls back the signing. | Replaces `TODO(Phase 7)` in `sign.service.ts`. |
+| D136 | 2026-10-07 | **Tests ordered after signing** go on the visit's draft in the order's transaction; if the visit's invoice is already issued, a `supplementary` draft is created (`kind`). | An issued invoice is never changed. |
+| D137 | 2026-10-07 | **Cancelled tests**: a cancelled lab test (or a whole cancelled order) removes its line from a draft and recomputes the totals; on an issued invoice the line stays and is listed in `cancelledItemsBilled` (once per item) – reception sees an amber "refund" hint and a "Needs attention" filter. Same transaction as the cancellation. A dedicated "settle as credit" action (planned) is **not built**: reception refunds from a payment, which reopens the balance (§5.5 "paid → partially_paid through a refund"). | Nothing changes an issued invoice automatically. |
+| D138 | 2026-10-07 | **Cancelled appointments** void their draft invoices in the cancel transaction (now a transaction), audited `invoice.void` (`via: appointment_cancel`). | §8.3; replaces `TODO(Phase 7)` in `status.service.ts`. |
+| D139 | 2026-10-07 | **Billing maths** only in `invoices/calc.ts` (`calcLine`, `calcInvoice`, `discountPercent`, `exceedsDiscountLimit`, `statusForAmounts`): integer paise, tax half-up per line in BigInt, discount ≤ gross, quantity 1–999, tax 0–10000 bps; totals recomputed on every write; client totals stripped by Zod. The client preview (`billing/calc.ts`) mirrors it for display only; after a save the server's totals are shown. | §8.9, exact money. |
+| D140 | 2026-10-07 | **Discount limit**: discount / gross > `maxDiscountPercentWithoutAdmin` → 422 `DISCOUNT_REQUIRES_ADMIN` (`details.maxPercent`) for non-admins; an admin's save records `discountApproval`; afterwards others may still save as long as no line's discount goes up and no discounted line is added; back under the limit clears the approval. Issue does not re-check; system syncs skip it. | §4.9; an approved discount survives unrelated edits. |
+| D141 | 2026-10-07 | **Editing drafts**: `PATCH` sends the full list of lines with `expectedVersion` (409 CONFLICT + `currentRevision` on a mismatch). Visit lines (`origin: visit`) keep price and quantity and cannot be removed – only their discount changes (cancel the test instead). Desk lines: a consultation/procedure service or a catalogue lab test (snapshotted name/price/tax) or a free "other" line. | Lines from the visit stay true to what was done. |
+| D142 | 2026-10-07 | **Roles**: reception and admins create, edit, issue and void; only reception records payments; both refund; patients read their own issued invoices (drafts and others → 404, pending link → 403); doctors and lab technicians have no billing endpoints (§2.4 doctor "summary" deferred). Staff views carry the billing `rules` (tax label/rate, discount limit, payment methods) – not part of the public settings. | §2.4 with §7.15. |
+| D143 | 2026-10-07 | **Issue**: `expectedVersion`; no lines → 422 `INVOICE_EMPTY`; the number `<billing.invoicePrefix>-<clinic year>-NNNNNN` from the counter `invoice:<year>` inside the transaction; `issuedAt/By`, `dueDate` (default the issue date); a total of 0 is paid at once. After issue, Mongoose hooks refuse changes to lines, totals, number or identity (409 `RECORD_LOCKED`); paid amounts only with the payment service's token; never deleted. Patient emailed "Your invoice … is ready – please log in" (no amounts). | §8.10 with the settings prefix. |
+| D144 | 2026-10-07 | **Invoice state machine** (`STATE_MACHINES.invoice`): draft → issued / void; issued → partially_paid / paid / void; partially_paid → partially_paid / paid / issued / void; paid → partially_paid / issued. After issue the status follows the amounts (nothing paid → issued). Void (draft, issued, partially_paid) only while nothing is paid net of refunds → else 422 `VOID_REQUIRES_REFUND` (checked first, also for paid invoices). | §5.5 plus voiding drafts and refunds back to issued. |
+| D145 | 2026-10-07 | **Payments**: append-only, `PAY-<year>-NNNNNN`; method enabled in the settings; card/UPI/insurance need a reference (400); one transaction with a conditional update of the invoice on the version read before, its status and `balancePaise ≥ amount` – parallel payments never exceed the balance (the loser gets 409 CONFLICT or 422 `PAYMENT_EXCEEDS_BALANCE`). Patient emailed "receipt available" (no amounts). | §8.9 "cannot exceed balance", race-safe. |
+| D146 | 2026-10-07 | **Refunds**: a negative payment with `refundOf`, the original's method and a reason (≥ 10); at most the original minus earlier refunds (re-checked in the transaction) → 422 `REFUND_EXCEEDS_PAYMENT`; serialised by the invoice version. | §4.9 step 5. |
+| D147 | 2026-10-07 | **Audit**: `invoice.create|update|sync|issue|void|view|download`, `payment.create|refund|view|receipt_download`; billing data is not clinical, so amounts and field names are recorded (`changes.before/after` totals); references and reasons are not (`referenceGiven`, `reasonGiven`). | §10.4. |
+| D148 | 2026-10-07 | **Invoice and receipt PDFs on demand** (`invoices/pdf.ts` with `pdf.service`), not stored as Documents – unlike §12.2, because the data is locked after issue. "TAX INVOICE" when the clinic has a GSTIN; amount in words (Indian numbering: thousand, lakh, crore); payments with references masked to the last 4 characters; VOID watermark; `billing.invoiceFooter`; refunds labelled REFUND. `?download=true` → attachment, else inline; `no-store`, `nosniff`; audited. | Differs from §12.2. |
+| D149 | 2026-10-07 | **₹ in PDFs**: PDFKit's standard fonts have no ₹, so invoices and receipts embed **Noto Sans Regular + Bold** (SIL OFL 1.1, `server/src/assets/fonts` with the licence and SHA-256 sums; the build copies them to `dist`); if the files are missing the PDFs fall back to Helvetica and "Rs.". `formatMoneyForPdf` and `pdfSafeUnicode` in `pdf.service`. | No new npm package. |
+| D150 | 2026-10-07 | **Day close** `GET /payments/summary?date=` (reception, admin): per method payments, refunds and net, totals and every entry in time order for the clinic day (clinic timezone); printed from `/print/day-close` (client). No online payment gateway: the portal says "Please pay at the clinic reception". | §4.9, §1.3 (no gateway). |
+| D151 | 2026-10-07 | **Seed**: an invoice for every completed visit with a signed note through the real sign/issue/payment services, back-dated to the visit; ~5 % drafts (latest visits), ~70 % paid (cash/UPI/card/insurance with references), ~10 % partly paid, the rest unpaid; today's visits wait at reception; patient1 has an unpaid invoice; small desk discounts, one admin concession, two voids (one after a full refund), one partial refund, one supplementary invoice and one flagged cancelled test. Integer maths only; `--reset` clears invoices and payments. | §15.3. |
+| D152 | 2026-10-07 | **Client**: reception invoice list (status chips, dates, search, "Needs attention", summary strip), draft editor (service / lab test / other lines, ₹ or % discount, reorder, live preview, autosave with the version and a reload banner on 409, admin-discount message, issue confirmation), locked view (balance, payments with nested refunds, record payment, refund capped at the remainder, void disabled while money is held, PDFs as authorised blob downloads), day close + print, queue "Bill" button, appointment invoices, patient Billing tab; admin list/detail; patient invoices with "pay at reception" and a dashboard balance card. | §13.4. |
+| D153 | 2026-10-08 | **Timeline**: a source registry (`modules/timeline/sources`, Phase 9 adds approved AI summaries) filtered per role before merging; **cursor pagination** `?before=<cursor>&limit` (≤ 50) with an opaque base64url `at\|type\|id` cursor and `meta.nextCursor`, not the `page` of §7.7; `types`, `from`, `to` filters; `GET /patients/:id/timeline` (doctor with a care relationship, reception) and `/patients/me/timeline`; admins and lab technicians 403. Audited `patient.timeline_view` (debounced). | Stable pages over merged sources with equal times. |
+| D154 | 2026-10-08 | **`shareDiagnosisWithPatient`** on encounters (default false): set on the draft in the consult workspace (Diagnosis & plan tab, shown in the sign summary); after signing only by an amendment. | Diagnoses are sensitive; the doctor decides. |
+| D155 | 2026-10-08 | **Patient-safe note view**: the patient's `GET /encounters/:id` (own, signed/amended) shows visit date, doctor, department, vitals, advice, follow-up plan, links to the issued prescription and released lab orders, diagnoses only when shared – never chief complaint, history, examination, assessment or plan. `GET /patients/me/visits` lists them. | §2.4 "R own signed (summary view)". |
+| D156 | 2026-10-08 | **Follow-up requests**: `FUR-<year>-000001`; assigned to the related visit's doctor (reception reassigns, `POST /:id/assign`; unassigned without a visit); state machine `open → in_review \| responded \| scheduled \| closed \| rejected`, `in_review → responded \| scheduled \| closed \| rejected`, `responded → open \| scheduled \| closed \| rejected` (in review is optional – `POST /:id/review`); every change conditional on the status read. | §5.6 had no trigger for in_review. |
+| D157 | 2026-10-08 | **Limits**: at most 3 open (open, in review, responded) and 5 new per clinic day per patient → 422 `FOLLOWUP_LIMIT_REACHED`; counted inside a transaction that first bumps the patient's `bookingVersion`, so parallel requests cannot pass together. | Abuse protection. |
+| D158 | 2026-10-08 | **Message visibility** `all \| staff`: staff internal notes never reach the patient (views, counts, timeline); patients post `all` only and their reply reopens a responded request; staff `all` replies move open/in review → responded; no replies on finished requests (409). Notifications and `followup.updated` events never carry message text or the request type ("please log in"). Admins read requests including internal notes, but cannot act. | Clinical text stays in the app. |
+| D159 | 2026-10-08 | **Follow-up reminders**: a `followup_reminders` collection (signed notes are immutable), written in the sign transaction (replaces the Phase 5 TODO) and kept in step by amendments while pending; the daily 09:00 job sends only for follow-ups due **exactly** two clinic days ahead (a missed run does not send late), skips booked ones and patients without a portal email, claims each reminder before emailing. | Idempotent, testable. |
+| D160 | 2026-10-08 | **Planned follow-ups for the patient**: `GET /patients/me/follow-ups-due` – upcoming or overdue by ≤ 14 days, not booked (an appointment linked with `followUpOf`, or a later one with the same doctor, not cancelled or missed); the booking wizard accepts `?doctor=&followUpOf=` (doctor preselected, `type: follow_up`, the department's follow-up service when there is one). | §4.10 doctor-planned follow-ups. |
+| D161 | 2026-10-08 | **Scheduling a request** books through `bookAppointment` with an `inTransaction` hook: the appointment and the request's `scheduled` status commit together, so a booking conflict leaves the request unchanged and a double click books once. Doctors schedule with themselves only (403 otherwise); reception with any doctor. Appointments booked by a doctor get `source: 'doctor'`. | Same checks as booking (§7.13). |
+| D162 | 2026-10-08 | **Care relationship** gains a third check: a follow-up request from the patient assigned to the doctor (any status; it moves with a reassignment). The doctor's "My patients" list still lists appointment relationships only. | §2.3. |
+| D163 | 2026-10-08 | **Sockets**: receptionists join `role:receptionist`; `followup.updated` `{ requestId }` to the assigned doctor(s), the patient's account (when the change is visible to them) and reception. | Live inbox. |
+| D164 | 2026-10-08 | **Seed**: 15 follow-up requests from the portal patients through the real services (every status and type, an internal note, two booked visits, a rejection, patient1's referral letter as an attachment), back-dated over three weeks; diagnoses shared on about half the notes; three notes amended to a follow-up due in two days (patient1's among them) and one overdue; reminders for every planned follow-up. `--reset` clears requests and reminders. patient1 is seeded at the clinic's limit of 3 upcoming visits, so booking the follow-up online first needs a cancellation (the wizard says so). | Demo data. |
+| D165 | 2026-10-08 | **Client**: a reusable `Timeline` (infinite RTK Query on the cursor, month groups, type icons, status pills, filter chips and dates, Load more, compact variant) on the doctor's patient page (default tab), the consult side panel (replacing the Phase 5 history panel), reception's patient page and `/patient/timeline`; patient visits and visit summary, prescriptions (active/past, plain words, print), a home built from existing endpoints (Phase 10 replaces it), a phone bottom bar for patients; follow-up pages for patients (emergency banner always visible), and a reception/doctor inbox with status tabs, counts, a split view, internal notes, assign/schedule/close/reject and sidebar badges. | §13.1, §13.4. |

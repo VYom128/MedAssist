@@ -621,6 +621,7 @@ async function phase5Checks(
 
   // Phase 6 reuses these sessions: logins are limited to 10 per 15 min per email + IP.
   await phase6Checks(api, check, as, { doctor, patient, reception });
+  await phase7Checks(api, check, { doctor, patient, reception, admin });
 
   await Promise.all(
     [doctor, patient, reception, admin].map((h) =>
@@ -730,6 +731,102 @@ async function phase6Checks(
   }
 
   await call(api, '/auth/logout', { method: 'POST', headers: lab });
+}
+
+/**
+ * Phase 7: invoices and payments on the seeded data – totals that add up, the patient's own
+ * issued invoices only, PDF headers, no billing for doctors. Read-only.
+ */
+async function phase7Checks(
+  api: string,
+  check: (name: string, ok: boolean, detail?: string) => void,
+  {
+    doctor,
+    patient,
+    reception,
+    admin,
+  }: Record<'doctor' | 'patient' | 'reception' | 'admin', Record<string, string>>,
+) {
+  type Line = {
+    grossPaise: number;
+    discountPaise: number;
+    taxPaise: number;
+    lineTotalPaise: number;
+  };
+  type Inv = {
+    id: string;
+    status: string;
+    patient: { id: string };
+    items: Line[];
+    totalPaise: number;
+    amountPaidPaise: number;
+    balancePaise: number;
+    rules?: unknown;
+  };
+  const list = await call(api, '/invoices?status=partially_paid,paid&limit=20', {
+    headers: reception,
+  });
+  const rows = (list.body.data as Inv[] | undefined) ?? [];
+  const meta = (list.body as { meta?: { totals?: Record<string, number> } }).meta;
+  check(
+    'reception lists seeded invoices with totals',
+    list.res.status === 200 && rows.length > 0 && typeof meta?.totals?.billedPaise === 'number',
+    `status ${list.res.status}, ${rows.length} invoices`,
+  );
+  if (rows[0]) {
+    const one = await call(api, `/invoices/${rows[0].id}`, { headers: reception });
+    const inv = one.body.data as Inv;
+    const pays = await call(api, `/invoices/${rows[0].id}/payments`, { headers: reception });
+    const paid = ((pays.body.data as { amountPaise: number }[] | undefined) ?? []).reduce(
+      (sum, p) => sum + p.amountPaise,
+      0,
+    );
+    check(
+      'an invoice adds up (Σ lines, Σ payments, balance)',
+      one.res.status === 200 &&
+        inv.totalPaise === inv.items.reduce((sum, l) => sum + l.lineTotalPaise, 0) &&
+        inv.amountPaidPaise === paid &&
+        inv.balancePaise === inv.totalPaise - inv.amountPaidPaise,
+      `status ${one.res.status}`,
+    );
+  }
+  const mine = await call(api, '/invoices', { headers: patient });
+  const own = (mine.body.data as Inv[] | undefined) ?? [];
+  check(
+    'patient1 sees own invoices only, never drafts',
+    mine.res.status === 200 && own.every((i) => i.status !== 'draft'),
+    `status ${mine.res.status}, ${own.length} invoices`,
+  );
+  if (own[0]) {
+    const detail = await call(api, `/invoices/${own[0].id}`, { headers: patient });
+    check(
+      'the patient view has no billing rules or staff fields',
+      detail.res.status === 200 &&
+        !/"(rules|notes|statusHistory)"/.test(JSON.stringify(detail.body)),
+    );
+    const pdf = await fetch(`${api}/invoices/${own[0].id}/pdf`, { headers: patient });
+    const bytes = Buffer.from(await pdf.arrayBuffer());
+    check(
+      'patient1 downloads their invoice PDF (no-store, nosniff)',
+      pdf.status === 200 &&
+        pdf.headers.get('content-type') === 'application/pdf' &&
+        pdf.headers.get('x-content-type-options') === 'nosniff' &&
+        (pdf.headers.get('cache-control') ?? '').includes('no-store') &&
+        bytes.subarray(0, 5).toString() === '%PDF-',
+      `status ${pdf.status}`,
+    );
+  }
+  const theirs = rows.find((i) => !own.some((o) => o.patient.id === i.patient.id));
+  if (theirs) {
+    const denied = await call(api, `/invoices/${theirs.id}`, { headers: patient });
+    check("patient1 gets 404 on someone else's invoice", denied.res.status === 404);
+  }
+  const drBilling = await call(api, '/invoices', { headers: doctor });
+  check('doctors get 403 on invoices', drBilling.res.status === 403);
+  const day = await call(api, '/payments/summary', { headers: reception });
+  check('reception loads the day close summary', day.res.status === 200);
+  const adminList = await call(api, '/invoices?limit=1', { headers: admin });
+  check('admins list invoices', adminList.res.status === 200);
 }
 
 async function main() {

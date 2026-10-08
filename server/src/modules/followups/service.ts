@@ -105,16 +105,11 @@ async function notifyPatient(r: FollowupLike, title: string) {
   });
 }
 
-/** Tells the assigned doctor and reception (no text, no type). */
+/** Tells the assigned doctor and reception (no text, no type), each with their own page. */
 async function notifyStaff(r: FollowupLike, kind: 'new' | 'reply') {
   const [doctor, desk] = await Promise.all([doctorRecipient(r), receptionists()]);
-  const recipients: Recipient[] = [
-    ...(doctor ? [doctor] : []),
-    ...desk.map((d) => ({ userId: d.id, email: d.email })),
-  ];
-  if (recipients.length === 0) return;
-  void notify({
-    recipients,
+  const id = r._id.toString();
+  const message = {
     type:
       kind === 'new'
         ? NOTIFICATION_TYPES.FOLLOWUP_REQUEST_NEW
@@ -124,10 +119,16 @@ async function notifyStaff(r: FollowupLike, kind: 'new' | 'reply') {
       kind === 'new'
         ? `Follow-up request ${r.requestNumber} is waiting. Please log in to read it.`
         : `You have a new reply on ${r.requestNumber}. Please log in to read it.`,
-    // Each role opens its own page; reception's is the triage list.
-    link: `/reception/follow-ups/${r._id.toString()}`,
     email: true,
-  });
+  };
+  if (doctor) void notify({ ...message, recipients: [doctor], link: `/doctor/follow-ups/${id}` });
+  if (desk.length > 0) {
+    void notify({
+      ...message,
+      recipients: desk.map((d) => ({ userId: d.id, email: d.email })),
+      link: `/reception/follow-ups/${id}`,
+    });
+  }
 }
 
 /**

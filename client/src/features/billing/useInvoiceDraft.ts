@@ -165,6 +165,9 @@ export function useInvoiceDraft(invoice: Invoice) {
   const [error, setError] = useState<string | null>(null);
   const [serverRowErrors, setServerRowErrors] = useState<Record<string, RowErrors>>({});
   const [revision, setRevision] = useState(invoice.revision);
+  // The server's latest answer: its totals are shown once nothing is unsaved (not the cache,
+  // which is updated a moment later).
+  const [server, setServer] = useState<Invoice>(invoice);
   const [update] = useUpdateInvoiceMutation();
 
   // Refs for the save loop (always the latest values, without re-creating the callback).
@@ -215,6 +218,7 @@ export function useInvoiceDraft(invoice: Invoice) {
       }).unwrap();
       latest.current.revision = saved.revision;
       setRevision(saved.revision);
+      setServer(saved);
       setServerRowErrors({});
       if (latest.current.edit === editAtSend) {
         // Nothing changed meanwhile: the server's lines (and totals) are the truth.
@@ -271,6 +275,7 @@ export function useInvoiceDraft(invoice: Invoice) {
   const reset = useCallback((fresh: Invoice) => {
     latest.current.revision = fresh.revision;
     setRevision(fresh.revision);
+    setServer(fresh);
     latest.current.edit += 1;
     setState(fromInvoice(fresh));
     setDirty(false);
@@ -309,6 +314,7 @@ export function useInvoiceDraft(invoice: Invoice) {
     error,
     preview,
     revision,
+    server,
     errorsFor,
     setRows: (next: (rows: EditRow[]) => EditRow[]) =>
       change((s) => ({ ...s, rows: next(s.rows) })),

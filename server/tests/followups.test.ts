@@ -124,6 +124,11 @@ describe('POST /follow-up-requests', () => {
         [s.doctor.user.email, s.reception.user.email].sort(),
       );
       expect(JSON.stringify(emails.sent)).not.toMatch(/chest|symptom/i);
+      // Each role's email opens its own page.
+      const toDoctor = emails.sent.find((m) => m.to === s.doctor.user.email);
+      const toDesk = emails.sent.find((m) => m.to === s.reception.user.email);
+      expect(JSON.stringify(toDoctor)).toContain(`/doctor/follow-ups/${r.id}`);
+      expect(JSON.stringify(toDesk)).toContain(`/reception/follow-ups/${r.id}`);
       // followup.updated with the id only, to the doctor, the patient and reception's room.
       const event = emitted.find((e) => e.event === 'followup.updated');
       expect(event?.payload).toEqual({ requestId: r.id });

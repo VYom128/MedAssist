@@ -72,7 +72,7 @@ export default function InvoiceEditor({ invoice }: { invoice: Invoice }) {
   };
 
   const showPreview = draft.dirty || draft.saving;
-  const totals = showPreview ? draft.preview : invoice;
+  const totals = showPreview ? draft.preview : draft.server;
   const overLimit =
     draft.preview && rules
       ? discountPercentOf(draft.preview) > rules.maxDiscountPercentWithoutAdmin
@@ -233,7 +233,7 @@ export default function InvoiceEditor({ invoice }: { invoice: Invoice }) {
         <p>
           After issuing, the invoice can&apos;t be edited. It gets its number and the patient can
           see it. Total:{' '}
-          <span className="tabular font-semibold">{formatINR(invoice.totalPaise)}</span>
+          <span className="tabular font-semibold">{formatINR(draft.server.totalPaise)}</span>
         </p>
       </ConfirmDialog>
     </div>
