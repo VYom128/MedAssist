@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import { selfView } from '../patients.fixtures';
 
 export const API = 'http://localhost:5001/api/v1';
 
@@ -48,7 +49,12 @@ export const PUBLIC_SETTINGS = {
   currency: 'INR',
   workingDays: [1, 2, 3, 4, 5, 6],
   appointment: { allowPatientSelfBooking: true, bookingWindowDays: 30, minCancelHours: 2 },
-  ai: { explanationLanguages: ['en', 'hi'] },
+  ai: {
+    enabled: true,
+    clinicalSummaryEnabled: true,
+    patientExplanationEnabled: true,
+    explanationLanguages: ['en', 'hi'],
+  },
 };
 
 /**
@@ -78,6 +84,19 @@ export const handlers = [
   // follow-ups to book.
   http.get(url('/patients/:id/timeline'), () => ok([], { meta: { limit: 20, nextCursor: null } })),
   http.get(url('/patients/me/follow-ups-due'), () => ok([])),
+  // The signed-in patient's own record (the explain buttons read the AI consent and language).
+  http.get(url('/patients/me'), () => ok(selfView())),
+  // A note's AI summaries (Phase 9; signed note views ask for them).
+  http.get(url('/encounters/:id/summary'), () =>
+    ok({
+      draft: null,
+      approved: null,
+      lastAttempt: null,
+      isOutdated: false,
+      noteSigned: true,
+      aiEnabled: true,
+    }),
+  ),
   // Follow-up request counts (reception/doctor sidebar badges, patient home; Phase 8).
   http.get(url('/follow-up-requests'), () =>
     ok([], { meta: { page: 1, limit: 1, total: 0, totalPages: 0 } }),

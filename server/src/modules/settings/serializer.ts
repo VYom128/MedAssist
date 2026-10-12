@@ -35,7 +35,14 @@ export function toPublicView(s: SettingsLike) {
       // Phase 4: the patient portal hides cancel/reschedule inside this window.
       minCancelHours: s.appointment!.minCancelHours,
     },
-    ai: { explanationLanguages: [...s.ai!.explanationLanguages] },
+    // Phase 9: the client hides AI buttons with these. Feature flags already include the master
+    // switch, so `clinicalSummaryEnabled: true` means the feature is really on.
+    ai: {
+      enabled: s.ai!.enabled,
+      clinicalSummaryEnabled: s.ai!.enabled && s.ai!.clinicalSummaryEnabled,
+      patientExplanationEnabled: s.ai!.enabled && s.ai!.patientExplanationEnabled,
+      explanationLanguages: [...s.ai!.explanationLanguages],
+    },
   };
 }
 

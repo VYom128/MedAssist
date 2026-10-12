@@ -113,6 +113,19 @@ describe('SettingsPage', () => {
     await waitFor(() => expect(save).toBeDisabled());
   });
 
+  it('the AI tab explains the kill switches and saves them', async () => {
+    const user = await open();
+    await user.click(screen.getByRole('tab', { name: 'AI' }));
+    const note = screen.getByText(/Turning this off hides the feature for everyone immediately/);
+    expect(within(note).getByRole('link', { name: 'AI monitor' })).toHaveAttribute(
+      'href',
+      '/admin/ai-monitor',
+    );
+    await user.click(screen.getByRole('switch', { name: /Clinical summaries for doctors/ }));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(patches[0]).toEqual({ ai: { clinicalSummaryEnabled: false } }));
+  });
+
   it('working days are toggle buttons', async () => {
     const user = await open();
     const sunday = screen.getByRole('button', { name: 'Sun' });

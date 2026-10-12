@@ -39,6 +39,9 @@ import {
   Inbox,
   Eye,
   MessageSquareReply,
+  Sparkles,
+  ShieldAlert,
+  Loader,
   type LucideIcon,
 } from 'lucide-react';
 import type { LeaveType } from '../../constants/catalog';
@@ -219,6 +222,21 @@ export const STATUS_STYLES = {
     scheduled: { tone: 'success', label: 'Scheduled', icon: CalendarCheck },
     closed: { tone: 'neutral', label: 'Closed', icon: CircleCheck },
     rejected: { tone: 'neutral', label: 'Rejected', icon: Ban },
+  },
+  /** AI clinical summaries (spec §5.7, Phase 9). */
+  clinicalSummary: {
+    generating: { tone: 'info', label: 'Generating', icon: Loader },
+    draft: { tone: 'warning', label: 'AI draft', icon: Sparkles },
+    approved: { tone: 'success', label: 'Approved', icon: BadgeCheck },
+    rejected: { tone: 'neutral', label: 'Rejected', icon: Ban },
+    failed: { tone: 'danger', label: 'Failed', icon: CircleAlert },
+    superseded: { tone: 'neutral', label: 'Replaced', icon: Layers },
+  },
+  /** One AI attempt in the admin AI monitor (ai_interactions). */
+  aiInteraction: {
+    success: { tone: 'success', label: 'Success', icon: CircleCheck },
+    failed: { tone: 'danger', label: 'Failed', icon: CircleAlert },
+    blocked: { tone: 'warning', label: 'Blocked', icon: ShieldAlert },
   },
   /** Queue priority and clinical flags. */
   priority: {

@@ -11,7 +11,7 @@ import { clinicDate, formatCalendarDate } from '../../utils/dates';
 import type { Prescription } from '../prescriptions/api';
 import type { Diagnosis, Encounter, FollowUp, NoteChanges } from './api';
 
-/** The consult workspace tabs (spec §4.7; the AI summary comes in Phase 9). */
+/** The consult workspace tabs (spec §4.7). The AI summary tab is added when it is turned on. */
 export const CONSULT_TABS = [
   { id: 'vitals', label: 'Vitals' },
   { id: 'notes', label: 'Notes' },
@@ -20,7 +20,9 @@ export const CONSULT_TABS = [
   { id: 'lab', label: 'Lab orders' },
   { id: 'followup', label: 'Follow-up' },
 ] as const;
-export type ConsultTab = (typeof CONSULT_TABS)[number]['id'];
+/** Phase 9: shown only while the clinic has AI summaries turned on. */
+export const AI_SUMMARY_TAB = { id: 'ai', label: 'AI summary' } as const;
+export type ConsultTab = (typeof CONSULT_TABS)[number]['id'] | typeof AI_SUMMARY_TAB.id;
 
 const FIELD_TAB: Record<NoteField, ConsultTab> = {
   vitals: 'vitals',

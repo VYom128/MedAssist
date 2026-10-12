@@ -9,13 +9,15 @@ interface Row {
   encounter: Types.ObjectId;
   reviewedAt: Date;
   reviewedBy?: PersonRef | null;
+  shareWithPatient?: boolean;
 }
 
 /**
  * Approved AI clinical summaries (Phase 9) at their approval time: "AI-assisted summary ·
  * reviewed by Dr X". Doctors (the service checks the care relationship) see every approved
  * summary; patients only those the doctor shared. Drafts, rejected, failed and superseded
- * summaries never appear, and items carry no summary text.
+ * summaries never appear, and items carry no summary text. Doctors' items say when the summary
+ * is shared with the patient.
  */
 export const clinicalSummarySource = defineSource<Row>({
   type: 'clinical_summary',
@@ -27,7 +29,7 @@ export const clinicalSummarySource = defineSource<Row>({
       ...(q.viewer.role === ROLES.PATIENT ? { shareWithPatient: true } : {}),
       $and: windowFilter('reviewedAt', 'clinical_summary', q),
     })
-      .select('encounter reviewedAt reviewedBy')
+      .select('encounter reviewedAt reviewedBy shareWithPatient')
       .sort(newestFirst('reviewedAt'))
       .limit(q.limit)
       .populate({ path: 'reviewedBy', select: 'firstName lastName' })
@@ -43,7 +45,8 @@ export const clinicalSummarySource = defineSource<Row>({
       subtitle: `Reviewed by ${doctorName(s.reviewedBy)}`,
       status: 'approved',
       link: links.encounter(viewer.role, s.encounter.toString()),
-      flags: ['ai_assisted'],
+      // Doctors also see whether the patient can read it.
+      flags: ['ai_assisted', ...(!isPatient && s.shareWithPatient ? ['shared_with_patient'] : [])],
     };
   },
 });

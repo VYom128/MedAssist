@@ -127,6 +127,8 @@ export interface PatientViewExtras {
   prescriptionId: string | null;
   /** The visit's released lab orders. */
   labOrders: { id: string; orderNumber: string | null }[];
+  /** The approved AI summary the doctor shared with the patient (Phase 9). */
+  aiSummary: { text: string; reviewedBy: string | null; reviewedAt: Date | null } | null;
 }
 
 const sharedDiagnoses = (e: Pick<EncounterLike, 'diagnoses' | 'shareDiagnosisWithPatient'>) =>
@@ -190,6 +192,7 @@ export function toPatientSafeView(e: EncounterLike, extras: PatientViewExtras) {
     },
     prescriptionId: extras.prescriptionId,
     labOrders: extras.labOrders,
+    aiSummary: extras.aiSummary,
   };
 }
 

@@ -45,6 +45,7 @@ const visit = (over: Partial<PatientVisit> = {}): PatientVisit => ({
   followUp: { required: true, afterDays: 7, date: null, instructions: 'Bring the reports' },
   prescriptionId: 'rx1',
   labOrders: [{ id: 'lo1', orderNumber: 'LAB-2026-000003' }],
+  aiSummary: null,
   ...over,
 });
 

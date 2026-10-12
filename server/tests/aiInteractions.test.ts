@@ -132,12 +132,18 @@ describe('GET /ai/interactions/summary', () => {
       expect.arrayContaining([{ flag: 'forbidden_phrase', count: 2 }]),
     );
     expect(s.perModel.map((m: { model: string }) => m.model)).toContain(config.ai.model);
+    expect(s.perDay).toHaveLength(30);
+    expect(s.perDay.at(-1).date).toBe(s.range.to);
+    expect(s.perDay.reduce((n: number, d: { attempts: number }) => n + d.attempts, 0)).toBe(
+      s.attempts,
+    );
     expect(JSON.stringify(res.body)).not.toMatch(CONTENT);
 
     const empty = await api()
       .get('/api/v1/ai/interactions/summary?from=2020-01-01&to=2020-01-31')
       .set(admin.auth);
     expect(empty.body.data).toMatchObject({ attempts: 0, calls: 0, failureRate: 0 });
+    expect(empty.body.data.perDay).toHaveLength(31);
   });
 });
 

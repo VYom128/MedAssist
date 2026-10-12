@@ -12,6 +12,7 @@ export const TIMELINE_TYPES = [
   'payment',
   'document',
   'followup_request',
+  'clinical_summary',
 ] as const;
 export type TimelineType = (typeof TIMELINE_TYPES)[number];
 

@@ -45,7 +45,10 @@ import { rxClosed } from '../../prescriptions/rxDraftSlice';
 import { usePrescriptionDraft } from '../../prescriptions/usePrescriptionDraft';
 import { combineSaves } from '../autosaveLabel';
 import { applyChanges, closed, discarded, hasChanges, opened } from '../consultDraftSlice';
-import { CONSULT_TABS, fieldTarget, type ConsultTab } from '../fields';
+import { AI_SUMMARY_TAB, CONSULT_TABS, fieldTarget, type ConsultTab } from '../fields';
+import AiSummaryPanel from '../../ai/components/AiSummaryPanel';
+import AiSummarySection from '../../ai/components/AiSummarySection';
+import { useAiFlags } from '../../ai/useAiFlags';
 import { useAutosave } from '../useAutosave';
 
 /** Side panel with the compact patient timeline: a column from `lg`, a drawer below. */
@@ -91,6 +94,12 @@ function DraftWorkspace({
   const dispatch = useAppDispatch();
   const id = encounter.id;
   const [tab, setTab] = useState<ConsultTab>('vitals');
+  const ai = useAiFlags();
+  // Hidden for good once the server says AI is off (the settings refetch then agrees).
+  const [aiOff, setAiOff] = useState(false);
+  const showAi = ai.clinicalSummary && !aiOff;
+  const tabs = showAi ? [...CONSULT_TABS, AI_SUMMARY_TAB] : CONSULT_TABS;
+  const activeTab: ConsultTab = tab === 'ai' && !showAi ? 'vitals' : tab;
   const [signOpen, setSignOpen] = useState(false);
   const [reloadAsk, setReloadAsk] = useState(false);
   const { entry, change, saveNow, dirty } = useAutosave(id);
@@ -203,80 +212,96 @@ function DraftWorkspace({
           <SectionCard title="Consultation" icon={Stethoscope} iconTone="consult">
             <Tabs
               label="Consultation sections"
-              tabs={CONSULT_TABS}
-              value={tab}
+              tabs={tabs}
+              value={activeTab}
               onChange={(next) => {
                 saveAll();
                 setTab(next as ConsultTab);
               }}
             >
-              <fieldset disabled={blocked} className="space-y-4">
-                <legend className="sr-only">{CONSULT_TABS.find((t) => t.id === tab)?.label}</legend>
-                {tab === 'vitals' && (
-                  <VitalsFields vitals={note.vitals} onChange={change} onBlur={save} />
-                )}
-                {tab === 'notes' && (
-                  <>
-                    <NoteTextField
-                      field="chiefComplaint"
-                      required
-                      value={note.chiefComplaint}
-                      onChange={change}
-                      onBlur={save}
-                    />
-                    <NoteTextField
-                      field="historyOfPresentIllness"
-                      value={note.historyOfPresentIllness}
-                      onChange={change}
-                      onBlur={save}
-                    />
-                    <NoteTextField
-                      field="pastHistory"
-                      value={note.pastHistory}
-                      onChange={change}
-                      onBlur={save}
-                    />
-                    <NoteTextField
-                      field="examination"
-                      value={note.examination}
-                      onChange={change}
-                      onBlur={save}
-                    />
-                  </>
-                )}
-                {tab === 'diagnosis' && (
-                  <>
-                    <DiagnosesEditor diagnoses={note.diagnoses} onChange={change} onBlur={save} />
-                    <ShareDiagnosisField
-                      checked={note.shareDiagnosisWithPatient ?? false}
-                      onChange={(c) => {
-                        change(c);
-                        save();
-                      }}
-                    />
-                    <NoteTextField
-                      field="assessment"
-                      value={note.assessment}
-                      onChange={change}
-                      onBlur={save}
-                    />
-                    <NoteTextField field="plan" value={note.plan} onChange={change} onBlur={save} />
-                    <NoteTextField
-                      field="adviceToPatient"
-                      value={note.adviceToPatient}
-                      onChange={change}
-                      onBlur={save}
-                    />
-                  </>
-                )}
-                {tab === 'prescription' && <PrescriptionTab current={current} draft={rx} />}
-                {tab === 'lab' && (
-                  <EncounterLabOrders encounterId={id} noteStatus="draft" canOrder={false} />
-                )}
-                {tab === 'followup' && (
-                  <FollowUpFields followUp={note.followUp} onChange={change} onBlur={save} />
-                )}
-              </fieldset>
+              {activeTab === 'ai' ? (
+                <AiSummaryPanel
+                  encounter={note}
+                  canEdit
+                  onDisabled={() => {
+                    setAiOff(true);
+                    setTab('vitals');
+                  }}
+                />
+              ) : (
+                <fieldset disabled={blocked} className="space-y-4">
+                  <legend className="sr-only">{tabs.find((t) => t.id === activeTab)?.label}</legend>
+                  {activeTab === 'vitals' && (
+                    <VitalsFields vitals={note.vitals} onChange={change} onBlur={save} />
+                  )}
+                  {activeTab === 'notes' && (
+                    <>
+                      <NoteTextField
+                        field="chiefComplaint"
+                        required
+                        value={note.chiefComplaint}
+                        onChange={change}
+                        onBlur={save}
+                      />
+                      <NoteTextField
+                        field="historyOfPresentIllness"
+                        value={note.historyOfPresentIllness}
+                        onChange={change}
+                        onBlur={save}
+                      />
+                      <NoteTextField
+                        field="pastHistory"
+                        value={note.pastHistory}
+                        onChange={change}
+                        onBlur={save}
+                      />
+                      <NoteTextField
+                        field="examination"
+                        value={note.examination}
+                        onChange={change}
+                        onBlur={save}
+                      />
+                    </>
+                  )}
+                  {activeTab === 'diagnosis' && (
+                    <>
+                      <DiagnosesEditor diagnoses={note.diagnoses} onChange={change} onBlur={save} />
+                      <ShareDiagnosisField
+                        checked={note.shareDiagnosisWithPatient ?? false}
+                        onChange={(c) => {
+                          change(c);
+                          save();
+                        }}
+                      />
+                      <NoteTextField
+                        field="assessment"
+                        value={note.assessment}
+                        onChange={change}
+                        onBlur={save}
+                      />
+                      <NoteTextField
+                        field="plan"
+                        value={note.plan}
+                        onChange={change}
+                        onBlur={save}
+                      />
+                      <NoteTextField
+                        field="adviceToPatient"
+                        value={note.adviceToPatient}
+                        onChange={change}
+                        onBlur={save}
+                      />
+                    </>
+                  )}
+                  {activeTab === 'prescription' && <PrescriptionTab current={current} draft={rx} />}
+                  {activeTab === 'lab' && (
+                    <EncounterLabOrders encounterId={id} noteStatus="draft" canOrder={false} />
+                  )}
+                  {activeTab === 'followup' && (
+                    <FollowUpFields followUp={note.followUp} onChange={change} onBlur={save} />
+                  )}
+                </fieldset>
+              )}
             </Tabs>
           </SectionCard>
           <p className="text-xs text-muted">
@@ -476,6 +501,7 @@ export default function ConsultWorkspacePage() {
       {signed && <SignedNext result={signed} />}
       <WithHistory patientId={patient.data.id}>
         <SignedNoteView encounter={encounter} canAmend={encounter.doctor.id === user?.id} />
+        <AiSummarySection encounter={encounter} isOwn={encounter.doctor.id === user?.id} />
         <SectionCard title="Lab orders" icon={FlaskConical} iconTone="info">
           <EncounterLabOrders
             encounterId={encounter.id}

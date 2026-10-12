@@ -28,6 +28,8 @@ export interface PatientVisit {
   followUp: FollowUp;
   prescriptionId: string | null;
   labOrders: { id: string; orderNumber: string | null }[];
+  /** The AI-assisted summary the doctor approved and shared (Phase 9). */
+  aiSummary: { text: string; reviewedBy: string | null; reviewedAt: string | null } | null;
 }
 
 export interface PatientVisitListItem {

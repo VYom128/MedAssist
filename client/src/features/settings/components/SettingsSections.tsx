@@ -14,7 +14,10 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Controller, get, useFormContext, type FieldPath } from 'react-hook-form';
+import { Link } from 'react-router-dom';
+import Alert from '../../../components/ui/Alert';
 import FilterChip from '../../../components/ui/FilterChip';
+import { linkClass } from '../../../components/ui/linkClass';
 import Input from '../../../components/ui/Input';
 import SearchableSelect from '../../../components/ui/SearchableSelect';
 import SectionCard from '../../../components/ui/SectionCard';
@@ -314,6 +317,18 @@ export function LabSection() {
 export function AiSection() {
   return (
     <div className="space-y-6">
+      <Alert tone="info" title="How the AI switches work">
+        <p>
+          Turning this off hides the feature for everyone immediately: as soon as you save, the
+          server refuses new AI requests, and the AI buttons disappear for doctors and patients.
+          Summaries doctors already approved stay in the record. Calls, failures and safety blocks
+          are in the{' '}
+          <Link to="/admin/ai-monitor" className={linkClass}>
+            AI monitor
+          </Link>
+          .
+        </p>
+      </Alert>
       <Fieldset
         legend="Master switch"
         description="Switch this off to stop every AI feature at once. Each feature below can also be switched off on its own."
@@ -323,7 +338,7 @@ export function AiSection() {
         <SwitchField
           name="ai.enabled"
           label="AI features"
-          description="Turns every AI feature off when off."
+          description="Off: no AI anywhere in the clinic, whatever the switches below say."
         />
       </Fieldset>
       <Fieldset
@@ -331,11 +346,16 @@ export function AiSection() {
         description="AI never diagnoses or changes treatment. Doctors approve every clinical summary."
         icon={Sparkles}
       >
-        <SwitchField name="ai.clinicalSummaryEnabled" label="Clinical summaries for doctors" />
+        <SwitchField
+          name="ai.clinicalSummaryEnabled"
+          label="Clinical summaries for doctors"
+          description="Off: the “AI summary” tab disappears from the consultation for every doctor."
+        />
         <div className="border-t border-line pt-5">
           <SwitchField
             name="ai.patientExplanationEnabled"
             label="Plain-language explanations for patients"
+            description="Off: “Explain in simple words” disappears for every patient, and doctors can no longer preview it."
           />
         </div>
         <ToggleGroup

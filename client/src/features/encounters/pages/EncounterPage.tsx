@@ -11,6 +11,7 @@ import { useGetPatientQuery } from '../../patients/api';
 import { useGetEncounterQuery } from '../api';
 import ConsultHeader from '../components/ConsultHeader';
 import SignedNoteView from '../components/SignedNoteView';
+import AiSummarySection from '../../ai/components/AiSummarySection';
 
 /**
  * /doctor/encounters/:id – one note, read-only (signed/amended) with Amend for its doctor.
@@ -44,6 +45,7 @@ export default function EncounterPage() {
         <>
           <ConsultHeader patient={patient.data} appointment={appointment.data} />
           <SignedNoteView encounter={data} canAmend={data.doctor.id === user?.id} />
+          <AiSummarySection encounter={data} isOwn={data.doctor.id === user?.id} />
         </>
       )}
     </section>

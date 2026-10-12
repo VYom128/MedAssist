@@ -12,6 +12,7 @@ import { LabOrder } from '../labOrders/model.js';
 import { resolveMyPatientId } from '../patients/portal.service.js';
 import { Prescription } from '../prescriptions/model.js';
 import { getSettings } from '../settings/service.js';
+import { ClinicalSummary } from '../summaries/model.js';
 import {
   followUpDueDate,
   isFollowUpBooked,
@@ -48,9 +49,12 @@ async function departmentsOf(appointmentIds: Types.ObjectId[]): Promise<Map<stri
   );
 }
 
-/** What the patient-safe view links to: department, issued prescription, released lab orders. */
+/**
+ * What the patient-safe view links to: department, issued prescription, released lab orders –
+ * and the approved AI summary when the doctor shared it (Phase 9; its reviewed text only).
+ */
 export async function patientViewExtras(e: EncounterLike): Promise<PatientViewExtras> {
-  const [departments, prescription, labOrders] = await Promise.all([
+  const [departments, prescription, labOrders, summary] = await Promise.all([
     departmentsOf([e.appointment]),
     Prescription.findOne({ encounter: e._id, status: { $in: ISSUED_STATUSES } })
       .sort({ isCurrent: -1, issuedAt: -1 })
@@ -60,11 +64,29 @@ export async function patientViewExtras(e: EncounterLike): Promise<PatientViewEx
       .sort({ releasedAt: 1 })
       .select('orderNumber')
       .lean(),
+    ClinicalSummary.findOne({ encounter: e._id, status: 'approved', shareWithPatient: true })
+      .select('finalText reviewedAt reviewedBy')
+      .populate({ path: 'reviewedBy', select: 'firstName lastName' })
+      .lean<{
+        finalText?: string | null;
+        reviewedAt?: Date | null;
+        reviewedBy?: { firstName?: string; lastName?: string } | null;
+      }>(),
   ]);
+  const reviewer = summary?.reviewedBy;
   return {
     department: departments.get(e.appointment.toString()) ?? null,
     prescriptionId: prescription?._id.toString() ?? null,
     labOrders: labOrders.map((o) => ({ id: o._id.toString(), orderNumber: o.orderNumber ?? null })),
+    aiSummary: summary?.finalText
+      ? {
+          text: summary.finalText,
+          reviewedBy: reviewer?.firstName
+            ? `Dr ${reviewer.firstName} ${reviewer.lastName ?? ''}`.trim()
+            : null,
+          reviewedAt: summary.reviewedAt ?? null,
+        }
+      : null,
   };
 }
 

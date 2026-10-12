@@ -425,6 +425,37 @@ describe('access and the timeline', () => {
       .set(doctor.auth);
     expect(doctors.status).toBe(200);
     expect((await items(doctors)).sort()).toEqual([a, b].sort());
+    const flagsOf = (id: string) =>
+      doctors.body.data.find((i: { id: string }) => i.id === id).flags as string[];
+    expect(flagsOf(a)).toEqual(['ai_assisted', 'shared_with_patient']);
+    expect(flagsOf(b)).toEqual(['ai_assisted']);
+    expect(item.flags).toEqual(['ai_assisted']);
     expect(JSON.stringify(doctors.body)).not.toMatch(/pharyngitis|Amoxicillin/i);
+  });
+
+  it('the patient’s visit view carries the shared summary text only', async () => {
+    const patient = await loginAsPatient();
+    const doctor = await loginAsDoctor({});
+    const shared = await signedVisit({ patientId: patient.patientId, doctor });
+    const privateVisit = await signedVisit({ patientId: patient.patientId, doctor });
+    const a = (await generate(doctor, shared.encounterId)).body.data.id as string;
+    const b = (await generate(doctor, privateVisit.encounterId)).body.data.id as string;
+    await approve(doctor, shared.encounterId, a, { shareWithPatient: true });
+    await approve(doctor, privateVisit.encounterId, b);
+    const visit = (id: string) => api().get(`/api/v1/encounters/${id}`).set(patient.auth);
+
+    const res = await visit(shared.encounterId);
+    expect(res.status).toBe(200);
+    expect(res.body.data.aiSummary).toEqual({
+      text: expect.any(String),
+      reviewedBy: expect.stringMatching(/^Dr /),
+      reviewedAt: expect.any(String),
+    });
+    expect(Object.keys(res.body.data.aiSummary).sort()).toEqual([
+      'reviewedAt',
+      'reviewedBy',
+      'text',
+    ]);
+    expect((await visit(privateVisit.encounterId)).body.data.aiSummary).toBeNull();
   });
 });

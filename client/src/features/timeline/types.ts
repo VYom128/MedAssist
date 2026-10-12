@@ -6,11 +6,20 @@ import type { TimelineType } from './api';
  * convenience: the server decides what each role gets.
  */
 export const TIMELINE_FILTERS: Partial<Record<Role, readonly TimelineType[]>> = {
-  doctor: ['appointment', 'encounter', 'prescription', 'lab_order', 'document', 'followup_request'],
+  doctor: [
+    'appointment',
+    'encounter',
+    'clinical_summary',
+    'prescription',
+    'lab_order',
+    'document',
+    'followup_request',
+  ],
   receptionist: ['appointment', 'invoice', 'payment', 'document', 'followup_request'],
   patient: [
     'appointment',
     'encounter',
+    'clinical_summary',
     'prescription',
     'lab_order',
     'invoice',

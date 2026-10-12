@@ -63,9 +63,10 @@ const rate = (part: number, whole: number) => (whole ? Number((part / whole).toF
  */
 export async function interactionSummary(q: InteractionSummaryQuery) {
   const { from, to, createdAt } = await window(q);
+  const { timezone } = await getSettings();
   const match: PipelineStage.Match = { $match: { createdAt } };
 
-  const [totals, flags, perModel, explanations, feedback] = await Promise.all([
+  const [totals, flags, perModel, explanations, feedback, daily] = await Promise.all([
     AiInteraction.aggregate<{
       attempts: number;
       calls: string[];
@@ -140,6 +141,32 @@ export async function interactionSummary(q: InteractionSummaryQuery) {
         },
       },
     ]),
+    // Attempts per clinic day, for the monitor's charts.
+    AiInteraction.aggregate<{
+      _id: string;
+      attempts: number;
+      failed: number;
+      blocked: number;
+      tokens: number;
+    }>([
+      match,
+      {
+        $group: {
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone } },
+          attempts: { $sum: 1 },
+          failed: { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+          blocked: { $sum: { $cond: [{ $eq: ['$status', 'blocked'] }, 1, 0] } },
+          tokens: {
+            $sum: {
+              $add: [
+                { $ifNull: ['$usage.inputTokens', 0] },
+                { $ifNull: ['$usage.outputTokens', 0] },
+              ],
+            },
+          },
+        },
+      },
+    ]),
   ]);
 
   const t = totals[0];
@@ -179,7 +206,24 @@ export async function interactionSummary(q: InteractionSummaryQuery) {
       failed: m.failed,
       blocked: m.blocked,
     })),
+    /** Every clinic day in [from, to] (zeros included), oldest first. */
+    perDay: daysBetween(from, to).map((date) => {
+      const d = daily.find((r) => r._id === date);
+      return {
+        date,
+        attempts: d?.attempts ?? 0,
+        failed: d?.failed ?? 0,
+        blocked: d?.blocked ?? 0,
+        tokens: d?.tokens ?? 0,
+      };
+    }),
   };
+}
+
+function daysBetween(from: string, to: string): string[] {
+  const days: string[] = [];
+  for (let d = from; d <= to && days.length < 366; d = addDaysToDate(d, 1)) days.push(d);
+  return days;
 }
 
 /** GET /ai/config – what the server is set up to use (the base URL's host only, never the key). */

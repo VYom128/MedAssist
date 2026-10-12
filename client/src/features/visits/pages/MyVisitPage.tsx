@@ -5,6 +5,7 @@ import {
   HeartPulse,
   Link2,
   MessageSquareText,
+  Sparkles,
   Stethoscope,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
@@ -128,6 +129,25 @@ export default function MyVisitPage() {
         <Alert tone="info" title="Updated after the visit">
           Your doctor corrected this summary after signing it. You are seeing the latest version.
         </Alert>
+      )}
+
+      {v.aiSummary && (
+        <SectionCard
+          title="AI-assisted summary, reviewed by your doctor"
+          icon={Sparkles}
+          iconTone="consult"
+          description={
+            v.aiSummary.reviewedAt
+              ? `Reviewed by ${v.aiSummary.reviewedBy ?? 'your doctor'} on ${formatDate(v.aiSummary.reviewedAt)}`
+              : undefined
+          }
+        >
+          <p className="text-sm whitespace-pre-line text-body">{v.aiSummary.text}</p>
+          <p className="mt-3 text-xs text-muted">
+            Written with the help of AI and checked by your doctor. If anything is unclear, ask the
+            clinic.
+          </p>
+        </SectionCard>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
