@@ -11,7 +11,7 @@ import {
 import { assertCanReadInvoice } from '../../policies/invoiceAccess.js';
 import * as audit from '../../services/audit.service.js';
 import { formatNumber, nextSequence } from '../../services/counter.service.js';
-import { notify } from '../../services/notification.service.js';
+import { notificationLink, notify } from '../../services/notification.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { clinicToday, endOfClinicDay, startOfClinicDay, toClinicTime } from '../../utils/dates.js';
@@ -175,7 +175,7 @@ export async function recordPayment(
       balancePaise,
     },
   });
-  if (!quiet) void notifyPaymentReceived(inv);
+  if (!quiet) void notifyPaymentReceived(inv, payment._id.toString());
   return {
     payment: toPaymentView(payment as unknown as PaymentLike, user.role),
     invoice: await viewFor(user, await loadInvoice(inv._id)),
@@ -183,7 +183,7 @@ export async function recordPayment(
 }
 
 /** "Your receipt is available" – the invoice number only, no amounts (§10.3). */
-async function notifyPaymentReceived(inv: InvoiceLike) {
+async function notifyPaymentReceived(inv: InvoiceLike, paymentId?: string) {
   const settings = await getSettings();
   await notify({
     recipients: [await patientRecipient(inv.patient._id)],
@@ -192,8 +192,13 @@ async function notifyPaymentReceived(inv: InvoiceLike) {
     body:
       `${settings.name ?? 'The clinic'} has received a payment for invoice ` +
       `${inv.invoiceNumber ?? ''}. Your receipt is available – please log in to view it.`,
-    link: `/patient/invoices/${inv._id.toString()}`,
-    email: true,
+    link: notificationLink(NOTIFICATION_TYPES.PAYMENT_RECEIVED, ROLES.PATIENT, inv._id),
+    data: {
+      invoiceId: inv._id.toString(),
+      ...(inv.invoiceNumber ? { invoiceNumber: inv.invoiceNumber } : {}),
+      ...(paymentId ? { paymentId } : {}),
+    },
+    ...(paymentId ? { dedupeKey: `${NOTIFICATION_TYPES.PAYMENT_RECEIVED}:${paymentId}` } : {}),
   });
 }
 

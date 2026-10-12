@@ -8,7 +8,7 @@ import {
   type Role,
 } from '../../config/constants.js';
 import * as audit from '../../services/audit.service.js';
-import { emailService, sendInBackground } from '../../services/email.service.js';
+import { notifyAccountCreated, notifyPasswordReset } from '../../services/notification.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { buildMeta, type Pagination } from '../../utils/pagination.js';
@@ -105,10 +105,7 @@ export function createStaffAccount(
 
 /** Emails the "set your password" link in the background (never blocks or fails the request). */
 export function sendWelcomeEmail(user: { email: string; firstName: string }, token: string) {
-  sendInBackground(
-    () => emailService.sendAccountSetup(user.email, user.firstName, token),
-    'account_setup',
-  );
+  notifyAccountCreated(user, token);
 }
 
 /**
@@ -225,7 +222,7 @@ export async function sendPasswordReset(admin: AuthUser, id: string, meta: Reque
   if (!user.isActive)
     throw ApiError.unprocessable('Activate the account before resetting its password');
   const token = await createPasswordResetToken(user._id);
-  sendInBackground(() => emailService.sendPasswordReset(user.email, token), 'password_reset');
+  notifyPasswordReset(user, token);
   await audit.record({
     action: AUDIT_ACTIONS.USER_RESET_PASSWORD,
     actor: actorOf(admin),

@@ -17,7 +17,7 @@ import {
 } from '../../policies/followupAccess.js';
 import * as audit from '../../services/audit.service.js';
 import { formatNumber, nextSequence } from '../../services/counter.service.js';
-import { notify, type Recipient } from '../../services/notification.service.js';
+import { notificationLink, notify, type Recipient } from '../../services/notification.service.js';
 import { emitFollowupUpdated } from '../../socket/emitter.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
@@ -68,6 +68,12 @@ const patientIdOf = (r: FollowupLike) => r.patient._id;
 
 // ---- Notifications and events (after the commit; never message text) -----------------------
 
+/** The ids and number of a request – all a notification may carry (never text or type). */
+const requestData = (r: FollowupLike) => ({
+  requestId: r._id.toString(),
+  requestNumber: r.requestNumber,
+});
+
 async function receptionists(): Promise<{ id: string; email: string | null }[]> {
   const users = await User.find({ role: ROLES.RECEPTIONIST, isActive: true })
     .select('email')
@@ -100,8 +106,8 @@ async function notifyPatient(r: FollowupLike, title: string) {
     type: NOTIFICATION_TYPES.FOLLOWUP_REQUEST_UPDATED,
     title,
     body: `There is an update on your request ${r.requestNumber}. Please log in to read it.`,
-    link: `/patient/follow-ups/${r._id.toString()}`,
-    email: true,
+    link: notificationLink(NOTIFICATION_TYPES.FOLLOWUP_REQUEST_UPDATED, ROLES.PATIENT, r._id),
+    data: requestData(r),
   });
 }
 
@@ -119,14 +125,20 @@ async function notifyStaff(r: FollowupLike, kind: 'new' | 'reply') {
       kind === 'new'
         ? `Follow-up request ${r.requestNumber} is waiting. Please log in to read it.`
         : `You have a new reply on ${r.requestNumber}. Please log in to read it.`,
-    email: true,
+    data: requestData(r),
   };
-  if (doctor) void notify({ ...message, recipients: [doctor], link: `/doctor/follow-ups/${id}` });
+  if (doctor) {
+    void notify({
+      ...message,
+      recipients: [doctor],
+      link: notificationLink(message.type, ROLES.DOCTOR, id),
+    });
+  }
   if (desk.length > 0) {
     void notify({
       ...message,
       recipients: desk.map((d) => ({ userId: d.id, email: d.email })),
-      link: `/reception/follow-ups/${id}`,
+      link: notificationLink(message.type, ROLES.RECEPTIONIST, id),
     });
   }
 }
@@ -525,8 +537,8 @@ export async function assignFollowup(
       type: NOTIFICATION_TYPES.FOLLOWUP_REQUEST_NEW,
       title: 'Follow-up request assigned to you',
       body: `Follow-up request ${fresh.requestNumber} was assigned to you. Please log in to read it.`,
-      link: `/doctor/follow-ups/${fresh._id.toString()}`,
-      email: true,
+      link: notificationLink(NOTIFICATION_TYPES.FOLLOWUP_REQUEST_NEW, ROLES.DOCTOR, fresh._id),
+      data: requestData(fresh),
     });
   }
   await announce(fresh, { patient: false, doctors: [previous] });

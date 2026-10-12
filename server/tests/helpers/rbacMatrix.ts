@@ -124,6 +124,8 @@ export interface Ctx {
    * follow-up plan, and `prescriptionId` a cached English explanation (for feedback).
    */
   summaryId: string;
+  /** An unread notification of the caller (Phase 10). */
+  notificationId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -141,6 +143,11 @@ export interface Row {
    * patient-access policy (404, spec §10.2).
    */
   statusFor?: Partial<Record<Role, number>>;
+  /**
+   * A write that changes only the caller's own view state (marking notifications read), so it is
+   * not audited (spec §10.4 lists no such action).
+   */
+  unaudited?: boolean;
 }
 
 export const ALL = ROLE_VALUES;
@@ -823,6 +830,25 @@ ENDPOINTS.push(
     roles: EXPLAINERS,
     status: 200,
   },
+  // Notifications (spec §7.17, Phase 10): every role, own only.
+  { method: 'get', path: () => '/notifications?unread=true', roles: ALL, status: 200 },
+  { method: 'get', path: () => '/notifications/unread-count', roles: ALL, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/notifications/${c.notificationId}/read`,
+    roles: ALL,
+    status: 200,
+    unaudited: true,
+  },
+  {
+    method: 'post',
+    path: () => '/notifications/read-all',
+    roles: ALL,
+    status: 200,
+    unaudited: true,
+  },
+  // Global search (spec §12.1, Phase 10): every role, scoped results.
+  { method: 'get', path: () => '/search?q=APT-2026', roles: ALL, status: 200 },
   // Admin AI monitor (Phase 9)
   { method: 'get', path: () => '/ai/interactions', roles: ADMIN, status: 200 },
   { method: 'get', path: () => '/ai/interactions/summary', roles: ADMIN, status: 200 },
@@ -1200,6 +1226,7 @@ export const PATTERN_CTX = {
   paymentId: ':id',
   followupId: ':id',
   summaryId: ':summaryId',
+  notificationId: ':id',
   n: 0,
 } as unknown as Ctx;
 

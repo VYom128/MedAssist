@@ -6,6 +6,7 @@ import { User } from '../src/modules/users/model.js';
 import { setSocketServer } from '../src/socket/emitter.js';
 import { addDaysToDate, clinicToday } from '../src/utils/dates.js';
 import { auditEntries, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
+import { Notification } from '../src/modules/notifications/model.js';
 import { captureEmails } from './helpers/email.js';
 import {
   at,
@@ -118,17 +119,22 @@ describe('POST /follow-up-requests', () => {
       expect(entry).toBeDefined();
       expect(JSON.stringify(entry)).not.toContain('chest');
 
-      // The doctor and every receptionist are emailed – no text, no type.
-      await vi.waitFor(() => expect(emails.sent.length).toBeGreaterThanOrEqual(2));
-      expect(emails.sent.map((m) => m.to).sort()).toEqual(
-        [s.doctor.user.email, s.reception.user.email].sort(),
+      // The doctor and every receptionist are told in-app (spec §11) – no text, no type, no email.
+      const type = 'followup.request_new';
+      await vi.waitFor(async () =>
+        expect(await Notification.countDocuments({ type })).toBeGreaterThanOrEqual(2),
       );
-      expect(JSON.stringify(emails.sent)).not.toMatch(/chest|symptom/i);
-      // Each role's email opens its own page.
-      const toDoctor = emails.sent.find((m) => m.to === s.doctor.user.email);
-      const toDesk = emails.sent.find((m) => m.to === s.reception.user.email);
-      expect(JSON.stringify(toDoctor)).toContain(`/doctor/follow-ups/${r.id}`);
-      expect(JSON.stringify(toDesk)).toContain(`/reception/follow-ups/${r.id}`);
+      const notes = await Notification.find({ type }).lean();
+      expect(notes.map((n) => n.recipient.toString()).sort()).toEqual(
+        [s.doctor.id, s.reception.user._id.toString()].sort(),
+      );
+      expect(JSON.stringify(notes)).not.toMatch(/chest|symptom/i);
+      // Each role's notification opens its own page.
+      const toDoctor = notes.find((n) => n.recipient.toString() === s.doctor.id);
+      const toDesk = notes.find((n) => n.recipient.toString() !== s.doctor.id);
+      expect(toDoctor?.link).toBe(`/doctor/follow-ups/${r.id}`);
+      expect(toDesk?.link).toBe(`/reception/follow-ups/${r.id}`);
+      expect(emails.sent).toHaveLength(0);
       // followup.updated with the id only, to the doctor, the patient and reception's room.
       const event = emitted.find((e) => e.event === 'followup.updated');
       expect(event?.payload).toEqual({ requestId: r.id });
@@ -330,13 +336,16 @@ describe('messages and status changes', () => {
       expect.objectContaining({ type: 'followup_request', id: r.id, status: 'responded' }),
     ]);
     expect(JSON.stringify([detail.body, list.body, timeline.body])).not.toContain('gastritis');
-    // Staff see both; the patient's email says "please log in" without the reply.
+    // Staff see both; the patient's notification says "please log in" without the reply.
     const staff = await send(s.reception, 'get', `/follow-up-requests/${r.id}`);
     expect(staff.body.data.messages).toHaveLength(2);
-    await vi.waitFor(() => expect(emails.sent.length).toBe(1));
-    expect(emails.sent[0]!.to).toBe(s.patient.user.email);
-    expect(JSON.stringify(emails.sent)).not.toMatch(/gastritis|call you/);
-    expect(JSON.stringify(emails.sent)).toMatch(/log in/i);
+    const patientNotes = () =>
+      Notification.find({ recipient: s.patient.user._id, type: 'followup.request_updated' }).lean();
+    await vi.waitFor(async () => expect(await patientNotes()).toHaveLength(1));
+    const notes = await patientNotes();
+    expect(JSON.stringify(notes)).not.toMatch(/gastritis|call you/);
+    expect(notes[0]!.body).toMatch(/log in/i);
+    expect(emails.sent).toHaveLength(0);
   });
 
   it('patients cannot post internal notes, reject, or reply once it is finished', async () => {
