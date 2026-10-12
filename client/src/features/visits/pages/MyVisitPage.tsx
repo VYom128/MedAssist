@@ -24,6 +24,7 @@ import { formatCalendarDate, formatDate, formatDateTime } from '../../../utils/d
 import { isApiQueryError } from '../../../utils/http';
 import { useListInvoicesQuery } from '../../billing/api';
 import { followUpBookingLink, useGetMyVisitQuery, type PatientVisit } from '../api';
+import ExplanationPanel from '../../ai/components/ExplanationPanel';
 
 const num = (v: number | null) => (v === null ? null : String(v));
 
@@ -208,6 +209,11 @@ export default function MyVisitPage() {
           <p className="text-sm text-body">{followUp ?? 'No follow-up visit is planned.'}</p>
           {v.followUp.required && v.followUp.instructions && (
             <p className="mt-2 text-sm text-muted">{v.followUp.instructions}</p>
+          )}
+          {v.followUp.required && (
+            <div className="mt-4">
+              <ExplanationPanel source={{ kind: 'follow_up_plan', id: v.id }} audience="patient" />
+            </div>
           )}
         </SectionCard>
       </div>

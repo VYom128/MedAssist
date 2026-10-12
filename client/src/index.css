@@ -1,13 +1,18 @@
 @import 'tailwindcss';
 @import '@fontsource-variable/plus-jakarta-sans/wght.css';
+@import '@fontsource-variable/noto-sans-devanagari/wght.css';
 
 /*
  * MedAssist design tokens (docs/DESIGN_SYSTEM.md). Tailwind v4 turns each variable into
  * utilities: --color-ink → text-ink / bg-ink, --radius-card → rounded-card, and so on.
  */
 @theme {
+  /* Devanagari (Hindi explanations): Plus Jakarta Sans has no Devanagari glyphs, so the browser
+     falls back per character to Noto Sans Devanagari (loaded only for those characters through
+     its unicode-range), then to the system's Devanagari fonts. */
   --font-sans:
-    'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    'Plus Jakarta Sans Variable', 'Noto Sans Devanagari Variable', ui-sans-serif, system-ui,
+    -apple-system, 'Segoe UI', 'Nirmala UI', 'Kohinoor Devanagari', 'Mangal', sans-serif;
 
   /* Surfaces and lines */
   --color-canvas: #f6f7fb;

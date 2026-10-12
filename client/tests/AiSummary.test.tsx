@@ -4,7 +4,7 @@ import { delay, http } from 'msw';
 import type { SummaryState } from '../src/features/ai/api';
 import type { Encounter } from '../src/features/encounters/api';
 import { routes } from '../src/routes/routes';
-import { approvedSummary, summary, summaryState } from './ai.fixtures';
+import { approvedSummary, explanation, summary, summaryState } from './ai.fixtures';
 import { appointment } from './appointments.fixtures';
 import { doctorView, encounter, listOf, prescription, signableNote } from './encounters.fixtures';
 import { authState, makeUser, renderRoutes } from './helpers';
@@ -325,7 +325,7 @@ describe('Generate', () => {
 });
 
 describe('Turned off in settings', () => {
-  it('hides the summary on the encounter view', async () => {
+  it('hides the summary tab and the doctor’s explanation preview', async () => {
     setup({ note: signedNote, rx: issuedRx });
     server.use(
       http.get(url('/settings/public'), () =>
@@ -362,7 +362,7 @@ describe('Turned off in settings', () => {
 });
 
 describe('Encounter view', () => {
-  it('shows the approved summary label and "Shared with patient"', async () => {
+  it('shows the approved summary label and a labelled explanation preview', async () => {
     setup({
       note: signedNote,
       rx: issuedRx,
@@ -371,7 +371,15 @@ describe('Encounter view', () => {
         noteSigned: true,
       }),
     });
+    let body: unknown;
+    server.use(
+      http.post(url('/prescriptions/rx1/explain'), async ({ request }) => {
+        body = await request.json();
+        return ok(explanation({ preview: true, guardrailFlags: ['regenerated'] }));
+      }),
+    );
     renderRoutes(routes, '/doctor/encounters/e1', authState(doctor));
+    const user = userEvent.setup();
     expect(
       await screen.findByText(
         /^AI-assisted · reviewed by Dr Anil Mehta on /,
@@ -380,5 +388,16 @@ describe('Encounter view', () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText('Shared with patient')).toBeInTheDocument();
+
+    await user.click(await screen.findByRole('button', { name: 'Preview explanation' }));
+    const preview = await screen.findByRole('region', {
+      name: 'Preview – what the patient will see',
+    });
+    expect(await within(preview).findByText('Take 1 tablet')).toBeInTheDocument();
+    expect(body).toEqual({ language: 'en' });
+    expect(
+      within(preview).getByText('The first answer failed the safety checks and was written again.'),
+    ).toBeInTheDocument();
+    expect(within(preview).queryByText('Was this helpful?')).not.toBeInTheDocument();
   });
 });

@@ -1,9 +1,9 @@
 import { BellRing, HeartPulse, Phone } from 'lucide-react';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { VERIFY_IDENTITY_PATH } from '../../../routes/home';
 import Alert from '../../../components/ui/Alert';
 import Avatar from '../../../components/ui/Avatar';
@@ -204,59 +204,68 @@ function ConsentCard({ patient }: { patient: Patient }) {
     }
   };
 
+  // Linked from "Explain in simple words" when AI explanations are off (#consent).
+  const ref = useRef<HTMLDivElement>(null);
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash === '#consent') ref.current?.scrollIntoView?.({ block: 'start' });
+  }, [hash]);
+
   return (
-    <SectionCard
-      title="Consent and communication"
-      description="Each change is saved straight away."
-      icon={BellRing}
-    >
-      <div className="space-y-5 divide-line [&>*+*]:border-t [&>*+*]:pt-5">
-        <Switch
-          label="AI explanations"
-          description="Plain-language explanations of your prescriptions and lab reports, written by AI and checked for safety. They never replace your doctor's advice."
-          checked={consent.aiExplanations.given}
-          disabled={isLoading}
-          onChange={(on) =>
-            on
-              ? void save({ aiExplanations: true }, 'AI explanations turned on')
-              : setConfirmAiOff(true)
-          }
-        />
-        <Switch
-          label="Email reminders"
-          description="Appointment reminders and notices by email."
-          checked={consent.communications.email}
-          disabled={isLoading}
-          onChange={(on) => void save({ communications: { email: on } }, 'Preference saved')}
-        />
-        <Switch
-          label="SMS reminders"
-          checked={consent.communications.sms}
-          disabled={isLoading}
-          onChange={(on) => void save({ communications: { sms: on } }, 'Preference saved')}
-        />
-        <p className="text-xs text-muted">
-          You agreed to the clinic processing your data to provide care
-          {consent.dataProcessing.at ? ` on ${formatDate(consent.dataProcessing.at)}` : ''}. To
-          withdraw it, please contact the clinic.
-        </p>
-      </div>
-      <ConfirmDialog
-        open={confirmAiOff}
-        title="Turn off AI explanations?"
-        confirmLabel="Turn off"
-        loading={isLoading}
-        onCancel={() => setConfirmAiOff(false)}
-        onConfirm={() => {
-          setConfirmAiOff(false);
-          void save({ aiExplanations: false }, 'AI explanations turned off');
-        }}
+    <div id="consent" ref={ref} className="scroll-mt-24">
+      <SectionCard
+        title="Consent and communication"
+        description="Each change is saved straight away."
+        icon={BellRing}
       >
-        You will no longer be offered plain-language AI explanations of your prescriptions and lab
-        reports. Your doctor's notes and reports stay available as they are, and you can turn this
-        back on at any time.
-      </ConfirmDialog>
-    </SectionCard>
+        <div className="space-y-5 divide-line [&>*+*]:border-t [&>*+*]:pt-5">
+          <Switch
+            label="AI explanations"
+            description="Plain-language explanations of your prescriptions and lab reports, written by AI and checked for safety. They never replace your doctor's advice."
+            checked={consent.aiExplanations.given}
+            disabled={isLoading}
+            onChange={(on) =>
+              on
+                ? void save({ aiExplanations: true }, 'AI explanations turned on')
+                : setConfirmAiOff(true)
+            }
+          />
+          <Switch
+            label="Email reminders"
+            description="Appointment reminders and notices by email."
+            checked={consent.communications.email}
+            disabled={isLoading}
+            onChange={(on) => void save({ communications: { email: on } }, 'Preference saved')}
+          />
+          <Switch
+            label="SMS reminders"
+            checked={consent.communications.sms}
+            disabled={isLoading}
+            onChange={(on) => void save({ communications: { sms: on } }, 'Preference saved')}
+          />
+          <p className="text-xs text-muted">
+            You agreed to the clinic processing your data to provide care
+            {consent.dataProcessing.at ? ` on ${formatDate(consent.dataProcessing.at)}` : ''}. To
+            withdraw it, please contact the clinic.
+          </p>
+        </div>
+        <ConfirmDialog
+          open={confirmAiOff}
+          title="Turn off AI explanations?"
+          confirmLabel="Turn off"
+          loading={isLoading}
+          onCancel={() => setConfirmAiOff(false)}
+          onConfirm={() => {
+            setConfirmAiOff(false);
+            void save({ aiExplanations: false }, 'AI explanations turned off');
+          }}
+        >
+          You will no longer be offered plain-language AI explanations of your prescriptions and lab
+          reports. Your doctor's notes and reports stay available as they are, and you can turn this
+          back on at any time.
+        </ConfirmDialog>
+      </SectionCard>
+    </div>
   );
 }
 
