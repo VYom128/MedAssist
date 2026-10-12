@@ -20,8 +20,8 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | 6 | Lab workflow and documents | ✅ Done |
 | 7 | Billing | ✅ Done |
 | 8 | Patient timeline, portal and follow-ups | ✅ Done |
-| 9 | AI features | 🟡 In progress |
-| 10 | Dashboards, notifications, reports and printing | ⬜ Not started |
+| 9 | AI features | ✅ Done |
+| 10 | Dashboards, notifications, reports and printing | 🟡 In progress |
 | 11 | Testing, polish and deployment | ⬜ Not started |
 
 Status key: ⬜ Not started · 🟡 In progress · ✅ Done
@@ -547,19 +547,66 @@ At 360 px: the patient bottom bar (Home, Appointments, Visits, Prescriptions, Mo
 **Goal:** AI clinical summaries and patient explanations with strict guardrails.
 **Spec:** §4.11–4.12, §5.7, §6.15, §6.17, §6.26, §7.11, §9
 
-- [ ] `ai.service.js` with `anthropic` and `mock` providers, versioned prompts
-- [ ] De-identification of input; JSON output validated with Zod; one retry
-- [ ] Clinical summary: generate, edit, approve/reject; server checks on diagnoses and medicines
-- [ ] Patient explanation: consistency check, forbidden-phrase check, template fallback, fixed disclaimer, caching, rate limit
-- [ ] Settings kill switches + patient AI consent
-- [ ] `ai_interactions` log + admin AI monitor page
-- [ ] UI: summary panel in consult workspace; "Explain in simple words" on prescriptions and follow-up plans
-- [ ] Tests: mock flows, guardrail blocks, AI turned off
-- [ ] `npm run ai:eval` script
+- [x] `ai.service.js` with `openai_compatible` (Groq default, replaces `anthropic` – D169) and `mock` providers, model fallback, versioned prompts
+- [x] De-identification of input; JSON output validated with Zod; one retry
+- [x] Clinical summary: generate, edit, approve/reject; server checks on diagnoses and medicines
+- [x] Patient explanation: consistency check, forbidden-phrase check, template fallback, fixed disclaimer, caching, rate limit
+- [x] Settings kill switches + patient AI consent
+- [x] `ai_interactions` log + admin AI monitor page
+- [x] UI: summary panel in consult workspace; "Explain in simple words" on prescriptions and follow-up plans
+- [x] Tests: mock flows, guardrail blocks, AI turned off
+- [x] `npm run ai:eval` script
 
 **Done when:** a doctor approves an AI summary, and a patient reads a safe explanation of their prescription in English or Hindi.
+Verified 2026-10-12: `npm run lint`, `npm run format:check` clean; `AI_PROVIDER=mock npm test` (server + client) run 3 times – runs 1 and 3 all green (server 2,262 → 2,266 with the new resilience test, client 265); run 2 hit one timing flake in `auth.login.test.ts` (the lockout countdown expected "2 minutes" with only 61 s left – fixed with a 90 s margin, then green 3 times). No test reaches the network (server test setup makes `fetch` throw; client MSW errors on unhandled requests). `npm run seed -- --reset` then `npm run seed` (second run creates nothing: `ai` 6 unchanged); every seeded `ai_interactions` row and `ai.call` audit entry says `provider: mock`. `npm run smoke` passes against the dev API (no Phase 9 checks yet). Checked by hand in the code: `AI_API_KEY` only in `config/env.ts` and the provider, redacted in logs, never in a response (`/ai/config` shows the host only), not in the built client bundle; `.env` is git-ignored. `tests/phase9.resilience.test.ts` walks the doctor, patient and admin flows with every switch off, the provider failing (5xx, 429) and the daily limit reached. **Not checked in a real browser by Claude** – please run the script below in the UI.
 
-**Notes / decisions:**
+**Real-provider eval** (`npm run ai:eval -- --confirm --limit 5`, Groq free tier, 2026-10-12; models `openai/gpt-oss-120b` → `qwen/qwen3.8-27b` → `openai/gpt-oss-20b`):
+
+| Item | Model used | Attempts | Result | Latency | Tokens in/out |
+|---|---|---|---|---|---|
+| summary 1–2 | gpt-oss-120b | 1 | ok | 2.0–2.8 s | ~1.2k / 0.7–1.1k |
+| summary 3 | gpt-oss-120b | 2 (1 invalid JSON, retried) | ok | 5.3 s | 2.6k / 2.0k |
+| summary 4–5 | qwen3.8-27b | 2 (120b → 429) | ok | 1.1–1.3 s | ~1.3k / 0.4k |
+| explanation 1 en/hi, 2 en | gpt-oss-20b | 3 (120b, qwen → 429) | success | 1.9–2.3 s | ~0.9k / 1.2–1.5k |
+| explanation 4 en | qwen3.8-27b | 2 | success | 0.6 s | 0.8k / 0.2k |
+| explanation 4 hi | gpt-oss-120b | 1 | success | 2.4 s | 0.8k / 0.9k |
+| explanation 2 hi, 3 en/hi, 5 en/hi | – | 3 (all 429) | template | 0.15 s | 0 |
+
+All 5 summaries were usable with no server-check flags; 10 explanations: 5 from the model with **no guardrail blocks (English and Hindi)**, 5 templates – every failure was Groq's free-tier rate limit (429 on all three models while the eval fired requests back to back), not output quality. Only one invalid reply (gpt-oss-120b, fixed by the retry). Normal clinic traffic is far slower than the eval; re-run with a smaller `--limit` (or later) for a cleaner quality sample.
+
+**Notes / decisions:** (recorded as D166–D179 in spec §20 "Decisions made")
+- **Provider (D169–D170):** `openai_compatible` (Groq default, OpenRouter by `AI_BASE_URL`) instead of `anthropic`; `AI_MODEL` + `AI_FALLBACK_MODELS` chain; first-`{…}` JSON extraction + one retry per model; auth errors stop the chain. New env vars: `AI_BASE_URL`, `AI_API_KEY`, `AI_FALLBACK_MODELS`, `AI_TEMPERATURE`, `AI_MAX_TOKENS`, `AI_DAILY_CALL_LIMIT`.
+- **Logging (D171):** one `ai_interactions` row per attempt (`callId`, `attempt`, model, reason tag), one `ai.call` audit entry per call; never prompts, inputs, outputs, provider messages or the key.
+- **Daily budget (D172):** `AI_DAILY_CALL_LIMIT` attempts per clinic day → 503 `AI_UNAVAILABLE` (`daily_limit`); explanations fall back to the template.
+- **De-identification (D173):** structured inputs only, scrubbed names/phones/emails/record numbers; patient-facing input from the patient-safe fields.
+- **Summaries (D174–D175):** new state `superseded`; approve needs a signed note and a current summary (new codes `NOTE_NOT_SIGNED` 422, `SUMMARY_OUTDATED` 409); patients see only approved + shared (also on the visit page, D166).
+- **Explanations (D176–D177):** cache per (source, version, language), cache hits free; block → regenerate once → template (cached); AI down → template (not cached); doctor preview never cached; server disclaimer + contact list; **Hindi texts and forbidden phrases are drafts for clinical review**.
+- **Eval (D178), seed demo data only (D179), monitor charts (D167), client flags (D168).**
+- New npm packages (client): `recharts`, `@fontsource-variable/noto-sans-devanagari`. Server: none (Node `fetch`).
+- Phase 9 complete 2026-10-12.
+
+<details>
+<summary>Phase 9 manual test script (seeded DB, password <code>Password@123</code>; mock provider is fine, or Groq)</summary>
+
+Doctor (`dr.mehta@medassist.dev`):
+1. Queue/Today → a patient in consultation (seeded "today draft") → consult workspace → **AI summary** tab → **Generate summary**. "This can take up to 30 seconds" with **Stop waiting**. The draft shows the yellow **"AI draft – review before use"** banner next to the source note.
+2. Under the **Approve** button: "Approve is not available yet:" – *Read the whole draft – scroll to its end* and *Sign the note first*. Scroll to the end of the draft: the first reason disappears.
+3. Sign the note (Sign tab). Back on AI summary: if the note changed after generating, the banner says **"Out of date – regenerate"** – click **Regenerate**.
+4. Edit the summary text → **Save text** ("Summary text saved"). Scroll to the end → **Approve** → tick **Share with patient** → Approve: "Summary approved and shared with the patient"; the label reads "AI-assisted · reviewed by Dr … on <date> · Shared with patient".
+
+Patient (the visit's patient; or `patient1@medassist.dev`, whose seeded summary is shared):
+5. Visits → that visit: the card **"AI-assisted summary, reviewed by your doctor"**.
+6. Prescriptions → an issued prescription → **Explain in simple words** → English: overview, each medicine, questions to ask, "When to contact the clinic" with **Contact the clinic**, the disclaimer last (cannot be collapsed).
+7. Switch to **हिन्दी**: Devanagari text in Noto Sans Devanagari, Hindi disclaimer. Switch back to English and close/reopen: instant (cached – no new row in the AI monitor).
+8. **Was this helpful?** 👍 or 👎 with an optional comment → "Thank you for your feedback."
+9. (Optional) My details → turn off AI explanations → the button becomes a link to the setting.
+
+Admin (`admin@medassist.dev`):
+10. Settings → AI tab → switch off **Plain-language explanations for patients** → Save. As the patient, reload the prescription: the button is gone. Switch it back on.
+11. **AI monitor**: provider and models (model used per attempt, Fallback badge), **Today's AI calls** vs the daily limit, failure / fallback / template rates, guardrail blocks, the per-day charts, recent attempts (no content anywhere).
+
+At 360 px: the summary draft stacks under the source note; the explanation panel and language switch fit without sideways scrolling.
+</details>
 
 ---
 

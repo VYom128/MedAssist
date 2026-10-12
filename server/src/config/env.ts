@@ -110,7 +110,7 @@ const envSchema = z
     AI_MODEL: z.string().trim().min(1).default('openai/gpt-oss-120b'),
     AI_FALLBACK_MODELS: z
       .string()
-      .default('qwen/qwen3.6-27b,openai/gpt-oss-20b')
+      .default('qwen/qwen3.8-27b,openai/gpt-oss-20b')
       .transform((v) =>
         v
           .split(',')
