@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import { ipKeyGenerator, rateLimit, type Options } from 'express-rate-limit';
-import { DOCUMENT_RULES, ROLES } from '../config/constants.js';
+import { DOCUMENT_RULES, REPORT_RULES, ROLES } from '../config/constants.js';
 import { config } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 
@@ -71,6 +71,17 @@ export const createUploadLimiter = (options: Partial<Options> = {}) =>
     ...options,
   });
 
+/** Report CSV exports: 30 / hour per user (Phase 10). JSON views are not limited here. */
+export const createExportLimiter = (options: Partial<Options> = {}) =>
+  createRateLimiter({
+    windowMs: 60 * MINUTE,
+    limit: REPORT_RULES.exportsPerHour,
+    keyGenerator: (req) => `user:${req.user?.id ?? ''}`,
+    ...options,
+    skip: (req, res) =>
+      (req.query as { format?: string }).format !== 'csv' || (options.skip?.(req, res) ?? false),
+  });
+
 // App instances are off in tests; tests build their own with the factories above.
 const skipInTest = () => config.isTest;
 export const loginLimiter = createLoginLimiter({ skip: skipInTest });
@@ -81,3 +92,4 @@ export const resetPasswordLimiter = createPasswordResetLimiter({ skip: skipInTes
 export const patientBookingLimiter = createPatientBookingLimiter({ skip: skipInTest });
 export const boardLimiter = createBoardLimiter({ skip: skipInTest });
 export const uploadLimiter = createUploadLimiter({ skip: skipInTest });
+export const exportLimiter = createExportLimiter({ skip: skipInTest });

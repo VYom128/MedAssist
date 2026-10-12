@@ -193,6 +193,8 @@ describe('doctors without a care relationship', () => {
       // Phase 9: patient explanations (doctor preview)
       ['post', `/prescriptions/${c.prescriptionId}/explain`, { language: 'en' }],
       ['post', `/encounters/${c.encounterId}/follow-up/explain`, { language: 'en' }],
+      // Phase 10: the visit summary PDF
+      ['get', `/encounters/${c.encounterId}/visit-summary.pdf`],
     ];
     const before = (await auditEntries('access.denied')).length;
     for (const [method, path, body] of reqs) {

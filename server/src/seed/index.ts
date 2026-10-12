@@ -33,6 +33,8 @@ import { setNotificationsMuted } from '../services/notification.service.js';
 import { initStorage } from '../services/storage/index.js';
 import { logger, serializeError } from '../utils/logger.js';
 import { seedAi } from './ai.js';
+import { seedNotifications } from './notifications.js';
+import { Notification } from '../modules/notifications/model.js';
 import { seedAppointments } from './appointments.js';
 import { seedDepartments } from './departments.js';
 import { seedDocuments } from './documents.js';
@@ -67,6 +69,7 @@ const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = 
   { name: 'invoices', run: seedInvoices },
   { name: 'followups', run: seedFollowups },
   { name: 'ai', run: seedAi },
+  { name: 'notifications', run: seedNotifications },
 ];
 
 /**
@@ -100,6 +103,7 @@ async function resetData() {
     ClinicalSummary.collection.deleteMany({}),
     PatientExplanation.collection.deleteMany({}),
     AiInteraction.collection.deleteMany({}),
+    Notification.deleteMany({}),
     Counter.deleteMany({}), // MRN, APT, ENC, RX, LAB, INV, PAY and sample numbers, queue tokens
   ]);
   // The stored files go with their records (development only – see runSeed).
@@ -160,8 +164,8 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
     logger.info(
       'Wiped users, sessions, audit logs, clinic setup data, patients, appointments, clinical ' +
         'notes, prescriptions, lab orders, documents (and their files), invoices, payments, ' +
-        'follow-up requests and reminders, AI summaries, explanations and interactions, and ' +
-        'counters',
+        'follow-up requests and reminders, AI summaries, explanations and interactions, ' +
+        'notifications and counters',
     );
   }
   await initStorage();

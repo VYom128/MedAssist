@@ -14,6 +14,8 @@ import {
 import aiRoutes from '../modules/aiInteractions/routes.js';
 import notificationRoutes from '../modules/notifications/routes.js';
 import searchRoutes from '../modules/search/routes.js';
+import dashboardRoutes from '../modules/dashboard/routes.js';
+import reportRoutes from '../modules/reports/routes.js';
 import formularyRoutes from '../modules/formulary/routes.js';
 import followupRoutes from '../modules/followups/routes.js';
 import healthRoutes from '../modules/health/routes.js';
@@ -60,5 +62,7 @@ router.use('/follow-up-requests', followupRoutes);
 router.use('/ai', aiRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/search', searchRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/reports', reportRoutes);
 
 export default router;

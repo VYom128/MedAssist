@@ -169,6 +169,8 @@ labOrderSchema.index({ patient: 1, orderedAt: -1, _id: -1 });
 labOrderSchema.index({ patient: 1, releasedAt: -1, _id: -1 });
 labOrderSchema.index({ orderedBy: 1, status: 1 });
 labOrderSchema.index({ encounter: 1 });
+labOrderSchema.index({ releasedAt: 1 }); // lab TAT reports (Phase 10)
+labOrderSchema.index({ 'sample.collectedAt': 1 }); // lab dashboard: collected today (Phase 10)
 labOrderSchema.index({ 'sample.sampleId': 1 }, { unique: true, sparse: true });
 labOrderSchema.index(
   { orderNumber: 1 },

@@ -502,6 +502,20 @@ export const NOTIFICATION_RULES = Object.freeze({
   bodyMax: 500,
 });
 
+/**
+ * Reports (spec §7.18, §14, Phase 10): at most `maxRangeDays` per request (422 beyond); CSV
+ * exports are limited per user per hour.
+ */
+export const REPORT_RULES = Object.freeze({ maxRangeDays: 366, exportsPerHour: 30 });
+export const REPORT_TYPES = Object.freeze([
+  'appointments',
+  'revenue',
+  'doctor-utilisation',
+  'lab-turnaround',
+  'no-shows',
+] as const);
+export type ReportType = (typeof REPORT_TYPES)[number];
+
 /** Global search (spec §12.1): minimum query length and results per group. */
 export const SEARCH_RULES = Object.freeze({ minLength: 2, maxLength: 100, perGroup: 5 });
 
@@ -802,6 +816,10 @@ export const AUDIT_ACTIONS = Object.freeze({
   INVOICE_VOID: 'invoice.void',
   INVOICE_VIEW: 'invoice.view',
   INVOICE_DOWNLOAD: 'invoice.download',
+  // Phase 10: on-demand PDFs and report exports (type and range only, never row data)
+  VISIT_SUMMARY_DOWNLOAD: 'encounter.visit_summary_download',
+  APPOINTMENT_SLIP_DOWNLOAD: 'appointment.slip_download',
+  REPORT_EXPORT: 'report.export',
   PAYMENT_CREATE: 'payment.create',
   PAYMENT_REFUND: 'payment.refund',
   PAYMENT_VIEW: 'payment.view',

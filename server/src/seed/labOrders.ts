@@ -301,7 +301,93 @@ export async function seedLabOrders(): Promise<Record<string, number>> {
     await acknowledgeResults(doctor, order._id.toString(), SEED_REQUEST);
     result.acknowledged += 1;
   }
+  await backdateLabTimes();
   return { ...result, ...(await countsByStatus()) };
+}
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+
+/**
+ * Seed only (Phase 10): the lab services stamp "now", so every seeded step would have happened
+ * when the seed ran – turnaround times of weeks on the dashboards. This moves each seeded
+ * order's lab times to plausible offsets after it was placed: collected 20–60 min later, results
+ * within the test's turnaround time (about 1 in 7 later than it), verified and released soon
+ * after, the doctor's acknowledgement 2 h after release – never later than now. Raw updates
+ * right after the seed created the orders (the stored PDF reports keep the seed-run time).
+ */
+async function backdateLabTimes(now = new Date()) {
+  const orders = await LabOrder.collection
+    .find(
+      { orderedAt: { $type: 'date' } },
+      {
+        projection: {
+          orderNumber: 1,
+          orderedAt: 1,
+          status: 1,
+          sample: 1,
+          items: 1,
+          releasedAt: 1,
+          reviewedByDoctorAt: 1,
+          statusHistory: 1,
+        },
+      },
+    )
+    .toArray();
+  const cap = (d: Date) => new Date(Math.min(d.getTime(), now.getTime() - MINUTE_MS));
+  for (const o of orders) {
+    faker.seed(seedFor(`labtime:${String(o.orderNumber)}`));
+    const orderedAt = o.orderedAt as Date;
+    const tat = Math.max(
+      ...((o.items ?? []) as { testSnapshot?: { turnaroundHours?: number } }[]).map(
+        (i) => i.testSnapshot?.turnaroundHours ?? 24,
+      ),
+      2,
+    );
+    const late = faker.number.float() < 0.15;
+    const collected = cap(
+      new Date(orderedAt.getTime() + faker.number.int({ min: 20, max: 60 }) * MINUTE_MS),
+    );
+    const processing = cap(new Date(collected.getTime() + 10 * MINUTE_MS));
+    const resultHours = late
+      ? tat * faker.number.float({ min: 1.05, max: 1.5 })
+      : tat * faker.number.float({ min: 0.2, max: 0.8 });
+    const entered = cap(new Date(processing.getTime() + resultHours * HOUR_MS));
+    const verified = cap(
+      new Date(entered.getTime() + faker.number.int({ min: 15, max: 45 }) * MINUTE_MS),
+    );
+    const released = cap(new Date(verified.getTime() + 5 * MINUTE_MS));
+    const at: Record<string, Date> = {
+      ordered: orderedAt,
+      sample_collected: collected,
+      sample_rejected: cap(new Date(collected.getTime() + 15 * MINUTE_MS)),
+      processing,
+      result_entered: entered,
+      verified,
+      released,
+    };
+    const seen = new Map<string, number>();
+    const history = ((o.statusHistory ?? []) as { status: string; at: Date }[]).map((h) => {
+      const n = seen.get(h.status) ?? 0;
+      seen.set(h.status, n + 1);
+      const base = at[h.status];
+      // A revision repeats statuses: later ones a day apart (still never after now).
+      return base ? { ...h, at: cap(new Date(base.getTime() + n * 24 * HOUR_MS)) } : h;
+    });
+    const items = ((o.items ?? []) as Record<string, unknown>[]).map((i) => ({
+      ...i,
+      ...(i.enteredAt ? { enteredAt: entered } : {}),
+      ...(i.verifiedAt ? { verifiedAt: verified } : {}),
+    }));
+    const set: Record<string, unknown> = { statusHistory: history, items };
+    if ((o.sample as { collectedAt?: Date } | undefined)?.collectedAt) {
+      set['sample.collectedAt'] = collected;
+    }
+    if (o.releasedAt) set.releasedAt = released;
+    if (o.reviewedByDoctorAt)
+      set.reviewedByDoctorAt = cap(new Date(released.getTime() + 2 * HOUR_MS));
+    await LabOrder.collection.updateOne({ _id: o._id }, { $set: set });
+  }
 }
 
 /** Orders per status, for the seed summary. */

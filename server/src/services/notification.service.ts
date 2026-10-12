@@ -109,6 +109,7 @@ async function deliver(input: NotifyInput): Promise<void> {
   const settings = await getSettings();
   const transactional = !cfg.inApp; // account emails: always sent, whatever the clinic switch
   const emailOn =
+    !emailsMuted &&
     cfg.email &&
     input.email !== false &&
     (transactional || settings.notifications?.emailEnabled !== false);
@@ -152,6 +153,7 @@ async function deliver(input: NotifyInput): Promise<void> {
 }
 
 let muted = false;
+let emailsMuted = false;
 
 /**
  * Seed only: generating demo data (lab releases, critical values…) must not email or notify
@@ -159,6 +161,14 @@ let muted = false;
  */
 export function setNotificationsMuted(value: boolean): void {
   muted = value;
+}
+
+/**
+ * Seed only: demo in-app notifications are stored, but no email goes out. Always reset it in a
+ * `finally`.
+ */
+export function setNotificationEmailsMuted(value: boolean): void {
+  emailsMuted = value;
 }
 
 /**

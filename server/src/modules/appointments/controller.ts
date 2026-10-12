@@ -3,9 +3,11 @@ import { ApiError } from '../../utils/ApiError.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { parsePagination } from '../../utils/pagination.js';
 import { buildRequestMeta } from '../../utils/requestContext.js';
+import { sendPdf } from '../../utils/sendFile.js';
 import * as bookingService from './booking.service.js';
 import * as appointmentsService from './service.js';
 import * as slotsService from './slots.service.js';
+import { appointmentSlipPdf } from './slip.js';
 import * as statusService from './status.service.js';
 import type {
   AvailabilityQuery,
@@ -139,3 +141,13 @@ export const completeConsultation = statusAction(
 );
 export const markNoShow = statusAction(statusService.markNoShow, 'Marked as no-show');
 export const undoNoShow = statusAction(statusService.undoNoShow, 'No-show undone');
+
+/** GET /appointments/:id/slip.pdf – the appointment slip (on demand, audited). */
+export async function slipPdf(req: Request, res: Response) {
+  const { buffer, fileName } = await appointmentSlipPdf(
+    currentUser(req),
+    idOf(req),
+    buildRequestMeta(req),
+  );
+  sendPdf(res, buffer, fileName, { download: (req.query as { download?: boolean }).download });
+}

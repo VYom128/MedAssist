@@ -4,6 +4,7 @@ import { authenticate } from '../../middlewares/authenticate.js';
 import { authorize } from '../../middlewares/authorize.js';
 import { validate } from '../../middlewares/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
+import { pdfSchema } from '../payments/validation.js';
 import * as encountersController from './controller.js';
 import { putPrescriptionSchema } from '../prescriptions/validation.js';
 import {
@@ -37,6 +38,14 @@ router.get(
   authorize(ROLES.DOCTOR, ROLES.PATIENT),
   validate(encounterIdSchema),
   asyncHandler(encountersController.getEncounter),
+);
+// The patient-safe visit summary PDF (Phase 10): the patient (own) and doctors who may read it.
+router.get(
+  '/:id/visit-summary.pdf',
+  authenticate,
+  authorize(ROLES.DOCTOR, ROLES.PATIENT),
+  validate(pdfSchema),
+  asyncHandler(encountersController.visitSummaryPdf),
 );
 router.patch(
   '/:id',

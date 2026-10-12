@@ -561,6 +561,13 @@ describe('audit coverage', () => {
     await post(`/follow-up-requests/${toReject.body.data.id}/reject`, reception.auth, {
       reason: 'Please visit the desk',
     });
+    // Phase 10: encounter.visit_summary_download, appointment.slip_download, report.export
+    await api().get(`/api/v1/encounters/${noteId}/visit-summary.pdf`).set(drToday.auth);
+    await api().get(`/api/v1/appointments/${visit._id.toString()}/slip.pdf`).set(reception.auth);
+    const admin10 = await loginAs('admin');
+    await api()
+      .get('/api/v1/reports/appointments?from=2026-01-01&to=2026-01-31&format=csv')
+      .set(admin10.auth);
     emails.restore();
 
     await flushAudit();
