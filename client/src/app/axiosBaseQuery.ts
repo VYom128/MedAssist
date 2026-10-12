@@ -28,6 +28,8 @@ export interface AxiosQueryArgs {
   responseType?: 'blob';
   /** Upload progress 0…1 (multipart uploads from hooks, never from cached endpoints). */
   onUploadProgress?: (fraction: number) => void;
+  /** Overrides the 15 s default (AI calls can run for a minute or more). */
+  timeout?: number;
 }
 
 /** A downloaded file (responseType 'blob'). */
@@ -108,7 +110,7 @@ const tokenOf = (getState: () => unknown) => (getState() as { auth: AuthState })
  */
 export const axiosBaseQuery: BaseQueryFn<AxiosQueryArgs, unknown, ApiQueryError> = async (
   args,
-  { getState, dispatch },
+  { getState, dispatch, signal },
 ) => {
   const send = async () => {
     const token = tokenOf(getState);
@@ -119,6 +121,9 @@ export const axiosBaseQuery: BaseQueryFn<AxiosQueryArgs, unknown, ApiQueryError>
       data: args.data,
       params: args.params,
       headers: { ...args.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      // `.abort()` on a mutation's promise cancels the request (e.g. "Stop waiting").
+      signal,
+      ...(args.timeout ? { timeout: args.timeout } : {}),
       ...(args.responseType ? { responseType: args.responseType } : {}),
       ...(onUploadProgress
         ? {

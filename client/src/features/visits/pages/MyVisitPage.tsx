@@ -5,6 +5,7 @@ import {
   HeartPulse,
   Link2,
   MessageSquareText,
+  Sparkles,
   Stethoscope,
 } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
@@ -23,6 +24,7 @@ import { formatCalendarDate, formatDate, formatDateTime } from '../../../utils/d
 import { isApiQueryError } from '../../../utils/http';
 import { useListInvoicesQuery } from '../../billing/api';
 import { followUpBookingLink, useGetMyVisitQuery, type PatientVisit } from '../api';
+import ExplanationPanel from '../../ai/components/ExplanationPanel';
 
 const num = (v: number | null) => (v === null ? null : String(v));
 
@@ -130,6 +132,25 @@ export default function MyVisitPage() {
         </Alert>
       )}
 
+      {v.aiSummary && (
+        <SectionCard
+          title="AI-assisted summary, reviewed by your doctor"
+          icon={Sparkles}
+          iconTone="consult"
+          description={
+            v.aiSummary.reviewedAt
+              ? `Reviewed by ${v.aiSummary.reviewedBy ?? 'your doctor'} on ${formatDate(v.aiSummary.reviewedAt)}`
+              : undefined
+          }
+        >
+          <p className="text-sm whitespace-pre-line text-body">{v.aiSummary.text}</p>
+          <p className="mt-3 text-xs text-muted">
+            Written with the help of AI and checked by your doctor. If anything is unclear, ask the
+            clinic.
+          </p>
+        </SectionCard>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <SectionCard title="Vitals" icon={HeartPulse} iconTone="danger">
           {vitals.length > 0 ? (
@@ -188,6 +209,11 @@ export default function MyVisitPage() {
           <p className="text-sm text-body">{followUp ?? 'No follow-up visit is planned.'}</p>
           {v.followUp.required && v.followUp.instructions && (
             <p className="mt-2 text-sm text-muted">{v.followUp.instructions}</p>
+          )}
+          {v.followUp.required && (
+            <div className="mt-4">
+              <ExplanationPanel source={{ kind: 'follow_up_plan', id: v.id }} audience="patient" />
+            </div>
           )}
         </SectionCard>
       </div>

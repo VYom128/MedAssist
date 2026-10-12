@@ -37,7 +37,12 @@ describe('/settings', () => {
         currency: 'INR',
         workingDays: [1, 2, 3, 4, 5, 6],
         appointment: { allowPatientSelfBooking: true, bookingWindowDays: 30, minCancelHours: 2 },
-        ai: { explanationLanguages: ['en', 'hi'] },
+        ai: {
+          enabled: true,
+          clinicalSummaryEnabled: true,
+          patientExplanationEnabled: true,
+          explanationLanguages: ['en', 'hi'],
+        },
       });
       expect(Object.keys(res.body.data.appointment).sort()).toEqual([
         'allowPatientSelfBooking',

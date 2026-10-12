@@ -90,7 +90,7 @@ describe('POST /auth/login', () => {
     expect(locked?.lockUntil?.getTime()).toBeGreaterThan(Date.now() + 14 * 60_000);
 
     // The message counts down.
-    await User.updateOne({ _id: user._id }, { $set: { lockUntil: new Date(Date.now() + 61_000) } });
+    await User.updateOne({ _id: user._id }, { $set: { lockUntil: new Date(Date.now() + 90_000) } });
     expect((await login(user.email)).body.message).toMatch(/Try again in 2 minutes/);
     await User.updateOne({ _id: user._id }, { $set: { lockUntil: new Date(Date.now() + 20_000) } });
     expect((await login(user.email)).body.message).toMatch(/Try again in 1 minute or/);

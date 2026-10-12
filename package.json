@@ -26,6 +26,7 @@
     "format:check": "prettier --check .",
     "seed": "npm run seed -w server --",
     "smoke": "npm run smoke -w server",
+    "ai:eval": "npm run ai:eval -w server --",
     "migrate:link-patients": "npm run migrate:link-patients -w server"
   },
   "devDependencies": {

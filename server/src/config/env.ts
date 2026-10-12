@@ -95,6 +95,32 @@ const envSchema = z
         isTestEnv ? path.join(tmpdir(), `medassist-test-uploads-${process.pid}`) : './uploads',
       ),
     MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(50).default(10),
+
+    // AI (spec §9, Phase 9). 'mock' = deterministic output, no network (dev default; tests and
+    // the seed always use it). 'openai_compatible' = any OpenAI-style chat-completions API
+    // (Groq, OpenRouter…) chosen by AI_BASE_URL; the key is then required and never leaves the
+    // server. AI_MODEL is tried first, then each of AI_FALLBACK_MODELS (comma list) in order.
+    AI_PROVIDER: z.enum(['mock', 'openai_compatible']).default('mock'),
+    AI_BASE_URL: z.url().default('https://api.groq.com/openai/v1'),
+    AI_API_KEY: z
+      .string()
+      .trim()
+      .optional()
+      .transform((v) => v || undefined),
+    AI_MODEL: z.string().trim().min(1).default('openai/gpt-oss-120b'),
+    AI_FALLBACK_MODELS: z
+      .string()
+      .default('qwen/qwen3.8-27b,openai/gpt-oss-20b')
+      .transform((v) =>
+        v
+          .split(',')
+          .map((m) => m.trim())
+          .filter(Boolean),
+      ),
+    AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(30_000),
+    AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.2),
+    AI_MAX_TOKENS: z.coerce.number().int().min(256).max(32_000).default(4000),
+    AI_DAILY_CALL_LIMIT: z.coerce.number().int().min(0).max(100_000).default(300),
   })
   .superRefine((env, ctx) => {
     if (env.COOKIE_SAMESITE === 'none' && !env.COOKIE_SECURE) {
@@ -126,6 +152,13 @@ const envSchema = z
         code: 'custom',
         path: ['UPLOAD_DIR'],
         message: 'Must be outside the client folder',
+      });
+    }
+    if (env.AI_PROVIDER === 'openai_compatible' && env.AI_API_KEY === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['AI_API_KEY'],
+        message: 'Required when AI_PROVIDER=openai_compatible',
       });
     }
     if (env.EMAIL_TRANSPORT === 'smtp') {
@@ -193,6 +226,18 @@ export const config = Object.freeze({
     /** Absolute path of the local driver's directory. */
     uploadDir: path.resolve(env.UPLOAD_DIR),
     maxUploadBytes: env.MAX_UPLOAD_MB * 1024 * 1024,
+  }),
+  ai: Object.freeze({
+    /** Tests always use the mock provider, whatever the environment says. */
+    provider: isTestEnv ? ('mock' as const) : env.AI_PROVIDER,
+    baseUrl: env.AI_BASE_URL.replace(/\/+$/, ''),
+    apiKey: env.AI_API_KEY,
+    model: env.AI_MODEL,
+    fallbackModels: Object.freeze([...env.AI_FALLBACK_MODELS]),
+    timeoutMs: env.AI_TIMEOUT_MS,
+    temperature: env.AI_TEMPERATURE,
+    maxTokens: env.AI_MAX_TOKENS,
+    dailyCallLimit: env.AI_DAILY_CALL_LIMIT,
   }),
 });
 

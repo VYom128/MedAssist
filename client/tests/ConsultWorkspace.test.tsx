@@ -71,7 +71,7 @@ describe('Consult workspace', () => {
     expect(alert).toHaveTextContent('Penicillin');
     expect(screen.getByText('Hypertension')).toBeInTheDocument();
     expect(screen.getByText('Fever for 3 days')).toBeInTheDocument();
-    // The AI summary is a later phase: no tab for it.
+    // AI summaries are on in the default public settings (Phase 9).
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual([
       'Vitals',
       'Notes',
@@ -79,6 +79,7 @@ describe('Consult workspace', () => {
       'Prescription',
       'Lab orders',
       'Follow-up',
+      'AI summary',
     ]);
   });
 
@@ -101,7 +102,7 @@ describe('Consult workspace', () => {
     expect(tab('Notes')).toHaveAttribute('aria-selected', 'true');
     expect(tab('Notes')).toHaveFocus();
     await user.keyboard('{End}');
-    expect(tab('Follow-up')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('AI summary')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('autosaves on blur with expectedVersion, then sends the new revision', async () => {

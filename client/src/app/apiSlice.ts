@@ -43,6 +43,9 @@ export const apiSlice = createApi({
     'Visit',
     'FollowUp',
     'FollowUpList',
+    'Summary',
+    'Explanation',
+    'AiInteraction',
   ],
   endpoints: () => ({}),
 });

@@ -2,6 +2,7 @@ import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { connectDB, disconnectDB } from '../config/db.js';
 import { config } from '../config/env.js';
+import { AiInteraction } from '../modules/aiInteractions/model.js';
 import { Appointment } from '../modules/appointments/model.js';
 import { AuditLog } from '../modules/audit/model.js';
 import { Counter } from '../modules/counters/model.js';
@@ -10,6 +11,7 @@ import { DoctorProfile } from '../modules/doctors/model.js';
 import { Document } from '../modules/documents/model.js';
 import { NoteAmendment } from '../modules/encounters/amendment.model.js';
 import { Encounter } from '../modules/encounters/model.js';
+import { PatientExplanation } from '../modules/explanations/model.js';
 import { Invoice } from '../modules/invoices/model.js';
 import { LabOrder } from '../modules/labOrders/model.js';
 import { LabTest } from '../modules/labTests/model.js';
@@ -23,12 +25,14 @@ import { DoctorSchedule } from '../modules/schedules/model.js';
 import { Service } from '../modules/services/model.js';
 import { Session } from '../modules/sessions/model.js';
 import { ClinicSettings } from '../modules/settings/model.js';
+import { ClinicalSummary } from '../modules/summaries/model.js';
 import { clearSettingsCache } from '../modules/settings/service.js';
 import { User } from '../modules/users/model.js';
 import * as audit from '../services/audit.service.js';
 import { setNotificationsMuted } from '../services/notification.service.js';
 import { initStorage } from '../services/storage/index.js';
 import { logger, serializeError } from '../utils/logger.js';
+import { seedAi } from './ai.js';
 import { seedAppointments } from './appointments.js';
 import { seedDepartments } from './departments.js';
 import { seedDocuments } from './documents.js';
@@ -62,11 +66,13 @@ const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = 
   { name: 'documents', run: seedDocuments },
   { name: 'invoices', run: seedInvoices },
   { name: 'followups', run: seedFollowups },
+  { name: 'ai', run: seedAi },
 ];
 
 /**
  * Collections `--reset` empties (raw driver for audit logs, notes, amendments, prescriptions, lab
- * orders, documents, invoices, payments and follow-up requests: Mongoose blocks those deletes).
+ * orders, documents, invoices, payments, follow-up requests and the AI collections: Mongoose blocks
+ * those deletes).
  */
 async function resetData() {
   await Promise.all([
@@ -91,6 +97,9 @@ async function resetData() {
     Payment.collection.deleteMany({}),
     FollowupRequest.collection.deleteMany({}),
     FollowupReminder.deleteMany({}),
+    ClinicalSummary.collection.deleteMany({}),
+    PatientExplanation.collection.deleteMany({}),
+    AiInteraction.collection.deleteMany({}),
     Counter.deleteMany({}), // MRN, APT, ENC, RX, LAB, INV, PAY and sample numbers, queue tokens
   ]);
   // The stored files go with their records (development only – see runSeed).
@@ -151,7 +160,8 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
     logger.info(
       'Wiped users, sessions, audit logs, clinic setup data, patients, appointments, clinical ' +
         'notes, prescriptions, lab orders, documents (and their files), invoices, payments, ' +
-        'follow-up requests and reminders, and counters',
+        'follow-up requests and reminders, AI summaries, explanations and interactions, and ' +
+        'counters',
     );
   }
   await initStorage();

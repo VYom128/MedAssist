@@ -29,7 +29,16 @@ export interface PublicSettings {
     bookingWindowDays: number;
     minCancelHours: number;
   };
-  ai: { explanationLanguages: ExplanationLanguage[] };
+  /**
+   * Phase 9 kill switches. The feature flags already include the master switch: when a flag is
+   * false the client hides that AI feature (the server refuses it with AI_DISABLED anyway).
+   */
+  ai: {
+    enabled: boolean;
+    clinicalSummaryEnabled: boolean;
+    patientExplanationEnabled: boolean;
+    explanationLanguages: ExplanationLanguage[];
+  };
 }
 
 /** `GET /settings` (admin, `toAdminView`). Money in paise, tax in basis points. */

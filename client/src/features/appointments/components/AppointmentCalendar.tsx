@@ -2,7 +2,7 @@ import { format, getDay, parse, startOfWeek } from 'date-fns';
 import { enIN } from 'date-fns/locale';
 import { useMemo } from 'react';
 import { Calendar, dateFnsLocalizer, type SlotInfo } from 'react-big-calendar';
-import withDragAndDrop, {
+import withDragAndDropImport, {
   type EventInteractionArgs,
 } from 'react-big-calendar/lib/addons/dragAndDrop';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
@@ -11,6 +11,12 @@ import { STATUS_STYLES } from '../../../components/ui/statusStyles';
 import { fromClinicWallDate, toClinicWallDate, wallDateString } from '../../../utils/clinicTime';
 import type { CalendarEvent } from '../api';
 import '../calendar.css';
+
+// The add-on is CommonJS: Vite's dev pre-bundle can hand over `module.exports` instead of its default.
+type WithDragAndDrop = typeof withDragAndDropImport;
+const withDragAndDrop: WithDragAndDrop =
+  (withDragAndDropImport as unknown as { default?: WithDragAndDrop }).default ??
+  withDragAndDropImport;
 
 const localizer = dateFnsLocalizer({
   format,

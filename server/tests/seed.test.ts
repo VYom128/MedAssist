@@ -67,6 +67,8 @@ describe('seed', { timeout: 120_000 }, () => {
         remindersAdded: 0,
         unchanged: 0,
       },
+      // Phase 9 (mock provider): tests/seed.ai.test.ts checks the AI data.
+      ai: { summaries: 3, shared: 1, explanations: 3, unchanged: 0 },
     });
 
     const settings = await ClinicSettings.findOne().lean();
@@ -218,6 +220,7 @@ describe('seed', { timeout: 120_000 }, () => {
         remindersAdded: 0,
         unchanged: 15,
       },
+      ai: { summaries: 0, shared: 0, explanations: 0, unchanged: 6 },
     });
     const countsAfter = await Promise.all(
       [User, Department, Service, DoctorProfile, DoctorSchedule, DoctorLeave, LabTest, Patient].map(

@@ -20,6 +20,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  Sparkles,
   Stethoscope,
   UserRound,
   Users,
@@ -389,6 +390,12 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.ADMIN],
     load: () => import('../features/audit/pages/AuditLogsPage'),
     nav: { label: 'Audit logs', icon: ScrollText },
+  },
+  {
+    path: '/admin/ai-monitor',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/ai/pages/AiMonitorPage'),
+    nav: { label: 'AI monitor', icon: Sparkles },
   },
   {
     path: '/doctor/lab-results',

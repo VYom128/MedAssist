@@ -32,6 +32,10 @@ import { Appointment } from '../src/modules/appointments/model.js';
 import { ensureEncounterDraft } from '../src/modules/encounters/draft.js';
 import { Encounter } from '../src/modules/encounters/model.js';
 import { Prescription } from '../src/modules/prescriptions/model.js';
+import { loadEncounter } from '../src/modules/encounters/service.js';
+import { buildSummaryInput } from '../src/modules/summaries/input.js';
+import { ClinicalSummary } from '../src/modules/summaries/model.js';
+import { PatientExplanation } from '../src/modules/explanations/model.js';
 import { withTransaction } from '../src/utils/transaction.js';
 import {
   ALL,
@@ -368,6 +372,37 @@ async function buildContext(role: Role): Promise<Ctx> {
     status: 'open',
     statusHistory: [{ status: 'open', at: new Date() }],
   });
+  // Phase 9: an up-to-date draft AI summary of the signed note (built last: its input hash covers
+  // the note's prescription and lab orders).
+  await Encounter.collection.updateOne(
+    { _id: signedEncounter },
+    { $set: { 'followUp.required': true, 'followUp.afterDays': 7 } },
+  );
+  await PatientExplanation.create({
+    sourceType: 'prescription',
+    sourceId: prescription._id,
+    sourceVersion: 1,
+    patient: patient.id,
+    language: 'en',
+    content: { overview: 'Matrix explanation', medicines: [] },
+    disclaimer: 'Matrix disclaimer',
+    outcome: 'success',
+    cached: true,
+    requestedBy: me.user._id,
+  });
+  const signedNote = await loadEncounter(signedEncounter);
+  const { inputHash } = await buildSummaryInput(signedNote);
+  const summary = await ClinicalSummary.create({
+    encounter: signedEncounter,
+    encounterVersion: signedNote.version,
+    inputHash,
+    patient: patient.id,
+    doctor: doctorId,
+    status: 'draft',
+    finalText: 'Matrix AI summary',
+    generatedBy: doctorId,
+    generatedAt: new Date(),
+  });
   return {
     me,
     targetId: target._id.toString(),
@@ -423,6 +458,7 @@ async function buildContext(role: Role): Promise<Ctx> {
     paidInvoiceId: paidInvoice!._id.toString(),
     paymentId: payment._id.toString(),
     followupId: followup._id.toString(),
+    summaryId: summary._id.toString(),
     n,
   };
 }
@@ -485,6 +521,7 @@ const send = (row: Row, c: Ctx | null) => {
       paidInvoiceId: zero,
       paymentId: zero,
       followupId: zero,
+      summaryId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -528,6 +565,8 @@ describe('RBAC matrix', () => {
       LabOrder.init(),
       Invoice.init(),
       Payment.init(),
+      ClinicalSummary.init(),
+      PatientExplanation.init(),
     ]);
     await resetDb();
     emails = captureEmails(); // welcome and reset emails are sent in the background

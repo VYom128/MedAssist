@@ -182,6 +182,7 @@ export type EncounterEditableField = (typeof ENCOUNTER_EDITABLE_FIELDS)[number];
  */
 export const TIMELINE_TYPES = Object.freeze([
   'appointment',
+  'clinical_summary',
   'document',
   'encounter',
   'followup_request',
@@ -237,6 +238,81 @@ export const FOLLOWUP_RULES = Object.freeze({
  * by at most `overdueDays`, and not yet booked.
  */
 export const FOLLOW_UP_DUE_RULES = Object.freeze({ overdueDays: 14 });
+
+/**
+ * AI clinical summaries (spec §5.7, §6.15, Phase 9): `generating → draft | failed`; a draft is
+ * approved, rejected, or superseded (a newer draft of the same note); an approved summary is
+ * superseded when a newer one is approved (one approved per encounter).
+ */
+export const CLINICAL_SUMMARY_STATUSES = Object.freeze([
+  'generating',
+  'draft',
+  'approved',
+  'rejected',
+  'failed',
+  'superseded',
+] as const);
+export type ClinicalSummaryStatus = (typeof CLINICAL_SUMMARY_STATUSES)[number];
+/** AI features (spec §6.26); each has a kill switch in settings.ai. */
+export const AI_FEATURES = Object.freeze(['clinical_summary', 'patient_explanation'] as const);
+export type AiFeature = (typeof AI_FEATURES)[number];
+/**
+ * One provider attempt: success = usable output; failed = provider error or invalid output;
+ * blocked = valid JSON that the guardrails refused (patient explanations).
+ */
+export const AI_INTERACTION_STATUSES = Object.freeze(['success', 'failed', 'blocked'] as const);
+export type AiInteractionStatus = (typeof AI_INTERACTION_STATUSES)[number];
+/** Why an attempt failed (machine tags only – never provider messages or content). */
+export const AI_FAILURE_REASONS = Object.freeze([
+  'rate_limited',
+  'auth',
+  'timeout',
+  'server_error',
+  'network',
+  'bad_request',
+  'invalid_output',
+  'truncated',
+  'provider_disabled',
+] as const);
+export type AiFailureReason = (typeof AI_FAILURE_REASONS)[number];
+/** Flags the server checks add to an AI output (never content). */
+export const AI_GUARDRAIL_FLAGS = Object.freeze({
+  UNVERIFIED_DIAGNOSIS_REMOVED: 'unverified_diagnosis_removed',
+  UNVERIFIED_MEDICATION_REMOVED: 'unverified_medication_removed',
+  OUTPUT_RETRIED: 'output_retried',
+  FALLBACK_MODEL: 'fallback_model',
+  // Patient explanations (spec §9.3)
+  MEDICINE_NOT_PRESCRIBED: 'medicine_not_prescribed',
+  MEDICINE_MISSING: 'medicine_missing',
+  NUMBER_MISMATCH: 'number_mismatch',
+  FORBIDDEN_PHRASE: 'forbidden_phrase',
+  REGENERATED: 'regenerated',
+  FALLBACK_TEMPLATE: 'fallback_template',
+  AI_UNAVAILABLE: 'ai_unavailable',
+  AI_OUTPUT_INVALID: 'ai_output_invalid',
+  DAILY_LIMIT: 'daily_limit',
+});
+/** What a patient explanation explains (spec §6.17). */
+export const EXPLANATION_SOURCE_TYPES = Object.freeze(['prescription', 'follow_up_plan'] as const);
+export type ExplanationSourceType = (typeof EXPLANATION_SOURCE_TYPES)[number];
+/** How an explanation was produced: the model's text, or the template after a block / failure. */
+export const EXPLANATION_OUTCOMES = Object.freeze(['success', 'blocked', 'failed'] as const);
+export type ExplanationOutcome = (typeof EXPLANATION_OUTCOMES)[number];
+export const AI_RULES = Object.freeze({
+  /** POST /encounters/:id/summary/generate per doctor (spec §7.11). */
+  summaryGenerationsPerMinute: 10,
+  /** A summary stuck in `generating` longer than this (a crashed request) no longer blocks. */
+  generatingStaleMs: 5 * 60_000,
+  finalTextMax: 4000,
+  rejectionReasonMin: 10,
+  rejectionReasonMax: 500,
+  /** Invalid output is retried once on the same model, with the validation problems. */
+  attemptsPerModel: 2,
+  /** NEW patient explanations per user per hour (cached answers are free; spec §9.3). */
+  explanationsPerHour: 10,
+  explanationReadingAge: 12,
+  feedbackCommentMax: 500,
+});
 
 /** Prescription item enums (spec §6.16). */
 export const DRUG_FORMS = Object.freeze([
@@ -481,6 +557,15 @@ export const STATE_MACHINES = Object.freeze({
     closed: [],
     rejected: [],
   } satisfies Record<FollowupRequestStatus, readonly FollowupRequestStatus[]>),
+  /** Spec §5.7 plus `superseded` (Phase 9): see CLINICAL_SUMMARY_STATUSES. */
+  clinicalSummary: Object.freeze({
+    generating: ['draft', 'failed'],
+    draft: ['approved', 'rejected', 'superseded'],
+    approved: ['superseded'],
+    rejected: [],
+    failed: [],
+    superseded: [],
+  } satisfies Record<ClinicalSummaryStatus, readonly ClinicalSummaryStatus[]>),
 });
 export type StateMachine = keyof typeof STATE_MACHINES;
 
@@ -639,6 +724,19 @@ export const AUDIT_ACTIONS = Object.freeze({
   FOLLOWUP_SCHEDULE: 'followup.schedule',
   FOLLOWUP_CLOSE: 'followup.close',
   FOLLOWUP_REJECT: 'followup.reject',
+  /** Phase 9: one AI call (all its attempts) – feature, models, outcome; never content. */
+  AI_CALL: 'ai.call',
+  /** Phase 9: AI clinical summaries (field names and flags only, never text). */
+  SUMMARY_GENERATE: 'summary.generate',
+  SUMMARY_VIEW: 'summary.view',
+  SUMMARY_UPDATE: 'summary.update',
+  SUMMARY_APPROVE: 'summary.approve',
+  SUMMARY_REJECT: 'summary.reject',
+  /** Phase 9: patient explanations (source, language, flags only – never the text). */
+  EXPLANATION_GENERATE: 'explanation.generate',
+  EXPLANATION_BLOCKED: 'explanation.blocked',
+  EXPLANATION_VIEW: 'explanation.view',
+  EXPLANATION_FEEDBACK: 'explanation.feedback',
 } as const);
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 /**
@@ -726,6 +824,7 @@ export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
 /** Languages AI patient explanations support (spec §9.3). */
 export const EXPLANATION_LANGUAGES = Object.freeze(['en', 'hi'] as const);
+export type ExplanationLanguage = (typeof EXPLANATION_LANGUAGES)[number];
 
 /** Billable service types (spec §6.7). */
 export const SERVICE_TYPES = Object.freeze(['consultation', 'procedure', 'other'] as const);
@@ -982,6 +1081,10 @@ export const ERROR_CODES = Object.freeze({
   AI_DISABLED: 'AI_DISABLED',
   AI_UNAVAILABLE: 'AI_UNAVAILABLE',
   AI_OUTPUT_INVALID: 'AI_OUTPUT_INVALID',
+  // Not in §16 (Phase 9): approving an AI summary of a note that is not signed yet.
+  NOTE_NOT_SIGNED: 'NOTE_NOT_SIGNED',
+  // Not in §16 (Phase 9): the note changed after the AI summary was generated – regenerate.
+  SUMMARY_OUTDATED: 'SUMMARY_OUTDATED',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const);
 
@@ -1032,6 +1135,8 @@ export const ERROR_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = Object.fre
   AI_DISABLED: 403,
   AI_UNAVAILABLE: 503,
   AI_OUTPUT_INVALID: 503,
+  NOTE_NOT_SIGNED: 422,
+  SUMMARY_OUTDATED: 409,
   INTERNAL_ERROR: 500,
 });
 

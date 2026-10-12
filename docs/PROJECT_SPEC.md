@@ -196,7 +196,7 @@ flowchart LR
 | Files | Multer → storage adapter (local in dev, S3/Cloudinary in prod) | |
 | PDF | PDFKit | Invoices, prescriptions, lab reports, visit summaries |
 | Email | Nodemailer (Ethereal in dev) | |
-| AI | Anthropic Claude API via `@anthropic-ai/sdk` | Model set by env; `mock` provider for dev/tests |
+| AI | Any OpenAI-compatible chat-completions API (Groq by default, OpenRouter etc. by `AI_BASE_URL`) through Node's `fetch` – no vendor SDK | `AI_MODEL` + ordered `AI_FALLBACK_MODELS`; `mock` provider for dev, tests and the seed (Phase 9, D169) |
 | Frontend | React 18, Vite, React Router v6 | |
 | State | Redux Toolkit + RTK Query | Access token in memory only |
 | UI | Tailwind CSS, Headless UI, react-big-calendar, Recharts, react-hot-toast | |
@@ -280,10 +280,15 @@ client/src/
 | `COOKIE_SECURE` | false (dev) / true (prod) | |
 | `COOKIE_SAMESITE` | lax (dev) / none (prod cross-site) | |
 | `BCRYPT_ROUNDS` | 12 | |
-| `AI_PROVIDER` | anthropic / mock | |
-| `ANTHROPIC_API_KEY` | … | Only when provider = anthropic |
-| `AI_MODEL` | (Claude model id) | Keep configurable |
-| `AI_TIMEOUT_MS` | 30000 | |
+| `AI_PROVIDER` | mock / openai_compatible | `mock` = deterministic output, no network (dev default; tests and the seed always use it; production refuses AI calls with it) |
+| `AI_BASE_URL` | https://api.groq.com/openai/v1 | Chat-completions base URL (the server calls `<AI_BASE_URL>/chat/completions`); OpenRouter: `https://openrouter.ai/api/v1` |
+| `AI_API_KEY` | gsk_… | Required when provider = openai_compatible. Server only – never logged, stored or sent to the client |
+| `AI_MODEL` | openai/gpt-oss-120b | Tried first |
+| `AI_FALLBACK_MODELS` | qwen/qwen3.8-27b,openai/gpt-oss-20b | Comma list, tried in order when the model before fails (D170) |
+| `AI_TIMEOUT_MS` | 30000 | Per attempt |
+| `AI_TEMPERATURE` | 0.2 | |
+| `AI_MAX_TOKENS` | 4000 | Output tokens per attempt |
+| `AI_DAILY_CALL_LIMIT` | 300 | Provider attempts per clinic day, all features (D172) |
 | `STORAGE_DRIVER` | local / s3 / cloudinary | |
 | `UPLOAD_DIR` | ./uploads | local driver |
 | `MAX_UPLOAD_MB` | 10 | |
@@ -509,7 +514,7 @@ Order status is derived from its items where relevant (e.g. `result_entered` onl
 `open → in_review → (scheduled | responded | closed | rejected)`; `responded → open` if the patient replies.
 
 ### 5.7 AI clinical summary
-`generating → draft → (approved | rejected)`; `failed` if the AI call or validation fails (can retry). Only one `approved` summary per encounter version; regenerating after approval creates a new draft and keeps the old approved one until the new one is approved.
+`generating → draft → (approved | rejected | superseded)`, `approved → superseded`; `generating → failed` if the AI call or validation fails (generate again). A newer draft supersedes the previous draft, and approving a draft supersedes the previous approved summary, so there is at most one draft and one `approved` summary per encounter (unique partial index). Regenerating after approval keeps the approved one until the new draft is approved. Approval needs a signed (or amended) note and a summary that is still current – generated from the note as it is now (`encounterVersion` and the input hash) – else 422 `NOTE_NOT_SIGNED` / 409 `SUMMARY_OUTDATED` (Phase 9, D174).
 
 ### 5.8 User account
 `active ⇄ inactive` (admin). `locked` is temporary (`lockUntil` after 5 failed logins in 15 min, 15-minute lock). `mustChangePassword` forces the change-password screen after login.
@@ -816,8 +821,9 @@ append-only: no updates, no deletes
 {
   encounter: ObjectId ref Encounter, required, indexed
   encounterVersion: Number, required
+  inputHash: String, required                // SHA-256 of the de-identified input (outdated check, Phase 9)
   patient: ObjectId ref Patient, doctor: ObjectId ref User
-  status: enum ['generating','draft','approved','rejected','failed']
+  status: enum ['generating','draft','approved','rejected','failed','superseded']
   aiDraft: {                                // raw validated AI output (see §9.2)
     oneLineSummary, presentingComplaint, keyFindings: [String], vitalsHighlights: [String],
     assessment, plan: [String], medications: [String], investigations: [String],
@@ -825,11 +831,18 @@ append-only: no updates, no deletes
   }
   finalText: String, max 4000              // doctor-edited text that is shown after approval
   editedByDoctor: Boolean
-  aiInteraction: ObjectId ref AiInteraction
-  reviewedBy: ObjectId ref User, reviewedAt: Date, rejectionReason: String
+  shareWithPatient: Boolean                 // ticked on approval (Phase 9)
+  serverFlags: [String]                     // what the server checks removed/noticed – flags only
+  promptVersion: String, model: String, isFallbackModel: Boolean
+  aiInteraction: ObjectId ref AiInteraction, callId: String
+  errorCode: String                         // failed: AI_UNAVAILABLE / AI_OUTPUT_INVALID
+  generatedBy: ObjectId ref User, generatedAt: Date
+  reviewedBy: ObjectId ref User, reviewedAt: Date, rejectionReason: String (10–500)
+  supersededAt: Date
 }
-indexes: { encounter: 1, status: 1 }
+indexes: { encounter: 1, status: 1 } · { encounter: 1 } unique where status = 'approved' · { encounter: 1 } unique where status = 'generating' · { patient: 1, reviewedAt: -1, _id: -1 } (timeline)
 ```
+Phase 9: reviewed summaries are locked in the model (only `status: superseded` + `supersededAt` may change); summaries are never deleted.
 
 ### 6.16 `prescriptions`
 ```js
@@ -868,22 +881,30 @@ Phase 5 (D108–D113): a reissue sets the old prescription `cancelled` + `isCurr
 {
   sourceType: enum ['prescription','follow_up_plan'], required
   sourceId: ObjectId, required
-  sourceVersion: Number, required
+  sourceVersion: Number, required           // prescription: reissue generation (1, 2…); follow-up plan: note version
   patient: ObjectId ref Patient, required, indexed
   language: enum ['en','hi'], required
   content: {
     overview: String,
     medicines: [{ name, whatToDo, whenToTake, howLong, tips: [String] }],
     followUp: String,
+    questionsToAskDoctor: [String],
     whenToContactClinic: [String]           // generic safety-net advice from a fixed list, not diagnosis
   }
   disclaimer: String                        // added by the server, not the model
   guardrailFlags: [String]
-  aiInteraction: ObjectId ref AiInteraction
-  feedback: { helpful: Boolean, comment: String, at: Date }
+  isFallback: Boolean                       // the deterministic template instead of the model's text
+  outcome: enum ['success','blocked','failed']
+  cached: Boolean                           // the patient's cached answer for (source, version, language)
+  preview: Boolean                          // a doctor's preview – never served to the patient
+  requestedBy: ObjectId ref User
+  promptVersion: String, model: String
+  aiInteraction: ObjectId ref AiInteraction, callId: String
+  feedback: { helpful: Boolean, comment: String max 500, at: Date, by: ObjectId ref User }
 }
-indexes: { sourceType: 1, sourceId: 1, sourceVersion: 1, language: 1 } unique
+indexes: { sourceType: 1, sourceId: 1, sourceVersion: 1, language: 1 } unique where cached = true · { patient: 1, createdAt: -1 } · { createdAt: -1 } · { 'feedback.at': -1 } sparse
 ```
+Phase 9 (D176): content is locked after creation (only `feedback` is set later). A template written because the AI was unavailable is returned but not cached, so the next request tries the AI again; a template after a guardrail block is cached.
 
 ### 6.18 `followup_requests`
 ```js
@@ -1094,18 +1115,22 @@ append-only (hooks block update/delete); index { patient: 1, at: -1 }, { 'actor.
 ### 6.26 `ai_interactions`
 ```js
 {
+  callId: String, required                    // one AI call = several attempts (retry, fallback models)
+  attempt: Number, required                   // 1, 2, … within the call
   feature: enum ['clinical_summary','patient_explanation'], required
   user: ObjectId ref User, patient: ObjectId ref Patient
   source: { type: String, id: ObjectId, version: Number }
-  provider: String, model: String, promptVersion: String ('clinicalSummary.v1')
+  provider: String, model: String, isFallback: Boolean, promptVersion: String ('clinicalSummary.v1')
   inputHash: String                           // SHA-256 of the de-identified input (no raw PHI stored)
   status: enum ['success','failed','blocked']
-  errorCode: String
+  errorReason: enum ['rate_limited','auth','timeout','server_error','network','bad_request','invalid_output','truncated','provider_disabled']
   guardrailFlags: [String]
   usage: { inputTokens: Number, outputTokens: Number }
   latencyMs: Number
 }
+indexes: { createdAt: -1 } (daily budget, monitor) · { callId: 1, attempt: 1 } unique · { user: 1, feature: 1, attempt: 1, createdAt: -1 } (rate limits)
 ```
+Phase 9 (D171): one row per provider **attempt** (not per call), append-only. Never the prompt, input or output – the provider's error message isn't stored either (it can echo input); `errorReason` is a fixed tag.
 
 ### 6.27 `counters`
 ```js
@@ -1486,12 +1511,13 @@ Inside a MongoDB transaction:
 ## 9. AI features
 
 ### 9.1 Architecture & shared rules
-- All AI goes through `server/src/ai/ai.service.js`. Providers: `anthropic` (Claude API through `@anthropic-ai/sdk`) and `mock` (deterministic fake output for dev and tests). Chosen by `AI_PROVIDER`. The model name comes from `AI_MODEL`.
+- All AI goes through `server/src/ai/ai.service.js` (`generateJson`). Providers (`ai/providers`, one interface): `openai_compatible` – any OpenAI-style chat-completions API (Groq by default, OpenRouter and the like by `AI_BASE_URL` alone), called with Node's `fetch`, JSON mode, an `AbortController` deadline and no vendor SDK – and `mock` (deterministic output built from the de-identified input, no network) for dev, tests and the seed. Chosen by `AI_PROVIDER`; production with `mock` refuses AI calls (503) rather than show fake output (Phase 9, D169).
+- **Model fallback:** `AI_MODEL` is tried first, then each of `AI_FALLBACK_MODELS` in order. A 429, 5xx, timeout, network error or a second unusable reply moves on to the next model; an auth failure stops the call (the key is shared). The model used and whether it was a fallback are stored with the output and shown to the doctor and the admin monitor (D170).
 - Prompts are versioned files (`prompts/clinicalSummary.v1.js`) and the version is stored with every output.
-- **De-identification before sending:** no name, MRN, phone, email, address, exact DOB. Send age in years and sex only. Replace any names found in free text with `[name]` (simple pass using the patient's and doctor's known names).
-- Ask for **JSON output** matching a Zod schema. Validate; on failure retry once with the error; then mark `failed` → `503 AI_OUTPUT_INVALID` / UI shows "Couldn't generate, write manually".
-- Timeouts (`AI_TIMEOUT_MS`), rate limits per user, and the settings kill-switches (`settings.ai.*`).
-- Every call writes an `ai_interactions` record and an audit entry. Never log prompts or outputs to application logs.
+- **De-identification before sending:** no name, MRN, phone, email, address, exact DOB. Send age in years and sex only. Replace any names found in free text with `[name]` (simple pass using the patient's and doctor's known names) and remove anything that looks like a phone number, email address or record number (`ai/deidentify.js`; inputs are built from structured fields only, never whole records – the summary from the note, the explanation from the patient-safe prescription / follow-up fields).
+- Ask for **JSON output** matching a Zod schema. Replies are reduced to their first balanced `{…}` object before parsing (models still add code fences, `<think>` blocks or a sentence around it). Validate; on failure retry once on the same model with the validation problems (paths and messages only); then the next model; when every model fails → `503 AI_OUTPUT_INVALID` (or `AI_UNAVAILABLE`) / UI shows "Couldn't generate, write manually" (D170).
+- Timeouts (`AI_TIMEOUT_MS`), rate limits per user (summaries 10 per minute per doctor; new explanations 10 per hour per user – cached answers are free), a **daily budget** of provider attempts for the whole clinic (`AI_DAILY_CALL_LIMIT`, clinic day, checked before every attempt → `503 AI_UNAVAILABLE` "Daily AI limit reached", `details.reason: 'daily_limit'`, D172), and the settings kill-switches (`settings.ai.enabled` master + `clinicalSummaryEnabled`, `patientExplanationEnabled`, `explanationLanguages` → `403 AI_DISABLED`; reading stored summaries still works).
+- Every provider attempt writes an `ai_interactions` row and every call one `ai.call` audit entry (provider, models, attempts, failure tags – never content). Never log prompts, inputs, outputs or the provider's error messages; the API key is read only by the provider and never logged, stored or sent to the client (D171).
 - AI features must degrade gracefully: the clinic works fully with AI turned off.
 
 ### 9.2 Clinical summary (doctor-facing)
@@ -1542,7 +1568,8 @@ Inside a MongoDB transaction:
 ### 9.4 AI testing
 - Unit tests with the `mock` provider for all flows.
 - Guardrail tests with fixed "bad" outputs (invented drug, changed dose, diagnosis wording) → must be blocked.
-- A small eval script (`npm run ai:eval`) runs 10 seeded encounters against the real provider and prints flagged outputs for manual review.
+- A small eval script (`npm run ai:eval -- --confirm [--limit 5]`) runs the clinical summary on `limit` seeded signed notes and the explanation (English + Hindi) on `limit` seeded issued prescriptions through the real service path and prints one row per item – model used, attempts, status, flags, template fallback, latency, tokens – never patient data, inputs or outputs. It refuses with the mock provider or without `--confirm` and stops at the daily limit (Phase 9, D178).
+- Tests and the seed never reach the network: tests force the mock provider (config) and the server test setup replaces `fetch` with one that throws; the client tests fail on any unmocked request (MSW `onUnhandledRequest: 'error'`).
 
 ---
 
@@ -1784,8 +1811,10 @@ Reports (§7.18) render as table + chart, filterable by date range, exportable t
 | `UNSUPPORTED_FILE_TYPE` | 415 | Not PDF/JPG/PNG by its first bytes (magic numbers) – the name and Content-Type are ignored (Phase 6, D129) |
 | `RATE_LIMITED` | 429 | Too many requests |
 | `AI_DISABLED` | 403 | Turned off in settings or patient withdrew consent |
-| `AI_UNAVAILABLE` | 503 | Provider error/timeout |
+| `AI_UNAVAILABLE` | 503 | Provider error/timeout, every model failed, or the daily AI limit reached (`details.reason: 'daily_limit'`); "busy" with `details.retryAfter` when every model was rate limited |
 | `AI_OUTPUT_INVALID` | 503 | Output failed validation/guardrails twice |
+| `NOTE_NOT_SIGNED` | 422 | Approving an AI summary of a note that is not signed yet (Phase 9) |
+| `SUMMARY_OUTDATED` | 409 | The note changed after the AI summary was generated – regenerate (Phase 9) |
 | `INTERNAL_ERROR` | 500 | Unexpected |
 
 ---
@@ -1807,7 +1836,7 @@ Reports (§7.18) render as table + chart, filterable by date range, exportable t
 |---|---|
 | Local | MongoDB via Docker as a **single-node replica set** (`mongo --replSet rs0` + `rs.initiate()`) or Atlas free tier; Ethereal SMTP; `AI_PROVIDER=mock` by default |
 | Test | mongodb-memory-server replica set; mock AI; email disabled |
-| Production (demo) | API on Render/Railway, client on Vercel/Netlify, MongoDB Atlas (M0/M10), files on Cloudinary/S3, real SMTP (e.g. Brevo/Resend), `AI_PROVIDER=anthropic` |
+| Production (demo) | API on Render/Railway, client on Vercel/Netlify, MongoDB Atlas (M0/M10), files on Cloudinary/S3, real SMTP (e.g. Brevo/Resend), `AI_PROVIDER=openai_compatible` (Groq) with `AI_API_KEY` set as a secret |
 
 - CORS: `CLIENT_URL` only. Cookies `SameSite=None; Secure` because client and API are on different domains.
 - `trust proxy` enabled.
@@ -2027,3 +2056,17 @@ Phase 1 key decisions: patient self-registration creates a User only, with no Pa
 | D163 | 2026-10-08 | **Sockets**: receptionists join `role:receptionist`; `followup.updated` `{ requestId }` to the assigned doctor(s), the patient's account (when the change is visible to them) and reception. | Live inbox. |
 | D164 | 2026-10-08 | **Seed**: 15 follow-up requests from the portal patients through the real services (every status and type, an internal note, two booked visits, a rejection, patient1's referral letter as an attachment), back-dated over three weeks; diagnoses shared on about half the notes; three notes amended to a follow-up due in two days (patient1's among them) and one overdue; reminders for every planned follow-up. `--reset` clears requests and reminders. patient1 is seeded at the clinic's limit of 3 upcoming visits, so booking the follow-up online first needs a cancellation (the wizard says so). | Demo data. |
 | D165 | 2026-10-08 | **Client**: a reusable `Timeline` (infinite RTK Query on the cursor, month groups, type icons, status pills, filter chips and dates, Load more, compact variant) on the doctor's patient page (default tab), the consult side panel (replacing the Phase 5 history panel), reception's patient page and `/patient/timeline`; patient visits and visit summary, prescriptions (active/past, plain words, print), a home built from existing endpoints (Phase 10 replaces it), a phone bottom bar for patients; follow-up pages for patients (emergency banner always visible), and a reception/doctor inbox with status tabs, counts, a split view, internal notes, assign/schedule/close/reject and sidebar badges. | §13.1, §13.4. |
+| D166 | 2026-10-12 | **Shared AI summary on the patient's visit**: the patient-safe visit view (`GET /encounters/:id` for patients) carries `aiSummary` `{ text, reviewedBy, reviewedAt }` – the approved summary's final text, only when the doctor ticked "Share with patient", never the AI draft or flags. Timeline items still carry no summary text; doctors' summary items get a `shared_with_patient` flag. | The patient card "AI-assisted summary, reviewed by your doctor" needs the text (§9.2). |
+| D167 | 2026-10-12 | **AI monitor charts**: `GET /ai/interactions/summary` adds `perDay` (every clinic day of the range: attempts, failed, blocked, tokens). The client uses Recharts (installed in Phase 9, not Phase 10) for the admin AI monitor only. | §7.18. |
+| D168 | 2026-10-12 | **AI on the client**: AI buttons follow the public settings flags (`enabled` + per feature, already combined); an `AI_DISABLED` reply hides them at once and refreshes the flags. AI requests time out after 3 min on the client (the server tries several models) and "Stop waiting" cancels the request only – a draft that still finishes appears on the next load. Approve needs the whole draft scrolled through, a signed note, a current summary and saved text. Explanations default to the patient's preferred language; Devanagari falls back to Noto Sans Devanagari (loaded only for those characters). | §9.2, §9.3 UI rules. |
+| D169 | 2026-10-12 | **AI provider**: an `openai_compatible` provider (any OpenAI-style chat-completions API – Groq by default, OpenRouter by changing `AI_BASE_URL` only) with Node's `fetch`, JSON mode and an `AbortController` deadline instead of `anthropic` / `@anthropic-ai/sdk`; new env vars `AI_BASE_URL`, `AI_API_KEY`, `AI_FALLBACK_MODELS`, `AI_TEMPERATURE`, `AI_MAX_TOKENS`, `AI_DAILY_CALL_LIMIT`. `mock` stays the dev default; tests and the seed always use it; production with `mock` refuses AI calls (503) instead of showing fake text. | Free-tier open models fit a capstone budget; one small provider works with several vendors and is easy to stub in tests. |
+| D170 | 2026-10-12 | **Model fallback and JSON handling**: `AI_MODEL` then `AI_FALLBACK_MODELS` in order. Replies are cut to the first balanced `{…}` before parsing; invalid JSON or a Zod failure (or a truncated reply) is retried once on the same model with the validation problems (paths and messages only); 429 / 5xx / timeout / network / a second invalid reply → next model; auth failure → stop. Every model failed → 503 `AI_OUTPUT_INVALID` (all invalid) or `AI_UNAVAILABLE` ("busy" + `retryAfter` when all were rate limited). The model used and `isFallbackModel` are stored and shown. | Open models in JSON mode still wrap or truncate output; a second model rescues most failures. |
+| D171 | 2026-10-12 | **`ai_interactions` per attempt**: one append-only row per provider attempt (`callId`, `attempt`, `model`, `isFallback`, `errorReason` tag, flags, tokens, latency, input hash) and one `ai.call` audit entry per call. No prompt, input, output or provider error message anywhere (logs, audit, `ai_interactions`); `AI_API_KEY` is read only by the provider, redacted in logs and never in a response (`GET /ai/config` shows the base-URL host only). | The monitor needs per-model failure rates and budget counts; the provider's error text can echo input. |
+| D172 | 2026-10-12 | **Daily AI budget** `AI_DAILY_CALL_LIMIT` (default 300): every attempt of every feature counts, per clinic day; checked before each attempt (a fallback chain stops at the limit) → 503 `AI_UNAVAILABLE` "Daily AI limit reached" (`details.reason: 'daily_limit'`). Explanations then get the template; the client says AI is back tomorrow. Cached explanations never count. | Protects the free-tier quota and the clinic's bill from a loop or abuse. |
+| D173 | 2026-10-12 | **De-identification**: inputs are built from structured fields only (`summaries/input.ts` from the note, `explanations/input.ts` from the patient-safe prescription / follow-up fields): age in years and sex, no name, MRN, phone, email, address or date of birth; free text is scrubbed (`ai/deidentify.ts`: the patient's, doctor's and emergency contact's names → `[name]`; phone numbers, emails and record numbers → `[removed]`). The mock receives exactly what a real provider would, so tests assert on it. | §9.1, made checkable. |
+| D174 | 2026-10-12 | **Summary lifecycle**: new state `superseded` (a newer draft replaces the draft; a new approval replaces the approved one) – at most one draft and one approved per note (unique partial indexes, also one `generating`; a `generating` row older than 5 min no longer blocks). Generating works on a draft note; **approving needs a signed/amended note (422 `NOTE_NOT_SIGNED`) and a current summary** – same `encounterVersion` and input hash (409 `SUMMARY_OUTDATED`). Edits use `expectedVersion`; reject needs a 10–500-character reason; reviewed summaries are locked in the model and never deleted. 10 generations per minute per doctor. | A summary must match the note the doctor signed. |
+| D175 | 2026-10-12 | **Summary checks and sharing**: the server strips diagnoses not documented in the note (`unverified_diagnosis_removed`) and medicines not prescribed (`unverified_medication_removed`); flags `output_retried`, `fallback_model`. Approved summaries are a timeline source for the doctor (with `shared_with_patient`) and – only when approved **and** `shareWithPatient` – for the patient (D166). | §9.2; §20 open question 4. |
+| D176 | 2026-10-12 | **Explanation flow**: `POST /prescriptions/:id/explain` and `POST /encounters/:id/follow-up/explain` `{ language }` (patients: own issued prescriptions / signed plans; doctors: preview with the care relationship, never cached for the patient). Guardrails (medicine match, numbers + units, forbidden phrases) → one regeneration with the broken rules → the deterministic template (`outcome: blocked`, cached). AI unavailable / invalid / daily limit → the template, **not cached** (`outcome: failed`). Cache per (source, version, language): a hit makes no AI call and costs neither rate limit nor budget. 10 new explanations per hour per user. Consent `consent.aiExplanations` refused, a feature switch off or a language not enabled → 403 `AI_DISABLED`. Feedback 👍/👎 + comment ≤ 500 on prescription explanations. | §9.3 with a cost-free cache and a patient who always gets help. |
+| D177 | 2026-10-12 | **Fixed patient texts**: the disclaimer and the "when to contact the clinic" list come from `data/safetyNet.ts` (English and Hindi), never from the model; the forbidden-phrase lists live in `data/forbiddenPhrases.ts` (English matched at a word start, Hindi after nukta/chandrabindu normalisation; a phrase the doctor wrote may be restated). **The Hindi texts and phrase list are drafts awaiting clinical/language review.** Output adds `questionsToAskDoctor`. | One reviewed place for every fixed safety text. |
+| D178 | 2026-10-12 | **`npm run ai:eval -- --confirm [--limit 5]`** runs `limit` seeded notes (summary) and `limit` seeded prescriptions (explanation in en + hi) through the real service path and prints metrics only; refuses with `mock` or without `--confirm`; stops at the daily limit; writes only `ai_interactions` and audit rows. Default 5, not 10, to fit free-tier limits. | §9.4 without spending the quota by accident. |
+| D179 | 2026-10-12 | **Seeded AI data is demo data only**: the seed always forces the mock provider and creates three approved summaries (patient1's shared) and patient1's cached explanations through the real services. Their text is mock output built from the de-identified input – not a real model's – although the `model` field shows the configured `AI_MODEL`; `ai_interactions` and audit rows say `provider: mock`. Re-running creates nothing. | Demo screens need AI content without a key or network; never present it as real AI output. |

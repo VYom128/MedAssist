@@ -25,6 +25,7 @@ import { useCurrentPrescription } from '../useCurrentPrescription';
 import { usePrescriptionDraft } from '../usePrescriptionDraft';
 import PrescriptionEditor from './PrescriptionEditor';
 import PrescriptionItems from './PrescriptionItems';
+import ExplanationPanel from '../../ai/components/ExplanationPanel';
 
 /**
  * The prescription of a signed note (spec §5.3): issued → read-only with Print, Cancel (reason)
@@ -142,6 +143,11 @@ export default function SignedPrescription({
             <span className="tabular">{rx.prescriptionNumber}</span>
           </p>
           <PrescriptionItems prescription={rx} />
+          {(rx.status === 'issued' || rx.status === 'completed') && (
+            <div className="border-t border-line pt-4">
+              <ExplanationPanel source={{ kind: 'prescription', id: rx.id }} audience="doctor" />
+            </div>
+          )}
         </div>
       )}
       {rx?.status === 'draft' && canChange && (

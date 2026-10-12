@@ -6,6 +6,7 @@ import {
   MessageSquare,
   Pill,
   Receipt,
+  Sparkles,
   Wallet,
   type LucideIcon,
 } from 'lucide-react';
@@ -31,6 +32,12 @@ export const TYPE_LOOK: Record<
     label: 'Follow-up requests',
     domain: 'followup',
   },
+  clinical_summary: {
+    icon: Sparkles,
+    tone: 'consult',
+    label: 'AI summaries',
+    domain: 'clinicalSummary',
+  },
 };
 
 /** Flags worth a badge; anything else the server sends is ignored. */
@@ -44,6 +51,8 @@ export const FLAG_BADGES: Record<
   follow_up_planned: { label: 'Follow-up planned', tone: 'info' },
   follow_up: { label: 'Follow-up visit', tone: 'neutral' },
   walk_in: { label: 'Walk-in', tone: 'neutral' },
+  ai_assisted: { label: 'AI-assisted · reviewed', tone: 'info' },
+  shared_with_patient: { label: 'Shared with patient', tone: 'neutral' },
 };
 
 /** Groups items (already newest first) by clinic month: [['October 2026', items], …]. */

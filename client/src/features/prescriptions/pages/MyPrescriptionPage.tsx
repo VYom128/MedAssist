@@ -12,6 +12,7 @@ import { formatDate } from '../../../utils/dates';
 import { isApiQueryError } from '../../../utils/http';
 import { useGetPrescriptionQuery } from '../api';
 import { plainItem } from '../format';
+import ExplanationPanel from '../../ai/components/ExplanationPanel';
 
 /**
  * /patient/prescriptions/:id – the patient's prescription in plain words ("1 tablet, twice a
@@ -78,7 +79,11 @@ export default function MyPrescriptionPage() {
             {p.generalInstructions}
           </p>
         )}
-        {/* Phase 9 adds "Explain in simple words" here (AI, spec §9.3). */}
+        {(p.status === 'issued' || p.status === 'completed') && (
+          <div className="mt-5 border-t border-line pt-5">
+            <ExplanationPanel source={{ kind: 'prescription', id: p.id }} audience="patient" />
+          </div>
+        )}
       </SectionCard>
       <p className="text-sm text-muted">
         Questions about your medicines?{' '}
