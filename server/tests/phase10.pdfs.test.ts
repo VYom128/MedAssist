@@ -12,6 +12,7 @@ import {
   loginAsPatient,
   readyToSign,
   rxItem,
+  setSettings,
   signNote,
   useMiddayClinicZone,
 } from './helpers/fixtures.js';
@@ -187,5 +188,20 @@ describe('GET /appointments/:id/slip.pdf', () => {
     const res = await binary(admin, `/appointments/${a._id.toString()}/slip.pdf`);
     expect(res.status).toBe(200);
     expect(pdfText(res.body)).toContain(a.appointmentNumber);
+  });
+
+  it('prints the time in the clinic timezone, not UTC', async () => {
+    await setSettings({ timezone: 'Asia/Kolkata' });
+    const doctor = await loginAsDoctor();
+    const p = await createPatient();
+    const a = await insertAppointment({
+      patient: p.id,
+      doctor: doctor.id,
+      startAt: new Date('2026-12-01T04:00:00.000Z'), // 09:30 in Kolkata
+    });
+    const admin = await loginAs('admin');
+    const text = pdfText((await binary(admin, `/appointments/${a._id.toString()}/slip.pdf`)).body);
+    expect(text).toContain('01 Dec 2026, 9:30 AM');
+    expect(text).not.toContain('4:00 AM');
   });
 });

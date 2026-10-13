@@ -21,8 +21,8 @@ Phase-by-phase plan for building MedAssist. Details for every item are in `docs/
 | 7 | Billing | ✅ Done |
 | 8 | Patient timeline, portal and follow-ups | ✅ Done |
 | 9 | AI features | ✅ Done |
-| 10 | Dashboards, notifications, reports and printing | 🟡 In progress |
-| 11 | Testing, polish and deployment | ⬜ Not started |
+| 10 | Dashboards, notifications, reports and printing | ✅ Done |
+| 11 | Testing, polish and deployment | 🟡 In progress |
 
 Status key: ⬜ Not started · 🟡 In progress · ✅ Done
 
@@ -431,7 +431,7 @@ At 360 px: worklist rows become cards, the results grid stacks, nothing scrolls 
 - [x] Tests: totals and rounding, overpayment, refund, void
 
 **Done when:** a completed visit produces an invoice that can be paid in parts and printed.
-Verified 2026-10-07: `npm run lint`, `npm run format:check`, `npm run typecheck` clean; `npm test` (server + client, incl. the 10-parallel-payments and 20-parallel-issues races) run 3 times in a row – __TESTRUNS__. `npm run seed -- --reset` then `npm run seed` (second run creates nothing: 215 invoices unchanged). Every seeded invoice checked through the HTTP API (215: lines, Σ line totals, amount paid = Σ payments with refunds negative, balance = total − paid, status matches the amounts, list totals) – no mismatch. `npm run smoke` (70 checks, twice) now has Phase 7 checks. The manual test script below was run end-to-end over the HTTP API against a separate API instance on the seeded DB (26 checks, all passed): sign with 2 lab tests → draft with consultation + 2 tests → dressing added → 20 % discount refused for reception → issue → partial UPI → cash for the rest → part of the cash refunded → invoice + 3 receipt PDFs (₹, amount in words, masked reference, REFUND label; a void invoice shows VOID) → day close totals → admin approves a 30 % discount on another draft → the lab cancels a test on the issued invoice → flagged under "Needs attention" with the invoice unchanged → patient1 lists and downloads own invoices (no drafts), 404 on someone else's, doctors and lab techs 403. **Not checked in a real browser by Claude** – please run the script below in the UI.
+Verified 2026-10-07: `npm run lint`, `npm run format:check`, `npm run typecheck` clean; `npm test` (server + client, incl. the 10-parallel-payments and 20-parallel-issues races) run 3 times in a row (the per-run result was not recorded when this note was written; the full suite has been green at every later phase). `npm run seed -- --reset` then `npm run seed` (second run creates nothing: 215 invoices unchanged). Every seeded invoice checked through the HTTP API (215: lines, Σ line totals, amount paid = Σ payments with refunds negative, balance = total − paid, status matches the amounts, list totals) – no mismatch. `npm run smoke` (70 checks, twice) now has Phase 7 checks. The manual test script below was run end-to-end over the HTTP API against a separate API instance on the seeded DB (26 checks, all passed): sign with 2 lab tests → draft with consultation + 2 tests → dressing added → 20 % discount refused for reception → issue → partial UPI → cash for the rest → part of the cash refunded → invoice + 3 receipt PDFs (₹, amount in words, masked reference, REFUND label; a void invoice shows VOID) → day close totals → admin approves a 30 % discount on another draft → the lab cancels a test on the issued invoice → flagged under "Needs attention" with the invoice unchanged → patient1 lists and downloads own invoices (no drafts), 404 on someone else's, doctors and lab techs 403. **Not checked in a real browser by Claude** – please run the script below in the UI.
 
 Final check: no float maths on money (billing maths only in `invoices/calc.ts` and the client preview `billing/calc.ts`, both integer/BigInt; display formatting in the money utils; the seed's demo amounts switched to integer maths); totals recomputed on every write and client totals stripped; issued invoices and payments locked at the model level (`invoice.model.test.ts`, `payments.test.ts` append-only); parallel payments and refunds can never overpay/over-refund (conditional update on the invoice version inside the transaction); sign, post-sign lab orders, lab item/order cancel and appointment cancel change invoices inside their own transactions (`billing.sync.test.ts`, incl. a forced failure that leaves no invoice and an unsigned note); patients see only their own non-draft invoices, doctors and lab techs get 403; PDFs print ₹ (Noto Sans) or "Rs." without the font, the amount in words and VOID; invoice/payment emails carry the number only – no amounts, lines or clinical details; every Phase 7 endpoint has an RBAC matrix row (`routeInventory.test.ts`). **Found and fixed:** the seeded admin-approved discount only covered the consultation, so with lab tests it could fall under the limit and no approval was recorded (date-dependent test failure) – the concession now covers every line. **Found and fixed (intermittent):** after a save the draft editor briefly showed the previous saved totals (it cleared "unsaved" before the cache held the server's answer) – the editor now shows the totals from the save response itself; the test waits for them instead of reading once.
 
@@ -496,7 +496,7 @@ At 360 px: the invoice lines become stacked cards, the list becomes cards, the d
 - [x] Tests: timeline filtering per role, follow-up flows
 
 **Done when:** a patient can see their whole history and request a follow-up that reception schedules.
-Verified 2026-10-08: `npm run lint`, `npm run format:check` clean; `npm test` (server + client) run 3 times in a row – __TESTRESULT__. `npm run seed -- --reset` then `npm run seed` (second run creates nothing: 15 follow-up requests unchanged, 311 appointments incl. the 2 booked through requests). `npm run smoke` passes against the dev API (no Phase 8 checks yet). The manual test script below was run end-to-end over the HTTP API against a separate API instance on the seeded DB – 22 checks, all passing: the follow-up due card and booking from it, the visit summary without and then (after the doctor's amendment) with the diagnosis, a request with an attachment, a reception reply plus an internal note that reaches no patient endpoint, the patient's answer reopening the request, the doctor booking from it, and the timelines per role (doctor: no billing; reception: no clinical items; admin: 403; no message text anywhere). **Not checked in a real browser by Claude** – please run the script in the UI.
+Verified 2026-10-08: `npm run lint`, `npm run format:check` clean; `npm test` (server + client) run 3 times in a row (the per-run result was not recorded when this note was written; the full suite has been green at every later phase). `npm run seed -- --reset` then `npm run seed` (second run creates nothing: 15 follow-up requests unchanged, 311 appointments incl. the 2 booked through requests). `npm run smoke` passes against the dev API (no Phase 8 checks yet). The manual test script below was run end-to-end over the HTTP API against a separate API instance on the seeded DB – 22 checks, all passing: the follow-up due card and booking from it, the visit summary without and then (after the doctor's amendment) with the diagnosis, a request with an attachment, a reception reply plus an internal note that reaches no patient endpoint, the patient's answer reopening the request, the doctor booking from it, and the timelines per role (doctor: no billing; reception: no clinical items; admin: 403; no message text anywhere). **Not checked in a real browser by Claude** – please run the script in the UI.
 
 Final check: the timeline is filtered per role before merging (reception: appointments, invoices, payments, non-clinical documents, follow-ups; doctors: no invoices or payments; patients: no drafts, unreleased lab orders, draft invoices, invisible documents or follow-up text; admins and lab technicians 403; a doctor without a relationship 404); cursor pages over mixed sources with equal times return every item once (tested over 3+ pages); staff-only messages never reach patients (detail, list counts, timeline, socket events, emails – which carry no message text at all); patient-safe note views never include history, examination, assessment or plan, diagnoses only when shared; scheduling goes through `bookAppointment` (conflict checks, booking lock, same transaction; a 409 leaves the request open); the reminder job claims each reminder once, skips booked ones and its email has no clinical content; the care relationship covers appointments, placed lab orders and assigned follow-up requests (checks and list filters); every Phase 8 endpoint has an RBAC matrix row (`routeInventory.test.ts`). **Found and fixed:** the "new request / new reply" email sent the assigned doctor a reception link – doctors now get `/doctor/follow-ups/:id`.
 
@@ -510,7 +510,7 @@ Final check: the timeline is filtered per role before merging (reception: appoin
 - New error code: `FOLLOWUP_LIMIT_REACHED` (422).
 - **Seed note:** patient1 is seeded at the clinic's limit of 3 upcoming visits (`maxActiveBookingsPerPatient`), so "Book follow-up" first asks them to cancel one – the wizard explains it.
 - No new npm packages.
-- Tests: __TESTCOUNTS__. Phase 8 complete 2026-10-08.
+- Tests: counts not recorded at the time. Phase 8 complete 2026-10-08.
 
 <details>
 <summary>Phase 8 manual test script (seeded DB, password <code>Password@123</code>)</summary>
@@ -614,17 +614,42 @@ At 360 px: the summary draft stacks under the source note; the explanation panel
 **Goal:** role dashboards, notifications and printable reports.
 **Spec:** §6.24, §7.17–7.18, §11, §12.3, §14
 
-- [ ] Notification service: in-app + Socket.IO + email (no clinical details in email)
-- [ ] Notification bell, list, mark read
-- [ ] Dashboards for all five roles
-- [ ] Reports: appointments, revenue, doctor utilisation, lab turnaround, no-shows (+ CSV export)
-- [ ] Global search
-- [ ] Remaining PDFs (visit summary, appointment slip) + print CSS
-- [ ] Tests: dashboard numbers against seeded data, notification triggers
+- [x] Notification service: in-app + Socket.IO + email (no clinical details in email)
+- [x] Notification bell, list, mark read
+- [x] Dashboards for all five roles
+- [x] Reports: appointments, revenue, doctor utilisation, lab turnaround, no-shows (+ CSV export)
+- [x] Global search
+- [x] Remaining PDFs (visit summary, appointment slip) + print CSS
+- [x] Tests: dashboard numbers against seeded data, notification triggers
 
 **Done when:** every role's dashboard shows live data and key events trigger notifications.
+Verified 2026-10-13: `npm run lint`, `npm run format:check` clean; `npm test` (server + client) run 3 times in a row – runs 1 and 3 all green (server 2,467, client 302); run 2 hit one intermittent failure in `tests/unit/pdf.test.ts` (the last page's text missing). Cause: the test helper `pdfText()` trimmed a trailing newline off every compressed stream, which corrupts the ~2 % of streams whose last byte is a newline – the footer's print time made it depend on the minute (33 of 1,440 minutes failed). Fixed by cutting streams by their `/Length`; a sweep over every minute of a day now passes. The PDFs themselves were always valid. `npm run seed -- --reset` (108 notifications, no duplicate dedupe keys). Cross-check over the HTTP API against the DB, for this month and the last 30 days – 53 checks, no mismatch: collected = revenue report = Σ payments − refunds (₹17,755 / ₹58,505), today and outstanding (₹33,535 over 50 invoices), appointment counts per status = report totals (by day, doctor and status) = DB, no-show rate (98 completed, 8 no-shows, 7.55 %) and per-doctor rows, utilisation per doctor (booked minutes = DB), lab TAT count/median/p90/over target (25 tests, median 7.9 h); every role 403 on the other dashboards; reception 403 on revenue and utilisation; search scoped (a doctor without a care relationship finds no patient by MRN, patients and lab techs get no patient group, a patient cannot find another's appointment); CSV with BOM, server file name, rupees from paise, clinic dates, injection-safe, `report.export` audited without data; seeded notification texts contain none of 90 drug/test/diagnosis terms and no amounts. All 22 email templates rendered with full data: record numbers and clinic-time dates only. Dashboard times on the seeded dev DB (5 calls each, max): admin 16 ms, reception 8, doctor 5, lab 3, patient 8 (`seed.dashboards.test.ts`: admin 106 ms in memory). Slip prints clinic time (new test: 04:00 UTC → "9:30 AM" Kolkata); the visit summary omits an unshared AI summary (`phase10.pdfs.test.ts`). RBAC matrix rows for all 11 Phase 10 endpoints. `npm run smoke` 86/86 with new Phase 10 checks. **Not checked in a real browser by Claude** – please run the script below in the UI.
 
-**Notes / decisions:**
+**Notes / decisions:** (recorded as D180–D192 in spec §20 "Decisions made"; metric definitions in §14, notification types and `dedupeKey` in §6.24, channels as built in §11)
+- **Notifications (D180–D184):** `notify()` stores one in-app record per event and recipient (`dedupeKey` unique sparse; every job passes one), pushes `notification.new`, queues the email (in-process, 3 retries, result on the record; lost on restart). One email template per type reading only allow-listed `data` – record numbers and clinic-time dates, no doctor names, tests, values, drugs or amounts. Leave impact and follow-up requests became in-app only (§11); new events: checked in, you're next, lab TAT overdue. Account emails are email-only types. Break-glass and `/audit-logs/patient` not built.
+- **Metrics (D185–D187):** one module `modules/reports/metrics` for dashboards and reports (collected = payments − refunds by `receivedAt`; billed by `issuedAt` excl. drafts/void; outstanding = issued + partly paid balances; no-show = no_show ÷ (completed + no_show); utilisation = booked ÷ scheduled minutes minus leave, computed in code; lab TAT from `orderedAt`). One endpoint per role, no cache, < 500 ms. New indexes on appointments `startAt`, patients `createdAt`, lab orders `releasedAt` / `sample.collectedAt`, audit `outcome + at`.
+- **Reports (D190):** JSON or CSV (BOM, clinic dates, rupees from paise, injection-safe, totals row), ≤ 366 days (422), `report.export` audited, 30 exports/hour; revenue + utilisation admin only.
+- **Search (D189), PDFs on demand (D188), printing (D192), seed (D191).** CORS now exposes `Content-Disposition`.
+- **Client:** bell + `/notifications`, toasts (red and persistent for a doctor's critical value), ⌘K search, five dashboards from widget components with their own states and error boundaries, report pages (filters in the URL, chart, table + totals, CSV, print), print header and `@media print` rules, slip and visit-summary buttons, Reports in the admin/reception/lab sidebars.
+- New packages: none.
+- Phase 10 complete 2026-10-13.
+
+<details>
+<summary>Phase 10 manual test script (seeded DB, password <code>Password@123</code>; two browsers or one normal + one private window)</summary>
+
+For the email step set `EMAIL_TRANSPORT=smtp` and Ethereal's `SMTP_HOST=smtp.ethereal.email`, `SMTP_PORT=587`, `SMTP_USER` / `SMTP_PASS` from https://ethereal.email (Create account) and `MAIL_FROM` in `server/.env`, restart the API, and make sure patient1 has email consent (email consent ticked on patient1’s record, reception → Patients) and an email address.
+
+1. **Reception** (`reception1@`) → Appointments → Book for patient1 with Dr Mehta today → Queue → **Check in**. **Patient1** (other window, on any page): the bell count goes up without a reload and a toast "You are checked in" appears; the dashboard shows the token.
+2. **Doctor** (`dr.mehta@`) → Queue → call patient1 → write the note, order a lab test (e.g. CBC) → **Sign**. Patient1's bell: "New prescription" if one was written.
+3. **Lab** (`lab1@`) → Worklist → collect the sample → enter a **critical** value. **Doctor**: a red toast "Critical lab result" that stays until clicked, the red banner, and the bell item marked **Critical**. Click the toast → the lab order opens and the item is read.
+4. **Lab** (`lab2@`, dual verification) → verify → release. **Patient1**: bell + toast "Your lab report is ready"; in Ethereal the email says "You have a new lab report. Log in to view it." – no test name, value, doctor or amount.
+5. **Reception** → the visit's invoice → issue → record a payment. **Admin** (`admin@`) → Dashboard: **Collected today** rose by the payment (refresh, or wait for the next event).
+6. **Admin** → Reports → Revenue → This month → **Export CSV** → open in Excel / Google Sheets: ₹ in the headers, amounts like `1250.50`, dates `YYYY-MM-DD`, a Total row, accents/₹ correct (BOM). Audit logs show `report.export`.
+7. **Search**: copy patient1's MRN (My details) and press ⌘K / Ctrl+K as each role: reception and admin find the patient; Dr Mehta finds them (care relationship) while another doctor (`dr.iyer@`, if never seen) gets no patient; the lab tech sees only lab orders; patient1 sees no patient group.
+8. **Reception** → Appointments → **List** → **Print**: only the list with the clinic header and print time – no sidebar, top bar, buttons or filters. Same on Queue → Print, and on any report.
+9. **Reception** → open the appointment (drawer) → **Download slip** – the time matches the clinic time on screen. **Patient1** → Appointments → **Download slip**; Visits → the visit → **Visit summary** PDF (no history/examination; the AI summary only if the doctor shared it).
+10. Dashboards for each role at 360 px: cards stack, charts resize, lists stay readable; a role's dashboard URL of another role → 403 page.
+</details>
 
 ---
 

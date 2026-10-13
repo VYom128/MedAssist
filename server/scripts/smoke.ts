@@ -622,6 +622,7 @@ async function phase5Checks(
   // Phase 6 reuses these sessions: logins are limited to 10 per 15 min per email + IP.
   await phase6Checks(api, check, as, { doctor, patient, reception });
   await phase7Checks(api, check, { doctor, patient, reception, admin });
+  await phase10Checks(api, check, { doctor, patient, reception, admin });
 
   await Promise.all(
     [doctor, patient, reception, admin].map((h) =>
@@ -827,6 +828,100 @@ async function phase7Checks(
   check('reception loads the day close summary', day.res.status === 200);
   const adminList = await call(api, '/invoices?limit=1', { headers: admin });
   check('admins list invoices', adminList.res.status === 200);
+}
+
+/**
+ * Phase 10: dashboards per role (and nobody else's), seeded notifications, a report and its CSV,
+ * global search and the appointment slip. Read-only except the audited CSV export / slip
+ * download. Reuses the phase 5 sessions.
+ */
+async function phase10Checks(
+  api: string,
+  check: (name: string, ok: boolean, detail?: string) => void,
+  sessions: Record<'doctor' | 'patient' | 'reception' | 'admin', Record<string, string>>,
+) {
+  // Loose JSON for these read checks.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (r: { body: unknown }) => (r.body as { data?: any }).data;
+  const roles = { admin: 'admin', reception: 'reception', doctor: 'doctor', patient: 'patient' };
+  for (const [who, role] of Object.entries(roles)) {
+    const headers = sessions[who as keyof typeof sessions];
+    const started = performance.now();
+    const own = await call(api, `/dashboard/${role}`, { headers });
+    const ms = Math.round(performance.now() - started);
+    check(
+      `${who} dashboard answers in < 500 ms`,
+      own.res.status === 200 && ms < 500,
+      `${own.res.status}, ${ms} ms`,
+    );
+    const other = await call(api, `/dashboard/${role === 'admin' ? 'patient' : 'admin'}`, {
+      headers,
+    });
+    check(`${who} gets 403 on another role's dashboard`, other.res.status === 403);
+  }
+
+  const unread = await call(api, '/notifications/unread-count', { headers: sessions.patient });
+  check('patient1 has seeded unread notifications', (data(unread)?.unreadCount ?? 0) > 0);
+  const list = await call(api, '/notifications?limit=50', { headers: sessions.patient });
+  const texts = JSON.stringify(
+    ((data(list) ?? []) as { title: string; body: string }[]).map((n) => [n.title, n.body]),
+  );
+  check(
+    'notification texts carry no amounts',
+    list.res.status === 200 && !/₹|Rs\.?\s?\d/.test(texts),
+  );
+
+  const dash = await call(api, '/dashboard/admin', { headers: sessions.admin });
+  const month = data(dash)?.ranges?.month as { from: string; to: string } | undefined;
+  if (month) {
+    const q = `from=${month.from}&to=${month.to}`;
+    const rev = await call(api, `/reports/revenue?${q}`, { headers: sessions.admin });
+    check(
+      'revenue report total = dashboard "collected this month"',
+      data(rev)?.totals?.netPaise === data(dash).revenue.thisMonthPaise,
+      `${data(rev)?.totals?.netPaise} vs ${data(dash).revenue.thisMonthPaise}`,
+    );
+    const csv = await fetch(`${api}/reports/revenue?${q}&format=csv`, { headers: sessions.admin });
+    // Raw bytes: fetch's text() would strip the BOM while decoding.
+    const head = Buffer.from(await csv.arrayBuffer())
+      .subarray(0, 3)
+      .toString('hex');
+    check(
+      'revenue CSV: BOM, text/csv, file name',
+      csv.status === 200 &&
+        head === 'efbbbf' &&
+        /filename="medassist-revenue-/.test(csv.headers.get('content-disposition') ?? ''),
+      `status ${csv.status}`,
+    );
+    const denied = await call(api, `/reports/revenue?${q}`, { headers: sessions.reception });
+    check('reception gets 403 on the revenue report', denied.res.status === 403);
+  }
+
+  const me = await call(api, '/patients/me', { headers: sessions.patient });
+  const mrn = data(me)?.mrn as string | undefined;
+  if (mrn) {
+    const found = await call(api, `/search?q=${mrn}`, { headers: sessions.reception });
+    check(
+      'reception finds patient1 by MRN',
+      ((data(found)?.patients ?? []) as { mrn: string }[]).some((p) => p.mrn === mrn),
+    );
+    const own = await call(api, `/search?q=${mrn}`, { headers: sessions.patient });
+    check('patients get no patient group in search', data(own)?.patients === undefined);
+  }
+
+  const appts = await call(api, '/appointments?limit=1', { headers: sessions.patient });
+  const first = (data(appts) ?? [])[0] as { id: string } | undefined;
+  if (first) {
+    const slip = await fetch(`${api}/appointments/${first.id}/slip.pdf`, {
+      headers: sessions.patient,
+    });
+    const bytes = Buffer.from(await slip.arrayBuffer());
+    check(
+      'patient1 downloads an appointment slip PDF',
+      slip.status === 200 && bytes.subarray(0, 5).toString() === '%PDF-',
+      `status ${slip.status}`,
+    );
+  }
 }
 
 async function main() {
