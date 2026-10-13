@@ -1,4 +1,5 @@
 import {
+  ChartColumn,
   Building2,
   CalendarCheck2,
   CalendarClock,
@@ -314,6 +315,12 @@ export const APP_ROUTES: AppRoute[] = [
     nav: { label: 'Day close', icon: CalendarCheck2 },
   },
   {
+    path: '/reception/reports',
+    roles: [ROLES.RECEPTIONIST],
+    load: () => import('../features/reports/pages/ReportsPage'),
+    nav: { label: 'Reports', icon: ChartColumn },
+  },
+  {
     path: '/admin/users',
     roles: [ROLES.ADMIN],
     load: () => import('../features/users/pages/UsersPage'),
@@ -386,6 +393,12 @@ export const APP_ROUTES: AppRoute[] = [
     load: () => import('../features/labTests/pages/LabTestEditorPage'),
   },
   {
+    path: '/admin/reports',
+    roles: [ROLES.ADMIN],
+    load: () => import('../features/reports/pages/ReportsPage'),
+    nav: { label: 'Reports', icon: ChartColumn },
+  },
+  {
     path: '/admin/audit-logs',
     roles: [ROLES.ADMIN],
     load: () => import('../features/audit/pages/AuditLogsPage'),
@@ -413,6 +426,12 @@ export const APP_ROUTES: AppRoute[] = [
     roles: [ROLES.LABTECH],
     load: () => import('../features/labs/pages/LabWorklistPage'),
     nav: { label: 'Worklist', icon: ListChecks },
+  },
+  {
+    path: '/lab/reports',
+    roles: [ROLES.LABTECH],
+    load: () => import('../features/reports/pages/ReportsPage'),
+    nav: { label: 'Reports', icon: ChartColumn },
   },
   {
     path: '/lab/orders/:id',

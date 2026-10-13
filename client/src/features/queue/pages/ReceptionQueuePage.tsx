@@ -1,4 +1,4 @@
-import { CalendarClock, DoorOpen, UserPlus, Users } from 'lucide-react';
+import { CalendarClock, DoorOpen, Printer, UserPlus, Users } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -8,6 +8,7 @@ import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
 import PageHeader from '../../../components/ui/PageHeader';
+import PrintHeader from '../../../layouts/PrintHeader';
 import ReasonDialog from '../../../components/ui/ReasonDialog';
 import SectionCard from '../../../components/ui/SectionCard';
 import Table, { type Column } from '../../../components/ui/Table';
@@ -198,16 +199,22 @@ export default function ReceptionQueuePage() {
         title="Queue"
         description={`Today, ${formatCalendarDate(today)}. Updates live.`}
         actions={
-          <Button
-            onClick={() => {
-              setWalkInKey((n) => n + 1);
-              setWalkInOpen(true);
-            }}
-          >
-            <UserPlus className="h-4 w-4" aria-hidden="true" /> Walk-in
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => window.print()}>
+              <Printer className="h-4 w-4" aria-hidden="true" /> Print
+            </Button>
+            <Button
+              onClick={() => {
+                setWalkInKey((n) => n + 1);
+                setWalkInOpen(true);
+              }}
+            >
+              <UserPlus className="h-4 w-4" aria-hidden="true" /> Walk-in
+            </Button>
+          </>
         }
       />
+      <PrintHeader title="Queue" subtitle={formatCalendarDate(today)} />
 
       {doctors.isLoading && <ListSkeleton label="Loading doctors…" rows={2} />}
       {doctors.isError && (

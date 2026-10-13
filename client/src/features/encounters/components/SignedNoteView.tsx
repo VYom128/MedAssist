@@ -9,6 +9,7 @@ import SignedPrescription from '../../prescriptions/components/SignedPrescriptio
 import type { Encounter } from '../api';
 import AmendmentHistory from './AmendmentHistory';
 import AmendModal from './AmendModal';
+import VisitSummaryButton from './VisitSummaryButton';
 import EncounterReadView from './EncounterReadView';
 
 /**
@@ -41,11 +42,14 @@ export default function SignedNoteView({
           </span>
         }
         actions={
-          canAmend ? (
-            <Button variant="secondary" size="sm" onClick={() => setAmending(true)}>
-              <FilePen className="h-4 w-4" aria-hidden="true" /> Amend
-            </Button>
-          ) : undefined
+          <>
+            <VisitSummaryButton encounterId={e.id} encounterNumber={e.encounterNumber} />
+            {canAmend && (
+              <Button variant="secondary" size="sm" onClick={() => setAmending(true)}>
+                <FilePen className="h-4 w-4" aria-hidden="true" /> Amend
+              </Button>
+            )}
+          </>
         }
       >
         <EncounterReadView encounter={e} />

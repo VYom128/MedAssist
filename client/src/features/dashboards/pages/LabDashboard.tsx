@@ -65,7 +65,7 @@ export default function LabDashboard() {
               ...(d!.overdueTat > 0
                 ? { status: { tone: 'warning' as const, label: 'Overdue' } }
                 : {}),
-              to: '/lab/worklist',
+              to: '/lab/reports',
             })}
           />
         </li>

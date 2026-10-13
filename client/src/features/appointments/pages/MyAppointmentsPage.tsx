@@ -21,6 +21,7 @@ import { selectCurrentUser } from '../../auth/authSlice';
 import { useGetPublicSettingsQuery } from '../../settings/api';
 import { useCancelAppointmentMutation, useListAppointmentsQuery, type Appointment } from '../api';
 import RescheduleModal from '../components/RescheduleModal';
+import SlipButton from '../components/SlipButton';
 import { patientChangeRules } from '../paths';
 
 const TABS = [
@@ -57,7 +58,7 @@ function AppointmentCard({
         </div>
         <StatusPill domain="appointment" status={a.status} />
       </div>
-      {(rules.canCancel || rules.canReschedule) && (
+      {(rules.canCancel || rules.canReschedule || a.status !== 'cancelled') && (
         <div className="mt-4 flex flex-wrap gap-2">
           {rules.canReschedule && (
             <Button size="sm" variant="secondary" onClick={() => onReschedule(a)}>
@@ -69,6 +70,7 @@ function AppointmentCard({
               Cancel
             </Button>
           )}
+          {a.status !== 'cancelled' && <SlipButton appointment={a} />}
         </div>
       )}
       {rules.tooLate && (

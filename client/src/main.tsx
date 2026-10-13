@@ -21,7 +21,11 @@ createRoot(rootElement).render(
       <SessionRestorer>
         <AppRoutes />
       </SessionRestorer>
-      <Toaster position="top-right" toastOptions={TOAST_OPTIONS} />
+      <Toaster
+        position="top-right"
+        toastOptions={TOAST_OPTIONS}
+        containerClassName="print:hidden"
+      />
     </Provider>
   </StrictMode>,
 );

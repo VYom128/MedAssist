@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { Appointment } from '../src/modules/appointments/model.js';
 import { Invoice } from '../src/modules/invoices/model.js';
 import { Payment } from '../src/modules/payments/model.js';
+import { config } from '../src/config/env.js';
 import { csvCell } from '../src/modules/reports/csv.js';
 import { createExportLimiter } from '../src/middlewares/rateLimiters.js';
 import { errorHandler } from '../src/middlewares/errorHandler.js';
@@ -172,6 +173,14 @@ describe('CSV export', () => {
       metadata: { report: 'revenue', from: '2026-03-30', to: '2026-03-31', format: 'csv', rows: 2 },
     });
     expect(JSON.stringify(entry)).not.toMatch(/1250|125050/);
+  });
+
+  it('lets the browser read the file name (CORS exposes Content-Disposition)', async () => {
+    const res = await get(admin, '/reports/no-shows?from=2026-03-01&to=2026-03-31').set(
+      'Origin',
+      config.clientUrl,
+    );
+    expect(res.headers['access-control-expose-headers']).toContain('Content-Disposition');
   });
 
   it('protects against CSV injection', async () => {

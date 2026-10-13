@@ -22,6 +22,7 @@ import type { Appointment } from '../api';
 import AppointmentInvoices from '../../billing/components/AppointmentInvoices';
 import PrintPrescriptionLink from '../../prescriptions/components/PrintPrescriptionLink';
 import AppointmentActions from './AppointmentActions';
+import SlipButton from './SlipButton';
 import PriorityPill from './PriorityPill';
 
 /** Number, status, patient, doctor, time, visit details, actions and history of an appointment. */
@@ -51,6 +52,7 @@ export default function AppointmentDetails({ appointment: a }: { appointment: Ap
         {user?.role === ROLES.RECEPTIONIST && a.status === 'completed' && (
           <PrintPrescriptionLink appointmentId={a.id} />
         )}
+        {canOpenPatient && a.status !== 'cancelled' && <SlipButton appointment={a} />}
       </div>
 
       {canOpenPatient && a.status === 'completed' && <AppointmentInvoices appointmentId={a.id} />}

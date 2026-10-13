@@ -23,29 +23,40 @@ export interface WidgetQuery {
   isLoading: boolean;
   isError: boolean;
   error?: unknown;
+  /** New data resets a widget that failed to render. */
+  data?: unknown;
   refetch: () => unknown;
 }
 
 const RENDER_ERROR = { status: 0, code: 'RENDER', message: 'This widget could not be shown.' };
 
-/** Catches a widget's render error; "Try again" refetches and re-renders. */
+/**
+ * Catches a widget's render error. "Try again" refetches; the widget renders again once new data
+ * arrives (`resetKey` changes), so a retry that returns the same broken data keeps the error.
+ */
 class WidgetBoundary extends Component<
   {
     fallback: (error: unknown, retry: () => void) => ReactNode;
     children: ReactNode;
     onRetry: () => unknown;
+    resetKey: unknown;
   },
-  { failed: boolean }
+  { failed: boolean; key: unknown }
 > {
-  override state = { failed: false };
+  override state = { failed: false, key: this.props.resetKey };
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+  static getDerivedStateFromProps(
+    props: { resetKey: unknown },
+    state: { failed: boolean; key: unknown },
+  ) {
+    return props.resetKey !== state.key ? { failed: false, key: props.resetKey } : null;
   }
   override componentDidCatch() {
     // Shown in the widget; nothing is logged (the data may name patients).
   }
   retry = () => {
-    this.setState({ failed: false });
     void this.props.onRetry();
   };
   override render() {
@@ -113,7 +124,7 @@ export function StatWidget({
     );
   if (q.isError) return error(q.error, retry);
   return (
-    <WidgetBoundary fallback={error} onRetry={q.refetch}>
+    <WidgetBoundary fallback={error} onRetry={q.refetch} resetKey={q.data}>
       <StatReady label={label} icon={icon} tone={tone} render={render} />
     </WidgetBoundary>
   );
@@ -187,6 +198,7 @@ export function ListWidget({
     <WidgetBoundary
       fallback={(err, onRetry) => card(<WidgetError error={err} onRetry={onRetry} />)}
       onRetry={q.refetch}
+      resetKey={q.data}
     >
       <ListReady card={card} isEmpty={isEmpty} emptyText={emptyText} hideWhenEmpty={hideWhenEmpty}>
         {children}
@@ -265,6 +277,7 @@ export function ChartWidget({
     <WidgetBoundary
       fallback={(err, onRetry) => <ChartCard {...common} error={err} onRetry={onRetry} />}
       onRetry={q.refetch}
+      resetKey={q.data}
     >
       <ChartReady {...common} isEmpty={isEmpty} summary={summary}>
         {children}
