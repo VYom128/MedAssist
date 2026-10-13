@@ -54,6 +54,14 @@ export const routes: RouteObject[] = [
           { path: '/sessions', element: <SessionsPage /> },
           { path: '/change-password', element: <ChangePasswordPage /> },
           { path: '/403', element: <ForbiddenPage /> },
+          {
+            // Every role's own notifications (opened from the top-bar bell, Phase 10).
+            path: '/notifications',
+            lazy: async () => ({
+              Component: (await import('../features/notifications/pages/NotificationsPage'))
+                .default,
+            }),
+          },
           ...rolePages,
         ],
       },

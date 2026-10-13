@@ -1,19 +1,30 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { refreshSession } from '../app/axiosBaseQuery';
 import { useAppDispatch, useAppSelector } from '../app/hooks';
 import { connectSocket, disconnectSocket, followQueue } from '../app/socket';
 import { attachInvalidation } from '../app/socketInvalidation';
+import type { NotificationNewEvent } from '../features/notifications/api';
+import { showNotificationToast } from '../features/notifications/components/showNotificationToast';
+import { useOpenNotification } from '../features/notifications/useOpenNotification';
 import { env } from '../utils/env';
 
 /**
  * Keeps the Socket.IO connection in step with the session (mounted once, in AppLayout): connects
  * after login, reconnects with the new access token after a refresh, disconnects on logout, and
  * turns server events into RTK Query invalidations. A handshake refused because the token
- * expired triggers a refresh (which reconnects).
+ * expired triggers a refresh (which reconnects). A new notification shows a toast (Phase 10).
  */
 export function useSocketInvalidation() {
   const accessToken = useAppSelector((s) => s.auth.accessToken);
+  const role = useAppSelector((s) => s.auth.user?.role);
   const dispatch = useAppDispatch();
+  const open = useOpenNotification();
+  // The latest toast handler, without reconnecting when it changes.
+  const onNotification = useRef<(p: NotificationNewEvent) => void>(() => undefined);
+  useEffect(() => {
+    onNotification.current = ({ notification }) =>
+      showNotificationToast(notification, role, () => open(notification));
+  });
 
   useEffect(() => {
     if (!env.realtime) return;
@@ -25,7 +36,7 @@ export function useSocketInvalidation() {
     let cancelled = false;
     void connectSocket(accessToken).then((socket) => {
       if (cancelled) return;
-      const detach = attachInvalidation(socket, dispatch);
+      const detach = attachInvalidation(socket, dispatch, (p) => onNotification.current(p));
       const onError = (err: Error & { data?: { code?: string } }) => {
         if (err.data?.code === 'TOKEN_EXPIRED') void refreshSession(dispatch);
       };

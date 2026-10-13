@@ -3,19 +3,19 @@ import { Link } from 'react-router-dom';
 import SectionCard from '../../../components/ui/SectionCard';
 import { buttonClass } from '../../../components/ui/buttonClass';
 import { formatCalendarDate } from '../../../utils/dates';
-import { followUpBookingLink, useListFollowUpsDueQuery } from '../api';
+import { followUpBookingLink, type FollowUpDue } from '../api';
 
 /**
  * Patient home: follow-ups the doctor planned that are not booked yet (upcoming or up to 14 days
- * overdue), each with "Book follow-up" (doctor and visit prefilled). Hidden when none.
+ * overdue), each with "Book follow-up" (doctor and visit prefilled). Hidden when none. Fed by
+ * /dashboard/patient (Phase 10).
  */
-export default function FollowUpDueCard() {
-  const { data } = useListFollowUpsDueQuery();
-  if (!data || data.length === 0) return null;
+export default function FollowUpDueCard({ items }: { items: FollowUpDue[] }) {
+  if (items.length === 0) return null;
   return (
     <SectionCard title="Follow-up due" icon={CalendarPlus} iconTone="info">
       <ul className="divide-y divide-line">
-        {data.map((due) => (
+        {items.map((due) => (
           <li
             key={due.encounterId}
             className="flex flex-col gap-3 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"

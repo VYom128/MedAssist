@@ -238,6 +238,10 @@ export const STATUS_STYLES = {
     failed: { tone: 'danger', label: 'Failed', icon: CircleAlert },
     blocked: { tone: 'warning', label: 'Blocked', icon: ShieldAlert },
   },
+  /** Dashboard list flags (Phase 10). */
+  dashboardFlag: {
+    draft_overdue: { tone: 'warning', label: 'Over 24 h', icon: Clock },
+  },
   /** Queue priority and clinical flags. */
   priority: {
     normal: { tone: 'neutral', label: 'Normal', icon: Minus },

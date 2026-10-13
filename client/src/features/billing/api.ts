@@ -192,6 +192,8 @@ const invoiceTags = (id: string) => [
   { type: 'Payment' as const, id },
   LIST,
   { type: 'PaymentSummary' as const, id: 'DAY' },
+  // Revenue, unpaid and outstanding widgets (Phase 10).
+  'Dashboard' as const,
 ];
 
 /** Invoices and payments (spec §7.15). PDFs are fetched as blobs (see usePdf). */
