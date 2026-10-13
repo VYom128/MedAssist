@@ -9,7 +9,8 @@ import {
 import { FollowupReminder } from '../modules/followupReminders/model.js';
 import { getSettings } from '../modules/settings/service.js';
 import { User } from '../modules/users/model.js';
-import { notify } from '../services/notification.service.js';
+import { patientRecipient } from '../modules/appointments/service.js';
+import { notificationLink, notify } from '../services/notification.service.js';
 import { addDaysToDate, calendarDate, clinicToday } from '../utils/dates.js';
 import { logger, serializeError } from '../utils/logger.js';
 
@@ -77,13 +78,19 @@ export async function runFollowUpReminderJob(now = new Date()): Promise<FollowUp
         followUpOf: r.appointment.toString(),
       });
       const doctorName = doctor ? `Dr ${doctor.firstName} ${doctor.lastName}` : 'Your doctor';
+      // Email only with the patient's email consent (patientRecipient); in-app always.
+      const contact = await patientRecipient(r.patient);
       await notify({
-        recipients: [{ userId: patientUser._id.toString(), email: patientUser.email }],
+        recipients: [{ userId: patientUser._id.toString(), email: contact.email ?? null }],
         type: NOTIFICATION_TYPES.FOLLOWUP_REMINDER,
         title: 'Time to book your follow-up visit',
         body: `${doctorName} asked to see you again around ${formatDay(r.dueDate)}. You can book the visit online.`,
-        link: `/patient/appointments/book?${params.toString()}`,
-        email: true,
+        link: `${notificationLink(NOTIFICATION_TYPES.FOLLOWUP_REMINDER, ROLES.PATIENT)}?${params.toString()}`,
+        data: {
+          dueDate: r.dueDate.toISOString().slice(0, 10),
+          appointmentId: r.appointment.toString(),
+        },
+        dedupeKey: `${NOTIFICATION_TYPES.FOLLOWUP_REMINDER}:${r._id.toString()}`,
       });
       result.sent += 1;
     } catch (err) {

@@ -59,3 +59,24 @@ export function emitLabCritical(orderId: string, doctorId: string): void {
   if (!io) return;
   io.to(SOCKET_ROOMS.user(doctorId)).emit(SOCKET_EVENTS.LAB_CRITICAL, { orderId });
 }
+
+/**
+ * A new in-app notification (Phase 10): the record (title and body carry no clinical details,
+ * spec §10.3) and the recipient's new unread count, to every tab of that user.
+ */
+export function emitNotificationNew(
+  userId: string,
+  payload: { notification: unknown; unreadCount: number },
+): void {
+  if (!io) return;
+  io.to(SOCKET_ROOMS.user(userId)).emit(SOCKET_EVENTS.NOTIFICATION_NEW, payload);
+}
+
+/** Notifications were marked read: the user's other tabs update their badge. */
+export function emitNotificationRead(
+  userId: string,
+  payload: { ids: string[] | 'all'; unreadCount: number },
+): void {
+  if (!io) return;
+  io.to(SOCKET_ROOMS.user(userId)).emit(SOCKET_EVENTS.NOTIFICATION_READ, payload);
+}

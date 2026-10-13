@@ -8,7 +8,7 @@ import {
 } from '../../config/constants.js';
 import { assertCanManageDoctor, assertCanViewDoctorSchedule } from '../../policies/doctorAccess.js';
 import * as audit from '../../services/audit.service.js';
-import { notify } from '../../services/notification.service.js';
+import { notificationLink, notify } from '../../services/notification.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
 import {
@@ -172,8 +172,8 @@ export async function createLeave(
 
 /**
  * Tells receptionists (spec §4.13 step 2) that leave affects booked appointments, so they
- * reschedule or cancel them. Staff-only email: the doctor, the period and a count – no patient
- * details. Never throws.
+ * reschedule or cancel them. In-app only (spec §11): the doctor, the period and a count – no
+ * patient details. Never throws.
  */
 async function notifyReceptionOfLeave(
   doctorName: string,
@@ -193,8 +193,8 @@ async function notifyReceptionOfLeave(
       body:
         `${doctorName} will be on leave from ${period}. ` +
         `${count} booked appointment${count === 1 ? '' : 's'} need${count === 1 ? 's' : ''} to be rescheduled or cancelled.`,
-      link: '/reception/appointments',
-      email: true,
+      link: notificationLink(NOTIFICATION_TYPES.LEAVE_AFFECTS_APPOINTMENTS, ROLES.RECEPTIONIST),
+      data: { count },
     });
   } catch (err) {
     logger.error({ err: serializeError(err) }, 'Leave notification failed');

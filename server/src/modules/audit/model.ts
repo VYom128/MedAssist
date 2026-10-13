@@ -50,6 +50,7 @@ auditLogSchema.index({ at: -1, _id: -1 });
 auditLogSchema.index({ action: 1, at: -1 });
 auditLogSchema.index({ 'actor.user': 1, at: -1 });
 auditLogSchema.index({ patient: 1, at: -1 });
+auditLogSchema.index({ outcome: 1, at: -1 }); // admin dashboard: recent denied access (Phase 10)
 // recordRead() debounce lookup
 auditLogSchema.index({ 'actor.user': 1, action: 1, 'resource.id': 1, at: -1 });
 

@@ -397,27 +397,127 @@ export const DRUG_TIMINGS = Object.freeze([
 ] as const);
 export type DrugTiming = (typeof DRUG_TIMINGS)[number];
 
-/** Notification types (spec §11). Phase 10 stores them in-app; Phase 4 only emails. */
+/** Notification types (spec §11, §6.24). Mirrored in client/src/constants/notifications.ts. */
 export const NOTIFICATION_TYPES = Object.freeze({
   APPOINTMENT_BOOKED: 'appointment.booked',
   APPOINTMENT_RESCHEDULED: 'appointment.rescheduled',
   APPOINTMENT_CANCELLED: 'appointment.cancelled',
   APPOINTMENT_NO_SHOW: 'appointment.no_show',
   APPOINTMENT_REMINDER: 'appointment.reminder',
+  APPOINTMENT_CHECKED_IN: 'appointment.checked_in',
+  QUEUE_YOUR_TURN: 'queue.your_turn',
   LEAVE_AFFECTS_APPOINTMENTS: 'doctor.leave_affects_appointments',
   PRESCRIPTION_ISSUED: 'prescription.issued',
   LAB_SAMPLE_REJECTED: 'lab.sample_rejected',
   LAB_CRITICAL_VALUE: 'lab.critical_value',
   LAB_RESULT_RELEASED: 'lab.result_released',
   LAB_RESULT_REVISED: 'lab.result_revised',
+  LAB_TAT_OVERDUE: 'lab.tat_overdue',
   INVOICE_ISSUED: 'invoice.issued',
   PAYMENT_RECEIVED: 'payment.received',
   FOLLOWUP_REMINDER: 'followup.reminder',
   FOLLOWUP_REQUEST_NEW: 'followup.request_new',
   FOLLOWUP_REQUEST_REPLY: 'followup.request_reply',
   FOLLOWUP_REQUEST_UPDATED: 'followup.request_updated',
+  ACCOUNT_CREATED: 'account.created',
+  ACCOUNT_PASSWORD_RESET: 'account.password_reset',
 } as const);
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
+export const NOTIFICATION_TYPE_VALUES = Object.freeze(
+  Object.values(NOTIFICATION_TYPES),
+) as readonly NotificationType[];
+
+export const NOTIFICATION_PRIORITIES = Object.freeze(['normal', 'critical'] as const);
+export type NotificationPriority = (typeof NOTIFICATION_PRIORITIES)[number];
+
+/**
+ * Per type (spec §11): stored in-app, emailed by default, priority, and the client route each
+ * audience is sent to (`:id` = the record id). Email-only types (account emails carry a one-time
+ * link) are never stored. Mirrored on the client (labels and icons).
+ */
+export interface NotificationTypeConfig {
+  inApp: boolean;
+  email: boolean;
+  priority: NotificationPriority;
+  routes: Partial<Record<Role, string>>;
+}
+
+const APPOINTMENT_ROUTES = {
+  patient: '/patient/appointments',
+  doctor: '/doctor/appointments/:id',
+} satisfies Partial<Record<Role, string>>;
+const FOLLOWUP_STAFF_ROUTES = {
+  doctor: '/doctor/follow-ups/:id',
+  receptionist: '/reception/follow-ups/:id',
+} satisfies Partial<Record<Role, string>>;
+const LAB_RESULT_ROUTES = {
+  patient: '/patient/lab-reports/:id',
+  doctor: '/doctor/lab-orders/:id',
+} satisfies Partial<Record<Role, string>>;
+
+const cfg = (
+  email: boolean,
+  routes: Partial<Record<Role, string>>,
+  extra: Partial<NotificationTypeConfig> = {},
+): NotificationTypeConfig => ({ inApp: true, email, priority: 'normal', routes, ...extra });
+
+export const NOTIFICATION_CONFIG: Readonly<Record<NotificationType, NotificationTypeConfig>> =
+  Object.freeze({
+    'appointment.booked': cfg(true, APPOINTMENT_ROUTES),
+    'appointment.rescheduled': cfg(true, APPOINTMENT_ROUTES),
+    'appointment.cancelled': cfg(true, APPOINTMENT_ROUTES),
+    'appointment.no_show': cfg(true, APPOINTMENT_ROUTES),
+    'appointment.reminder': cfg(true, APPOINTMENT_ROUTES),
+    'appointment.checked_in': cfg(false, { patient: '/patient/dashboard' }),
+    'queue.your_turn': cfg(false, { patient: '/patient/dashboard' }),
+    'doctor.leave_affects_appointments': cfg(false, { receptionist: '/reception/appointments' }),
+    'prescription.issued': cfg(false, { patient: '/patient/prescriptions/:id' }),
+    'lab.sample_rejected': cfg(true, {
+      patient: '/patient/dashboard',
+      receptionist: '/reception/patients/:id',
+    }),
+    'lab.critical_value': cfg(true, { doctor: '/doctor/lab-orders/:id' }, { priority: 'critical' }),
+    'lab.result_released': cfg(true, LAB_RESULT_ROUTES),
+    'lab.result_revised': cfg(true, LAB_RESULT_ROUTES),
+    'lab.tat_overdue': cfg(false, { labtech: '/lab/orders/:id' }),
+    'invoice.issued': cfg(true, { patient: '/patient/invoices/:id' }),
+    'payment.received': cfg(true, { patient: '/patient/invoices/:id' }),
+    'followup.reminder': cfg(true, { patient: '/patient/appointments/book' }),
+    'followup.request_new': cfg(false, FOLLOWUP_STAFF_ROUTES),
+    'followup.request_reply': cfg(false, FOLLOWUP_STAFF_ROUTES),
+    'followup.request_updated': cfg(false, { patient: '/patient/follow-ups/:id' }),
+    'account.created': cfg(true, {}, { inApp: false }),
+    'account.password_reset': cfg(true, {}, { inApp: false }),
+  });
+
+/**
+ * Notification rules (spec §6.24, §11): records expire after `ttlDays`; an email is tried once
+ * and retried `emailRetries` times with these backoff delays; list pages are newest first.
+ */
+export const NOTIFICATION_RULES = Object.freeze({
+  ttlDays: 180,
+  emailRetries: 3,
+  emailBackoffMs: Object.freeze([2_000, 10_000, 60_000]),
+  titleMax: 120,
+  bodyMax: 500,
+});
+
+/**
+ * Reports (spec §7.18, §14, Phase 10): at most `maxRangeDays` per request (422 beyond); CSV
+ * exports are limited per user per hour.
+ */
+export const REPORT_RULES = Object.freeze({ maxRangeDays: 366, exportsPerHour: 30 });
+export const REPORT_TYPES = Object.freeze([
+  'appointments',
+  'revenue',
+  'doctor-utilisation',
+  'lab-turnaround',
+  'no-shows',
+] as const);
+export type ReportType = (typeof REPORT_TYPES)[number];
+
+/** Global search (spec §12.1): minimum query length and results per group. */
+export const SEARCH_RULES = Object.freeze({ minLength: 2, maxLength: 100, perGroup: 5 });
 
 /**
  * Appointment rules: slots starting within `minLeadMinutes` of now are not offered (spec §8.1
@@ -466,6 +566,10 @@ export const SOCKET_EVENTS = Object.freeze({
   LAB_CRITICAL: 'lab.critical',
   /** A follow-up request was created or changed (`{ requestId }`, Phase 8). */
   FOLLOWUP_UPDATED: 'followup.updated',
+  /** A new in-app notification (`{ notification, unreadCount }`, Phase 10) – to its recipient. */
+  NOTIFICATION_NEW: 'notification.new',
+  /** Notifications were read (`{ ids | all, unreadCount }`) – the recipient's other tabs. */
+  NOTIFICATION_READ: 'notification.read',
   /** Client → server: join / leave a doctor's queue room for a date. */
   QUEUE_SUBSCRIBE: 'queue:subscribe',
   QUEUE_UNSUBSCRIBE: 'queue:unsubscribe',
@@ -712,6 +816,10 @@ export const AUDIT_ACTIONS = Object.freeze({
   INVOICE_VOID: 'invoice.void',
   INVOICE_VIEW: 'invoice.view',
   INVOICE_DOWNLOAD: 'invoice.download',
+  // Phase 10: on-demand PDFs and report exports (type and range only, never row data)
+  VISIT_SUMMARY_DOWNLOAD: 'encounter.visit_summary_download',
+  APPOINTMENT_SLIP_DOWNLOAD: 'appointment.slip_download',
+  REPORT_EXPORT: 'report.export',
   PAYMENT_CREATE: 'payment.create',
   PAYMENT_REFUND: 'payment.refund',
   PAYMENT_VIEW: 'payment.view',

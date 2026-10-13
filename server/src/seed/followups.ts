@@ -333,7 +333,15 @@ async function plannedFollowUps(portal: { patientId: string }[], today: string, 
     await amendEncounter(await doctorActor(e.doctor), e._id.toString(), input, SEED_REQUEST);
   };
   for (const p of portal.slice(0, 3)) {
-    const e = await unbookedNoteOf(p.patientId);
+    // Prefer a note whose follow-up is not booked yet; the random appointments of some dates
+    // book every note's doctor again, so fall back to the latest signed note (the plan then
+    // shows as booked, but the demo note and its explanation still exist).
+    const e =
+      (await unbookedNoteOf(p.patientId)) ??
+      (await Encounter.findOne({ patient: p.patientId, status: 'signed' })
+        .select('appointment doctor visitAt signedAt')
+        .sort({ visitAt: -1 })
+        .lean());
     if (!e) continue;
     await amend(e, DUE_SOON_REASON, {
       required: true,

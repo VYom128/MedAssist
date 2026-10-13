@@ -11,7 +11,7 @@ import {
   assertCanViewAppointment,
 } from '../../policies/appointmentAccess.js';
 import * as audit from '../../services/audit.service.js';
-import { notify, type Recipient } from '../../services/notification.service.js';
+import { notificationLink, notify, type Recipient } from '../../services/notification.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
 import {
@@ -27,6 +27,7 @@ import { actorOf, type RequestMeta } from '../../utils/requestContext.js';
 import { buildPatientSearchQuery } from '../../utils/search.js';
 import { emitAppointmentChanged, emitQueueUpdated } from '../../socket/emitter.js';
 import { Patient } from '../patients/model.js';
+import { orderQueue } from '../queue/ordering.js';
 import { resolveMyPatientId } from '../patients/portal.service.js';
 import { getSettings } from '../settings/service.js';
 import { User } from '../users/model.js';
@@ -126,22 +127,42 @@ const DOCTOR_VERBS: Partial<Record<AppointmentNotification, string>> = {
   [NOTIFICATION_TYPES.APPOINTMENT_NO_SHOW]: 'marked as a no-show',
 };
 
-/** The patient as a recipient: portal user, and an email unless they opted out of emails. */
-export async function patientRecipient(patientId: Types.ObjectId): Promise<Recipient> {
+/**
+ * The patient as a recipient: their portal user (in-app) and an email only with email consent
+ * (`consent.communications.email` true, spec §11).
+ */
+export async function patientRecipient(patientId: Types.ObjectId | string): Promise<Recipient> {
   const p = await Patient.findById(patientId).select('email user consent').lean();
   if (!p) return {};
   const account = p.user ? await User.findById(p.user).select('email').lean() : null;
-  const emailAllowed = p.consent?.communications?.email !== false;
+  const emailAllowed = p.consent?.communications?.email === true;
   return {
     userId: p.user?.toString() ?? null,
     email: emailAllowed ? (p.email ?? account?.email ?? null) : null,
   };
 }
 
+/** The ids, number and time of an appointment – all a notification may carry about it. */
+const appointmentData = (a: AppointmentLike) => ({
+  appointmentId: a._id.toString(),
+  appointmentNumber: a.appointmentNumber,
+  startAt: a.startAt.toISOString(),
+  status: a.status,
+});
+
+/**
+ * One notification per event: booking, cancellation, no-show and reminder happen once per
+ * appointment; a reschedule once per new start time.
+ */
+const appointmentDedupeKey = (type: AppointmentNotification, a: AppointmentLike) =>
+  type === NOTIFICATION_TYPES.APPOINTMENT_RESCHEDULED
+    ? `${type}:${a._id.toString()}:${a.startAt.toISOString()}`
+    : `${type}:${a._id.toString()}`;
+
 /**
  * Tells the patient (and the doctor, for same-day changes – spec §4.5, §11) about a booking,
- * reschedule or cancellation. Never blocks or throws. Emails say only the appointment number
- * and time – no doctor, department or reason (§10.3).
+ * reschedule, cancellation, no-show or reminder. Never blocks or throws. Only the appointment
+ * number and time – no doctor, department or reason (§10.3).
  */
 export async function notifyAppointment(
   type: AppointmentNotification,
@@ -152,13 +173,16 @@ export async function notifyAppointment(
     const { timezone } = await getSettings();
     const when = formatClinicDateTime(a.startAt, timezone);
     const message = PATIENT_MESSAGES[type];
+    const data = appointmentData(a);
+    const dedupeKey = appointmentDedupeKey(type, a);
     await notify({
       recipients: [await patientRecipient(a.patient._id)],
       type,
       title: message.title,
       body: message.body(a.appointmentNumber, when),
-      link: '/patient/appointments',
-      email: true,
+      link: notificationLink(type, ROLES.PATIENT),
+      data,
+      dedupeKey,
     });
     const verb = DOCTOR_VERBS[type];
     if (
@@ -172,12 +196,73 @@ export async function notifyAppointment(
         type,
         title: `Today's appointment ${verb}`,
         body: `Appointment ${a.appointmentNumber} today at ${when} was ${verb}.`,
-        link: '/doctor/appointments',
-        email: true,
+        link: notificationLink(type, ROLES.DOCTOR, a._id),
+        data,
+        dedupeKey: `${dedupeKey}:doctor`,
       });
     }
   } catch (err) {
     logger.error({ err: serializeError(err), type }, 'Appointment notification failed');
+  }
+}
+
+/** "You are checked in" with the token (in-app, spec §11). Never throws. */
+export async function notifyCheckedIn(a: AppointmentLike): Promise<void> {
+  try {
+    const token = a.queue?.tokenNumber ?? null;
+    await notify({
+      recipients: [await patientRecipient(a.patient._id)],
+      type: NOTIFICATION_TYPES.APPOINTMENT_CHECKED_IN,
+      title: 'You are checked in',
+      body: token
+        ? `Your token number is ${token}. We will let you know when you are next.`
+        : 'We will let you know when you are next.',
+      link: notificationLink(NOTIFICATION_TYPES.APPOINTMENT_CHECKED_IN, ROLES.PATIENT),
+      data: { ...appointmentData(a), ...(token ? { tokenNumber: token } : {}) },
+      dedupeKey: `${NOTIFICATION_TYPES.APPOINTMENT_CHECKED_IN}:${a._id.toString()}`,
+    });
+  } catch (err) {
+    logger.error({ err: serializeError(err) }, 'Check-in notification failed');
+  }
+}
+
+/**
+ * "You are next" (in-app, real-time; spec §11): after a consultation starts, the patient now
+ * first in the doctor's waiting queue for that clinic day is told – once per appointment.
+ * Never throws.
+ */
+export async function notifyNextInQueue(doctorId: string, startAt: Date): Promise<void> {
+  try {
+    const { timezone } = await getSettings();
+    const date = toClinicDate(startAt, timezone);
+    const waiting = await Appointment.find({
+      doctor: doctorId,
+      status: 'checked_in',
+      startAt: {
+        $gte: startOfClinicDay(date, timezone),
+        $lt: startOfClinicDay(addDaysToDate(date, 1), timezone),
+      },
+    })
+      .select('status type priority isOverbook startAt queue patient appointmentNumber')
+      .lean();
+    const next = orderQueue(waiting)[0];
+    if (!next) return;
+    await notify({
+      recipients: [await patientRecipient(next.patient)],
+      type: NOTIFICATION_TYPES.QUEUE_YOUR_TURN,
+      title: 'You are next',
+      body: 'You are next in the queue. Please stay close to the consultation room.',
+      link: notificationLink(NOTIFICATION_TYPES.QUEUE_YOUR_TURN, ROLES.PATIENT),
+      data: {
+        appointmentId: next._id.toString(),
+        appointmentNumber: next.appointmentNumber,
+        position: 1,
+        ...(next.queue?.tokenNumber ? { tokenNumber: next.queue.tokenNumber } : {}),
+      },
+      dedupeKey: `${NOTIFICATION_TYPES.QUEUE_YOUR_TURN}:${next._id.toString()}`,
+    });
+  } catch (err) {
+    logger.error({ err: serializeError(err) }, 'Queue notification failed');
   }
 }
 

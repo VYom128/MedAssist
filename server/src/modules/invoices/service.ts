@@ -10,7 +10,7 @@ import { assertCanReadInvoice, invoiceListFilter } from '../../policies/invoiceA
 import { assertCanAccessPatient } from '../../policies/patientAccess.js';
 import * as audit from '../../services/audit.service.js';
 import { formatNumber, nextSequence } from '../../services/counter.service.js';
-import { notify } from '../../services/notification.service.js';
+import { notificationLink, notify } from '../../services/notification.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { calendarDate, clinicToday, endOfClinicDay, startOfClinicDay } from '../../utils/dates.js';
@@ -654,8 +654,12 @@ async function notifyInvoiceIssued(inv: {
     body:
       `Your invoice ${inv.invoiceNumber ?? ''} from ${settings.name ?? 'the clinic'} is ready. ` +
       'Please log in to view it.',
-    link: `/patient/invoices/${inv._id.toString()}`,
-    email: true,
+    link: notificationLink(NOTIFICATION_TYPES.INVOICE_ISSUED, ROLES.PATIENT, inv._id),
+    data: {
+      invoiceId: inv._id.toString(),
+      ...(inv.invoiceNumber ? { invoiceNumber: inv.invoiceNumber } : {}),
+    },
+    dedupeKey: `${NOTIFICATION_TYPES.INVOICE_ISSUED}:${inv._id.toString()}`,
   });
 }
 

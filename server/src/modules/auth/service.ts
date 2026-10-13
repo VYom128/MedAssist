@@ -8,7 +8,7 @@ import {
 } from '../../config/constants.js';
 import { config } from '../../config/env.js';
 import * as audit from '../../services/audit.service.js';
-import { emailService, sendInBackground } from '../../services/email.service.js';
+import { notifyPasswordReset } from '../../services/notification.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
 import {
@@ -418,7 +418,7 @@ export async function forgotPassword(emailAddress: string, meta: RequestMeta): P
   if (!user) return;
 
   const token = await createPasswordResetToken(user._id);
-  sendInBackground(() => emailService.sendPasswordReset(user.email, token), 'password_reset');
+  notifyPasswordReset(user, token);
   await audit.record({
     action: AUDIT_ACTIONS.AUTH_PASSWORD_RESET_REQUESTED,
     actor: actorOf(user),

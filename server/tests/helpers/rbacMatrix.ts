@@ -124,6 +124,8 @@ export interface Ctx {
    * follow-up plan, and `prescriptionId` a cached English explanation (for feedback).
    */
   summaryId: string;
+  /** An unread notification of the caller (Phase 10). */
+  notificationId: string;
   /** Unique per test (for POST /users). */
   n: number;
 }
@@ -141,6 +143,11 @@ export interface Row {
    * patient-access policy (404, spec §10.2).
    */
   statusFor?: Partial<Record<Role, number>>;
+  /**
+   * A write that changes only the caller's own view state (marking notifications read), so it is
+   * not audited (spec §10.4 lists no such action).
+   */
+  unaudited?: boolean;
 }
 
 export const ALL = ROLE_VALUES;
@@ -165,6 +172,8 @@ const PRESCRIPTION_READERS: readonly Role[] = ['doctor', 'patient', 'receptionis
 const LAB_ORDER_READERS: readonly Role[] = ['doctor', 'labtech', 'receptionist', 'patient'];
 const DOCTOR_LABTECH: readonly Role[] = ['doctor', 'labtech'];
 const LABTECH: readonly Role[] = ['labtech'];
+const ADMIN_LABTECH: readonly Role[] = ['admin', 'labtech'];
+const REPORT_RANGE = 'from=2026-01-01&to=2026-01-31';
 const DOCUMENT_UPLOADERS: readonly Role[] = ['doctor', 'receptionist', 'labtech', 'patient'];
 /** A category each uploading role may use for `patientId`. */
 const UPLOAD_CATEGORY: Partial<Record<Role, string>> = {
@@ -823,6 +832,70 @@ ENDPOINTS.push(
     roles: EXPLAINERS,
     status: 200,
   },
+  // Notifications (spec §7.17, Phase 10): every role, own only.
+  { method: 'get', path: () => '/notifications?unread=true', roles: ALL, status: 200 },
+  { method: 'get', path: () => '/notifications/unread-count', roles: ALL, status: 200 },
+  {
+    method: 'post',
+    path: (c) => `/notifications/${c.notificationId}/read`,
+    roles: ALL,
+    status: 200,
+    unaudited: true,
+  },
+  {
+    method: 'post',
+    path: () => '/notifications/read-all',
+    roles: ALL,
+    status: 200,
+    unaudited: true,
+  },
+  // Global search (spec §12.1, Phase 10): every role, scoped results.
+  { method: 'get', path: () => '/search?q=APT-2026', roles: ALL, status: 200 },
+  // Dashboards (spec §7.18, §14, Phase 10): one per role, own role only.
+  { method: 'get', path: () => '/dashboard/admin', roles: ADMIN, status: 200 },
+  { method: 'get', path: () => '/dashboard/reception', roles: RECEPTION, status: 200 },
+  { method: 'get', path: () => '/dashboard/doctor', roles: DOCTOR, status: 200 },
+  { method: 'get', path: () => '/dashboard/lab', roles: LABTECH, status: 200 },
+  { method: 'get', path: () => '/dashboard/patient', roles: PATIENT, status: 200 },
+  // Reports (spec §7.18, Phase 10): revenue and utilisation admin only.
+  {
+    method: 'get',
+    path: () => `/reports/appointments?${REPORT_RANGE}`,
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  { method: 'get', path: () => `/reports/revenue?${REPORT_RANGE}`, roles: ADMIN, status: 200 },
+  {
+    method: 'get',
+    path: () => `/reports/doctor-utilisation?${REPORT_RANGE}`,
+    roles: ADMIN,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: () => `/reports/lab-turnaround?${REPORT_RANGE}`,
+    roles: ADMIN_LABTECH,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: () => `/reports/no-shows?${REPORT_RANGE}`,
+    roles: ADMIN_RECEPTION,
+    status: 200,
+  },
+  // On-demand PDFs (spec §12.3, Phase 10).
+  {
+    method: 'get',
+    path: (c) => `/encounters/${c.signedEncounterId}/visit-summary.pdf`,
+    roles: NOTE_READERS,
+    status: 200,
+  },
+  {
+    method: 'get',
+    path: (c) => `/appointments/${c.appointmentId}/slip.pdf`,
+    roles: APPOINTMENT_BOOKERS,
+    status: 200,
+  },
   // Admin AI monitor (Phase 9)
   { method: 'get', path: () => '/ai/interactions', roles: ADMIN, status: 200 },
   { method: 'get', path: () => '/ai/interactions/summary', roles: ADMIN, status: 200 },
@@ -1200,6 +1273,7 @@ export const PATTERN_CTX = {
   paymentId: ':id',
   followupId: ':id',
   summaryId: ':summaryId',
+  notificationId: ':id',
   n: 0,
 } as unknown as Ctx;
 

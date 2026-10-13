@@ -16,7 +16,7 @@ export interface Column<T> {
 /**
  * Data table from 768 px; below that each row becomes a card (spec §13.3). Optional
  * `renderExpanded` adds a show/hide details toggle per row; `cardHeader` gives each phone card a
- * title row.
+ * title row; `footerRow` (e.g. report totals) is a bold `<tfoot>` row, and the last card on phones.
  */
 export default function Table<T>({
   columns,
@@ -25,6 +25,7 @@ export default function Table<T>({
   caption,
   renderExpanded,
   cardHeader,
+  footerRow,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -33,6 +34,8 @@ export default function Table<T>({
   renderExpanded?: (row: T) => ReactNode;
   /** Title row of the phone card (e.g. avatar + name); columns it repeats can set hideOnCard. */
   cardHeader?: (row: T) => ReactNode;
+  /** A totals row after the body, rendered with the same columns. */
+  footerRow?: T;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = (key: string) =>
@@ -109,6 +112,21 @@ export default function Table<T>({
               );
             })}
           </tbody>
+          {footerRow && (
+            <tfoot className="border-t-2 border-line-strong bg-surface-muted">
+              <tr>
+                {renderExpanded && <td />}
+                {columns.map((c) => (
+                  <td
+                    key={c.key}
+                    className={`px-4 py-3.5 font-semibold text-ink first:pl-5 last:pr-5 ${c.className ?? ''}`}
+                  >
+                    {c.cell(footerRow)}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
@@ -148,6 +166,22 @@ export default function Table<T>({
             </li>
           );
         })}
+        {footerRow && (
+          <li className="rounded-card border border-line-strong bg-surface-muted p-4">
+            <dl className="space-y-2.5 text-sm">
+              {columns
+                .filter((c) => !c.hideOnCard && !c.cardFooter)
+                .map((c) => (
+                  <div key={c.key} className="flex flex-wrap justify-between gap-x-3 gap-y-1">
+                    <dt className="text-muted">{c.header}</dt>
+                    <dd className="min-w-0 text-right font-semibold break-words text-ink">
+                      {c.cell(footerRow)}
+                    </dd>
+                  </div>
+                ))}
+            </dl>
+          </li>
+        )}
       </ul>
     </>
   );

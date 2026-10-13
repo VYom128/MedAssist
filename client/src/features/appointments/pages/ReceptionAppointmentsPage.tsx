@@ -1,4 +1,4 @@
-import { CalendarDays, Plus } from 'lucide-react';
+import { CalendarDays, Plus, Printer } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useSearchParams } from 'react-router-dom';
@@ -6,13 +6,14 @@ import Button from '../../../components/ui/Button';
 import ErrorState from '../../../components/ui/ErrorState';
 import FilterChip from '../../../components/ui/FilterChip';
 import PageHeader from '../../../components/ui/PageHeader';
+import PrintHeader from '../../../layouts/PrintHeader';
 import ReasonDialog from '../../../components/ui/ReasonDialog';
 import Select from '../../../components/ui/Select';
 import Skeleton from '../../../components/ui/Skeleton';
 import { APPOINTMENT_REASON_MIN } from '../../../constants/catalog';
 import { useQueueRooms } from '../../../hooks/useSocketInvalidation';
 import { useMediaQuery } from '../../../layouts/useSidebarCollapsed';
-import { clinicDate, formatDateTime } from '../../../utils/dates';
+import { clinicDate, formatCalendarDate, formatDateTime } from '../../../utils/dates';
 import { getQueryErrorMessage } from '../../../utils/http';
 import { useListDoctorsQuery } from '../../doctors/api';
 import { useGetCalendarQuery, useRescheduleAppointmentMutation, type CalendarEvent } from '../api';
@@ -27,6 +28,15 @@ interface PendingMove {
   event: CalendarEvent;
   startAt: string;
   doctorId?: string;
+}
+
+/** The list's date range for the printed header (the list starts today by default). */
+function printRange(params: URLSearchParams) {
+  const from = params.get('from') || clinicDate();
+  const to = params.get('to');
+  return to && to !== from
+    ? `${formatCalendarDate(from)} – ${formatCalendarDate(to)}`
+    : formatCalendarDate(from) + (to ? '' : ' onwards');
 }
 
 /**
@@ -111,13 +121,25 @@ export default function ReceptionAppointmentsPage() {
         title="Appointments"
         description="Book, move and follow today's and upcoming appointments."
         actions={
-          <Button onClick={() => setBooking({ date })}>
-            <Plus className="h-4 w-4" aria-hidden="true" /> Book appointment
-          </Button>
+          <>
+            {view === 'list' && (
+              <Button variant="secondary" onClick={() => window.print()}>
+                <Printer className="h-4 w-4" aria-hidden="true" /> Print
+              </Button>
+            )}
+            <Button onClick={() => setBooking({ date })}>
+              <Plus className="h-4 w-4" aria-hidden="true" /> Book appointment
+            </Button>
+          </>
         }
       />
+      <PrintHeader title="Appointments" subtitle={printRange(params)} />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="View">
+      <div
+        className="mb-4 flex flex-wrap items-center gap-2 print:hidden"
+        role="group"
+        aria-label="View"
+      >
         <FilterChip
           label="Calendar"
           selected={view === 'calendar'}

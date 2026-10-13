@@ -16,7 +16,7 @@ import {
 import { checkAllergies, drugComponents, drugKey } from '../../services/allergyCheck.js';
 import * as audit from '../../services/audit.service.js';
 import { formatNumber, nextSequence } from '../../services/counter.service.js';
-import { notify } from '../../services/notification.service.js';
+import { notificationLink, notify } from '../../services/notification.service.js';
 import type { AuthUser } from '../../types/express.js';
 import { ApiError } from '../../utils/ApiError.js';
 import {
@@ -379,7 +379,7 @@ export async function afterIssued(
     request: meta,
     metadata: { via, ...allergyCounts(p), ...(p.replaces ? { replaces: p.replaces } : {}) },
   });
-  // In-app only (spec §11); stored from Phase 10. No clinical details (§10.3).
+  // In-app only (spec §11). No clinical details (§10.3).
   const patientUser = (await Patient.findById(patientIdOf(p)).select('user').lean())?.user;
   if (patientUser) {
     void notify({
@@ -387,8 +387,9 @@ export async function afterIssued(
       type: NOTIFICATION_TYPES.PRESCRIPTION_ISSUED,
       title: 'New prescription',
       body: 'Your doctor has issued a prescription. Log in to view it.',
-      link: `/patient/prescriptions/${p._id.toString()}`,
-      email: false,
+      link: notificationLink(NOTIFICATION_TYPES.PRESCRIPTION_ISSUED, ROLES.PATIENT, p._id),
+      data: { prescriptionId: p._id.toString() },
+      dedupeKey: `${NOTIFICATION_TYPES.PRESCRIPTION_ISSUED}:${p._id.toString()}`,
     });
   }
   return p;

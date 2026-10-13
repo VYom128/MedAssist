@@ -144,6 +144,7 @@ patientSchema.index({ phone: 1, dateOfBirth: 1 }); // duplicate check, self-sign
 patientSchema.index({ nameKey: 1, dateOfBirth: 1 }); // duplicate check
 patientSchema.index({ lastName: 1, firstName: 1 }); // name prefix search, sorting
 patientSchema.index({ isActive: 1, createdAt: -1 });
+patientSchema.index({ createdAt: 1 }); // new patients per range (Phase 10)
 patientSchema.index(
   { user: 1 },
   { unique: true, partialFilterExpression: { user: { $type: 'objectId' } } },

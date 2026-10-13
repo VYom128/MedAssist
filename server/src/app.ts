@@ -54,7 +54,14 @@ export function createApp({ extraRoutes }: CreateAppOptions = {}): Express {
   );
 
   app.use(helmet());
-  app.use(cors({ origin: config.clientUrl, credentials: true, exposedHeaders: ['X-Request-Id'] }));
+  // Content-Disposition: the client names downloads (reports, PDFs) as the server does.
+  app.use(
+    cors({
+      origin: config.clientUrl,
+      credentials: true,
+      exposedHeaders: ['X-Request-Id', 'Content-Disposition'],
+    }),
+  );
   app.use(compression());
   app.use(express.json({ limit: BODY_LIMIT }));
   app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));

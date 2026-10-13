@@ -72,3 +72,14 @@ export function formatIndianAmount(paise: number): string {
   const grouped = rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},${last3}` : last3;
   return `${sign}${grouped}.${fraction}`;
 }
+
+/**
+ * Paise → a plain rupee string with 2 decimals for exports ('125050' → '1250.50', -2500 →
+ * '-25.00'). Integer maths only; no currency symbol or grouping (CSV cells must stay numeric).
+ */
+export function paiseToRupeeString(paise: number): string {
+  if (!Number.isSafeInteger(paise)) throw new RangeError(`Not a whole number of paise: ${paise}`);
+  const sign = paise < 0 ? '-' : '';
+  const abs = Math.abs(paise);
+  return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
+}

@@ -1,12 +1,15 @@
 import { Menu } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { CurrentUser } from '../features/auth/authSlice';
+import NotificationBell from '../features/notifications/components/NotificationBell';
+import GlobalSearch from '../features/search/components/GlobalSearch';
 import UserMenu from './UserMenu';
 import Wordmark from './Wordmark';
 
 /**
  * Sticky top bar: menu button + wordmark below 768 px (and while a password change is forced),
- * the current section's name from 768 px, and the account menu.
+ * the current section's name from 1024 px, global search, the notification bell (Phase 10) and
+ * the account menu. Search and bell are left out while a password change is forced.
  */
 export default function TopBar({
   user,
@@ -45,12 +48,18 @@ export default function TopBar({
           <Wordmark to={home} textClassName="max-[359px]:sr-only" />
         </div>
         {!forced && section && SectionIcon && (
-          <p className="hidden items-center gap-2 text-sm font-semibold text-ink md:flex">
+          <p className="hidden shrink-0 items-center gap-2 text-sm font-semibold text-ink lg:flex">
             <SectionIcon className="h-4.5 w-4.5 text-primary-600" aria-hidden="true" />
             {section.label}
           </p>
         )}
-        <div className="ml-auto">
+        {!forced && (
+          <div className="flex min-w-0 flex-1 justify-end lg:ml-4">
+            <GlobalSearch />
+          </div>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          {!forced && <NotificationBell />}
           <UserMenu user={user} limited={forced} onLogout={onLogout} />
         </div>
       </div>

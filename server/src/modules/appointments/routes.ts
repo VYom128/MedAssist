@@ -6,6 +6,7 @@ import { patientBookingLimiter } from '../../middlewares/rateLimiters.js';
 import { validate } from '../../middlewares/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import * as encountersController from '../encounters/controller.js';
+import { pdfSchema } from '../payments/validation.js';
 import * as appointmentsController from './controller.js';
 import {
   appointmentIdSchema,
@@ -63,6 +64,13 @@ router.get(
   asyncHandler(appointmentsController.getAppointment),
 );
 // The clinical note of the doctor's own appointment (consult workspace; spec §4.7).
+router.get(
+  '/:id/slip.pdf',
+  authenticate,
+  authorize(ADMIN, RECEPTIONIST, PATIENT),
+  validate(pdfSchema),
+  asyncHandler(appointmentsController.slipPdf),
+);
 router.get(
   '/:id/encounter',
   authenticate,

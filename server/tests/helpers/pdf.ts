@@ -30,11 +30,14 @@ function objectsOf(raw: string): Map<number, PdfObject> {
       continue;
     }
     const data = body.slice(start.index + start[0].length);
-    const end = data.lastIndexOf('endstream');
-    objects.set(Number(m[1]), {
-      dict: body.slice(0, start.index),
-      stream: Buffer.from(data.slice(0, end).replace(/\r?\n$/, ''), 'latin1'),
-    });
+    const dict = body.slice(0, start.index);
+    // Cut by the declared /Length: a compressed stream may itself end with a newline byte, so
+    // trimming one before `endstream` would corrupt it (and silently lose that page's text).
+    const length = /\/Length\s+(\d+)(?!\s+\d+\s+R)/.exec(dict);
+    const bytes = length
+      ? data.slice(0, Number(length[1]))
+      : data.slice(0, data.lastIndexOf('endstream')).replace(/\r?\n$/, '');
+    objects.set(Number(m[1]), { dict, stream: Buffer.from(bytes, 'latin1') });
   }
   return objects;
 }

@@ -1084,15 +1084,26 @@ append-only (Phase 7: hooks refuse every update/delete; a refund needs `refundOf
 ### 6.24 `notifications`
 ```js
 {
-  recipient: ObjectId ref User, required, indexed
-  type: String (see §11), title: String, body: String
-  link: String                               // client route, e.g. '/patient/appointments/…'
-  data: Mixed                                // small, NO clinical details
+  recipient: ObjectId ref User, required, immutable
+  type: String (see §11 – the 22 types below), immutable
+  priority: 'normal' | 'critical'            // critical = lab critical value (highlighted)
+  title: String (≤ 120), body: String (≤ 500) // NO clinical details, drug names, results or amounts
+  link: String                               // client route for the recipient's role, e.g. '/patient/invoices/…'
+  data: Mixed                                // allow-list only: ids, record numbers, startAt/dueDate,
+                                             // token/position/count, status (notificationData.ts)
   readAt: Date
-  channels: { inApp: Boolean, email: { sent: Boolean, at: Date, error: String } }
+  dedupeKey: String, immutable               // '<type>:<record id>[:<version>]:<recipient id>'
+  channels: { inApp: Boolean,
+              email: { queued: Boolean, sent: Boolean, at: Date, attempts: Number,
+                       error: String /* error name/code only */ } }
+  createdAt, updatedAt
 }
-indexes: { recipient: 1, readAt: 1, createdAt: -1 }; TTL 180 days on createdAt
+indexes: { recipient: 1, readAt: 1, createdAt: -1 }; { recipient: 1, createdAt: -1, _id: -1 };
+         { dedupeKey: 1 } unique sparse; TTL 180 days on createdAt
 ```
+`dedupeKey` (Phase 10, D180) makes one notification per event and recipient however often a job, a retry or a double click asks; a duplicate insert is skipped (no second email either). Email-only types (account emails with a one-time link) are never stored.
+
+**Types** (`NOTIFICATION_TYPES`, mirrored in `client/src/constants/notifications.ts`): `appointment.booked`, `appointment.rescheduled`, `appointment.cancelled`, `appointment.no_show`, `appointment.reminder`, `appointment.checked_in`, `queue.your_turn`, `doctor.leave_affects_appointments`, `prescription.issued`, `lab.sample_rejected`, `lab.critical_value`, `lab.result_released`, `lab.result_revised`, `lab.tat_overdue`, `invoice.issued`, `payment.received`, `followup.reminder`, `followup.request_new`, `followup.request_reply`, `followup.request_updated`, `account.created` (email only), `account.password_reset` (email only).
 
 ### 6.25 `audit_logs`
 ```js
@@ -1632,6 +1643,8 @@ Rules: record **who, what, which record, which patient, when, from where, outcom
 
 `notification.service.js` → `notify({ recipients, type, title, body, link, data, email: boolean })`: saves in-app record, emits `notification.new` over Socket.IO, queues email (non-blocking, failures stored, not thrown). Emails never contain clinical details.
 
+**As built (Phase 10, D180–D184):** `notify({ recipients, type, title, body, link, data, email?, dedupeKey })` never throws or blocks. Per recipient: `data` is checked against the allow-list (else dropped and logged), the in-app record is inserted (a duplicate `dedupeKey` → skipped entirely), `notification.new` `{ notification, unreadCount }` goes to the user's room, and the email is queued when the type allows it, the clinic's email setting is on and the recipient has an address (patients: only with email consent). The in-process queue tries once and retries 3 times (2 s, 10 s, 60 s), storing the result on the record; it is lost on restart (D182). Every job passes a `dedupeKey` (reminders, no-shows, lab TAT, follow-up reminders), and so does every one-off event except lab revisions (one per revision) and follow-up message events (one per message). Each type's email is its own template file (`services/notificationEmails/`) that reads only `data`: the record number and, for appointments, the clinic-time date – never a doctor, department, test, value, drug, diagnosis or amount (D181). Channels as built: leave impact and follow-up requests are in-app only (as the table says); checked in / your turn, prescription issued and lab TAT overdue in-app only; account emails are email only; break-glass is not built (open decision 1). Admins receive no notification type.
+
 ---
 
 ## 12. Search, documents and printing
@@ -1655,6 +1668,8 @@ Rules: record **who, what, which record, which patient, when, from where, outcom
 | Visit summary | Signed note (patient-safe fields), approved AI summary (if shared), prescription, follow-up |
 | Appointment slip | Number, doctor, date/time, token (if checked in) |
 Plus print-friendly CSS (`@media print`) for list pages (daily appointment list, queue).
+
+Phase 10 (D188): the visit summary (`GET /encounters/:id/visit-summary.pdf` – the patient and their doctors, signed/amended notes only, 422 for the author's draft) and the slip (`GET /appointments/:id/slip.pdf` – admin, reception, the patient; "CANCELLED" watermark) are made on demand like invoices, not stored as Documents, and audited (`encounter.visit_summary_download`, `appointment.slip_download`). Reports, the daily appointment list and the queue print through the browser with `PrintHeader` (clinic, title, print time) and the `@media print` rules in `index.css`.
 
 ---
 
@@ -1718,6 +1733,22 @@ Plus print-friendly CSS (`@media print`) for list pages (daily appointment list,
 | Patient | Next appointment card (with token/position when checked in), active prescriptions, new reports, unpaid invoices, follow-up due, quick actions (book, request follow-up) |
 
 Reports (§7.18) render as table + chart, filterable by date range, exportable to CSV; revenue and appointment reports are printable.
+
+**Metric definitions (Phase 10, D185–D187).** Every dashboard number and report total comes from one module, `server/src/modules/reports/metrics/` – server aggregations only, so a dashboard figure always equals the matching report total for the same range (tested). Ranges are clinic dates `from`–`to` inclusive, i.e. the UTC instants `[start of from, start of to + 1 day)` in the clinic timezone; money is integer paise.
+
+| Metric | Definition |
+|---|---|
+| Collected | Payments − refunds, by `receivedAt` (refunds are stored negative). Revenue "today", "this month" (vs the same days of last month) and the 30-day trend. |
+| Billed | Invoice totals by `issuedAt`, excluding drafts and void invoices. No credit-note term (the app has none). |
+| Outstanding | Sum of `balancePaise` of `issued` + `partially_paid` invoices (now, not per range). |
+| Appointments | Appointments whose `startAt` is in the range, by status (and by day, doctor, department or status). |
+| No-show rate | no_show ÷ (completed + no_show), appointments in the range that have started; `null` when nothing to divide. |
+| Doctor utilisation | Booked minutes (scheduled, checked in, in consultation, completed – `endAt − startAt`) ÷ available minutes (the weekly schedule of each clinic day, minus non-cancelled leave, computed in code). |
+| Lab turnaround | Hours from `orderedAt` to `releasedAt` per released test (orders released in the range): median, 90th percentile, average and the number over the test's turnaround target. |
+| New patients | Patients created in the range. |
+| Doctor and patient dashboards | Only the caller's own records. |
+
+One endpoint per role (`/dashboard/admin|reception|doctor|lab|patient`), no caching, logged response time (< 500 ms on the seed). Reports: JSON `{ rows, totals }` + `meta`, or CSV (`format=csv`) with a BOM, clinic dates, rupees with 2 decimals from paise, a totals row and cells starting with `= + - @` prefixed with `'` (numbers stay numbers); at most 366 days (422 `VALIDATION_ERROR`); every CSV export audited as `report.export` (type, range, row count – no data) and rate limited per user. Revenue and utilisation: admin only; appointments and no-shows: admin and reception; lab turnaround: admin and lab techs.
 
 ---
 
@@ -1877,6 +1908,8 @@ Record decisions here as they are made (date, decision, reason).
 | 6 | File storage in production | Cloudinary (free tier) |
 
 ### Decisions made
+Phase 10 key decisions: `notify()` stores one in-app record per event and recipient (`dedupeKey`, D180), emails come from per-type templates that read only allow-listed data (D181) through an in-process retry queue (D182); one shared metrics module feeds dashboards and reports (D185–D187); visit summary and slip PDFs are made on demand (D188); search is role-scoped by the list policies (D189); reports are CSV-exportable with BOM and injection protection, audited, at most 366 days (D190).
+
 Phase 6 key decisions: lab orders start as doctor-private drafts placed when the note is signed (D119); a placed lab order is a care relationship and the lab tech's only way to a patient (D120); views per role, patients see only current released results (D121); flags only on the server (D122); dual verification for verify and verify-revision (D124); released results change only through a verified revision (D125); critical alerts once per result version, without clinical text (D126); item remarks are internal (D127); every server PDF goes through `pdf.service` and is stored as a Document (D128); uploads are checked by magic bytes and stored through the storage adapter, never served statically (D129).
 
 Phase 5 key decisions: the care relationship is a list of pluggable checks in `patientAccess` (appointments now; lab orders in Phase 6, follow-ups in Phase 8), cached per request (D97); the draft note is created in the start/call-next transaction (D100); clinical records are edited with `expectedVersion` and audited by field name only (D101, D114); signed notes change only through the amendment service's internal path (D105); one transaction signs, issues and completes (D106); one current prescription per encounter via `isCurrent` (D108); the allergy check is a name + drug-class convenience check with per-item acknowledgement (D113); clinical drafts live in memory only on the client (D116).
@@ -2070,3 +2103,16 @@ Phase 1 key decisions: patient self-registration creates a User only, with no Pa
 | D177 | 2026-10-12 | **Fixed patient texts**: the disclaimer and the "when to contact the clinic" list come from `data/safetyNet.ts` (English and Hindi), never from the model; the forbidden-phrase lists live in `data/forbiddenPhrases.ts` (English matched at a word start, Hindi after nukta/chandrabindu normalisation; a phrase the doctor wrote may be restated). **The Hindi texts and phrase list are drafts awaiting clinical/language review.** Output adds `questionsToAskDoctor`. | One reviewed place for every fixed safety text. |
 | D178 | 2026-10-12 | **`npm run ai:eval -- --confirm [--limit 5]`** runs `limit` seeded notes (summary) and `limit` seeded prescriptions (explanation in en + hi) through the real service path and prints metrics only; refuses with `mock` or without `--confirm`; stops at the daily limit; writes only `ai_interactions` and audit rows. Default 5, not 10, to fit free-tier limits. | §9.4 without spending the quota by accident. |
 | D179 | 2026-10-12 | **Seeded AI data is demo data only**: the seed always forces the mock provider and creates three approved summaries (patient1's shared) and patient1's cached explanations through the real services. Their text is mock output built from the de-identified input – not a real model's – although the `model` field shows the configured `AI_MODEL`; `ai_interactions` and audit rows say `provider: mock`. Re-running creates nothing. | Demo screens need AI content without a key or network; never present it as real AI output. |
+| D180 | 2026-10-13 | **Idempotent notifications**: `notifications.dedupeKey` (unique, sparse) = `<type>:<record id>[:<version>]:<recipient id>`; a duplicate insert skips the record, the socket event and the email. Every job passes one (reminder, no-show, lab TAT, follow-up reminder); lab critical values per result version; reschedules per new start time; lab revisions and follow-up messages have none (each is a new event). Records expire after 180 days (TTL). | Jobs and retries must never notify twice (§11). |
+| D181 | 2026-10-13 | **Notification content**: titles and bodies never carry clinical details, drug names, test names, values, diagnoses or amounts; `data` is an allow-list (ids, record numbers, `startAt`, `dueDate`, token, position, count, status – `notificationData.ts`), anything else drops the data. Emails are one template file per type that reads only `data`: record number and (appointments) the clinic-time date, **no doctor names** (a doctor's name can reveal a specialty), no department, no reason. In-app appointment texts show number and time. | §10.3; emails leave the clinic's control. |
+| D182 | 2026-10-13 | **Email queue**: in-process (no Redis), first try + 3 retries (2 s, 10 s, 60 s); the outcome is stored on the notification (`channels.email.sent/at/attempts/error` – error name/code only). The queue is lost on a restart (accepted for the demo; Phase 11 can move to a hosted provider's retries). Tests run it inline. Account emails (`account.created`, `account.password_reset`) go through `notify()` as email-only types and are never stored (they carry one-time links). | Non-blocking, failures visible without a broker. |
+| D183 | 2026-10-13 | **Channels follow §11**: leave impact and follow-up request new/reply are in-app only (before Phase 10 they were emailed); the leave-impact and follow-up emails were dropped. New events: `appointment.checked_in` and `queue.your_turn` (patient, in-app, real time), `lab.tat_overdue` (active lab techs, in-app, from the TAT job). Follow-up reminders now respect the patient's email consent (`patientRecipient`). Break-glass is not built (open decision 1) and `GET /audit-logs/patient/:id` (stretch) is out of scope. Admins receive no notification type, so the seed gives them none. | Spec §11 table. |
+| D184 | 2026-10-13 | **Notification API and client**: `/notifications` (list with `unread`, `unread-count`, `:id/read`, `read-all`) – own records only (another user's id → 404), not audited (no clinical content); a read emits `notification.read` `{ ids, unreadCount }` to the user's other tabs. Client: bell with a 99+ cap and the latest 10 (Headless UI menu), `/notifications` with All/Unread tabs, a toast per new notification – critical lab values stay as a red toast for doctors until clicked. | §7.17, §13. |
+| D185 | 2026-10-13 | **One metrics module** (`modules/reports/metrics`) for dashboards and reports; server aggregations over clinic-timezone ranges `[start of from, start of to + 1)`; definitions in §14. Billed has no credit-note term (none exist); lab turnaround starts at `orderedAt` (placed), not `createdAt` (drafts exist before signing). | A dashboard number must equal the report total. |
+| D186 | 2026-10-13 | **Utilisation's available minutes** are computed in code from each doctor's weekly schedule per clinic day minus non-cancelled leave (schedules are templates, not stored intervals); booked minutes are an aggregation of active appointments. | Not expressible as a pure aggregation. |
+| D187 | 2026-10-13 | **Dashboards**: one endpoint per role (`/dashboard/admin|reception|doctor|lab|patient`), no caching, response time logged (< 500 ms on the seed, checked by `seed.dashboards.test.ts`). Admin "recent audit alerts" are denied-access entries (no break-glass); reception "unpaid today" = issued today with a balance; doctor "drafts > 24 h" from the encounter's `createdAt`; lab "pending verification (by others)" = results entered by another technician. New indexes: appointments `{ startAt }`, patients `{ createdAt }`, lab orders `{ releasedAt }` and `{ sample.collectedAt }`, audit `{ outcome, at }`. Client widgets each have their own skeleton, empty state, error with retry and error boundary. | §14, §17. |
+| D188 | 2026-10-13 | **Visit summary and slip PDFs on demand** (like invoices, D148), not stored as Documents; audited downloads `encounter.visit_summary_download` (with `aiSummaryIncluded`) and `appointment.slip_download`. The visit summary uses the patient-safe fields only and includes the approved AI summary only when shared; the slip prints the clinic-time date and the token once checked in. CORS exposes `Content-Disposition` so the browser keeps the server's file names. | §12.2–12.3. |
+| D189 | 2026-10-13 | **Global search** `GET /search?q=` (2–100 characters, else 400): groups per role (admin: patients, appointments, invoices; reception: + lab orders; doctor: related patients, own appointments and orders; lab tech: placed lab orders; patient: own appointments, invoices, lab orders), each scoped by the list policies, at most 5 per group, exact number/MRN matches first then anchored prefixes; links point to the caller's own pages. Only the query length is logged; searches are not audited. No `$text` index yet (D70 stays). | §12.1. |
+| D190 | 2026-10-13 | **Reports**: `GET /reports/<type>` JSON or `format=csv`; at most 366 days → **422** `VALIDATION_ERROR` (the code's catalogue status is 400, used for a backwards range); CSV with a BOM, clinic dates, rupees with 2 decimals, a totals row and `'`-prefixed cells starting with `= + - @` (numbers excepted), streamed; `report.export` audit (type, range, group, row count); 30 exports per user per hour. Revenue and utilisation admin only; reception appointments + no-shows; lab techs lab turnaround. | §7.18. |
+| D191 | 2026-10-13 | **Seed**: notifications for every demo login except the admin through the real `notify()` with emails muted and `seed:`-prefixed dedupe keys (re-running adds none); the lab TAT job runs once; seeded lab times are back-dated so turnaround looks realistic, but stored lab report PDFs still show the seed run's time; patient1's follow-up falls back to the latest signed note. | Demo data. |
+| D192 | 2026-10-13 | **Client printing**: `PrintHeader` + `@media print` rules hide the shell, buttons, tab rows and filters, print text black and start each `.print-section` on a new page; Print on reports, the reception appointment list (list view – the current page of results) and the queue. `Table` gained a `footerRow` (totals). | §12.3. |

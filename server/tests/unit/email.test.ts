@@ -1,18 +1,25 @@
-import { passwordResetEmail, staffWelcomeEmail } from '../../src/services/email.templates.js';
 import { sendEmail } from '../../src/services/email.service.js';
+import { NOTIFICATION_EMAILS } from '../../src/services/notificationEmails/index.js';
 import { logger } from '../../src/utils/logger.js';
 
-describe('email templates', () => {
+const ctx = { clinicName: 'MedAssist Clinic', timezone: 'Asia/Kolkata', data: {} };
+
+describe('account email templates', () => {
   it('password reset has the link in text, html and links', () => {
-    const t = passwordResetEmail('http://localhost:5173/reset-password/abc');
+    const url = 'http://localhost:5173/reset-password/abc';
+    const t = NOTIFICATION_EMAILS['account.password_reset']({ ...ctx, url });
     expect(t.subject).toBe('Reset your MedAssist password');
-    expect(t.text).toContain('http://localhost:5173/reset-password/abc');
-    expect(t.html).toContain('href="http://localhost:5173/reset-password/abc"');
-    expect(t.links).toEqual(['http://localhost:5173/reset-password/abc']);
+    expect(t.text).toContain(url);
+    expect(t.html).toContain(`href="${url}"`);
+    expect(t.links).toEqual([url]);
   });
 
   it('staff welcome escapes the name in HTML', () => {
-    const t = staffWelcomeEmail('<b>Ravi</b>', 'http://x/y');
+    const t = NOTIFICATION_EMAILS['account.created']({
+      ...ctx,
+      url: 'http://x/y',
+      name: '<b>Ravi</b>',
+    });
     expect(t.html).toContain('&lt;b&gt;Ravi&lt;/b&gt;');
     expect(t.html).not.toContain('<b>Ravi</b>');
   });

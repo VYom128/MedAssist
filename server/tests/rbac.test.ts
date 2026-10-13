@@ -36,6 +36,7 @@ import { loadEncounter } from '../src/modules/encounters/service.js';
 import { buildSummaryInput } from '../src/modules/summaries/input.js';
 import { ClinicalSummary } from '../src/modules/summaries/model.js';
 import { PatientExplanation } from '../src/modules/explanations/model.js';
+import { Notification } from '../src/modules/notifications/model.js';
 import { withTransaction } from '../src/utils/transaction.js';
 import {
   ALL,
@@ -459,6 +460,13 @@ async function buildContext(role: Role): Promise<Ctx> {
     paymentId: payment._id.toString(),
     followupId: followup._id.toString(),
     summaryId: summary._id.toString(),
+    notificationId: (
+      await Notification.create({
+        recipient: me.user._id,
+        type: 'appointment.booked',
+        title: 'Appointment confirmed',
+      })
+    )._id.toString(),
     n,
   };
 }
@@ -522,6 +530,7 @@ const send = (row: Row, c: Ctx | null) => {
       paymentId: zero,
       followupId: zero,
       summaryId: zero,
+      notificationId: zero,
       n: 0,
     } as Ctx);
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
@@ -584,7 +593,7 @@ describe('RBAC matrix', () => {
         const res = await send(row, c);
         expect(res.status, JSON.stringify(res.body)).toBe(expected);
         // Every write an allowed role makes is audited (spec §10.4).
-        if (allowed && expected < 400 && row.method !== 'get') {
+        if (allowed && expected < 400 && row.method !== 'get' && !row.unaudited) {
           expect(await auditCount(), `${label} wrote no audit entry`).toBeGreaterThan(before);
         }
       });

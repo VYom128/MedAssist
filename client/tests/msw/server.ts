@@ -1,5 +1,12 @@
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import {
+  adminDashboard,
+  doctorDashboard,
+  labDashboard,
+  patientDashboard,
+  receptionDashboard,
+} from '../dashboards.fixtures';
 import { selfView } from '../patients.fixtures';
 
 export const API = 'http://localhost:5001/api/v1';
@@ -101,6 +108,17 @@ export const handlers = [
   http.get(url('/follow-up-requests'), () =>
     ok([], { meta: { page: 1, limit: 1, total: 0, totalPages: 0 } }),
   ),
+  // The top-bar bell (Phase 10): nothing unread.
+  http.get(url('/notifications/unread-count'), () => ok({ unreadCount: 0 })),
+  http.get(url('/notifications'), () =>
+    ok([], { meta: { page: 1, limit: 10, total: 0, totalPages: 0, unreadCount: 0 } }),
+  ),
+  // Role dashboards (Phase 10).
+  http.get(url('/dashboard/admin'), () => ok(adminDashboard())),
+  http.get(url('/dashboard/reception'), () => ok(receptionDashboard())),
+  http.get(url('/dashboard/doctor'), () => ok(doctorDashboard())),
+  http.get(url('/dashboard/lab'), () => ok(labDashboard())),
+  http.get(url('/dashboard/patient'), () => ok(patientDashboard())),
   // Reception's sidebar badge.
   http.get(url('/patients/pending-links'), () =>
     ok([], { meta: { page: 1, limit: 1, total: 0, totalPages: 0 } }),

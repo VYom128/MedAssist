@@ -180,8 +180,45 @@
   size: A4;
   margin: 14mm;
 }
+/*
+ * Printing app pages (Phase 10: reports, the daily appointment list, the queue): the shell
+ * (sidebar, top bar, bottom bar) carries `print:hidden`; here buttons, tab rows and toasts go,
+ * text turns black, cards lose their shadows, and `.print-section` blocks start on a new page
+ * after the first while keeping charts and tables whole where they fit. `PrintHeader` adds the
+ * clinic header and the print time.
+ */
 @media print {
   body {
     background: #ffffff;
+  }
+  * {
+    color: #000000 !important;
+    box-shadow: none !important;
+  }
+  button,
+  [role='tablist'],
+  [role='search'],
+  [data-print-hide] {
+    display: none !important;
+  }
+  #main-content > div {
+    max-width: none;
+    padding: 0;
+  }
+  .print-section {
+    break-inside: avoid;
+  }
+  .print-section + .print-section {
+    break-before: page;
+  }
+  .print-header {
+    break-after: avoid;
+  }
+  table {
+    break-inside: auto;
+  }
+  tr,
+  thead {
+    break-inside: avoid;
   }
 }

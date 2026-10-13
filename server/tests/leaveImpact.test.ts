@@ -3,6 +3,7 @@ import { DoctorProfile } from '../src/modules/doctors/model.js';
 import { DoctorLeave } from '../src/modules/leaves/model.js';
 import { addDaysToDate } from '../src/utils/dates.js';
 import { createUser, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
+import { Notification } from '../src/modules/notifications/model.js';
 import { captureEmails } from './helpers/email.js';
 import {
   at,
@@ -83,20 +84,26 @@ describe('leave and schedule impact', () => {
       ]);
     });
 
-    it('emails the receptionists (doctor, period, count – no patient details)', async () => {
-      await createUser('receptionist', { email: 'desk1@clinic.dev' });
-      await createUser('receptionist', { email: 'desk2@clinic.dev' });
+    it('tells the receptionists in-app (doctor, period, count – no patient details, no email)', async () => {
+      const desk1 = await createUser('receptionist', { email: 'desk1@clinic.dev' });
+      const desk2 = await createUser('receptionist', { email: 'desk2@clinic.dev' });
       await createUser('receptionist', { email: 'gone@clinic.dev', isActive: false });
       await booked('09:00');
       await booked('09:30');
       await addLeave({ date: day, fullDay: true });
-      await vi.waitFor(() => expect(emails.sent).toHaveLength(2));
-      expect(emails.sent.map((m) => m.to).sort()).toEqual(['desk1@clinic.dev', 'desk2@clinic.dev']);
-      const [mail] = emails.sent;
-      expect(mail!.subject).toBe('Doctor leave affects booked appointments');
-      expect(mail!.text).toMatch(/Anil Rao will be on leave/);
-      expect(mail!.text).toMatch(/2 booked appointments need to be rescheduled/);
-      expect(mail!.text).not.toMatch(/Meera|Nair|APT-/);
+      const type = 'doctor.leave_affects_appointments';
+      await vi.waitFor(async () => expect(await Notification.countDocuments({ type })).toBe(2));
+      const notes = await Notification.find({ type }).lean();
+      expect(notes.map((n) => n.recipient.toString()).sort()).toEqual(
+        [desk1._id.toString(), desk2._id.toString()].sort(),
+      );
+      const [note] = notes;
+      expect(note!.title).toBe('Doctor leave affects booked appointments');
+      expect(note!.body).toMatch(/Anil Rao will be on leave/);
+      expect(note!.body).toMatch(/2 booked appointments need to be rescheduled/);
+      expect(JSON.stringify(notes)).not.toMatch(/Meera|Nair|APT-/);
+      expect(note!.data).toEqual({ count: 2 });
+      expect(emails.sent).toHaveLength(0); // in-app only (spec §11)
     });
 
     it('no affected appointments → no email', async () => {

@@ -34,6 +34,8 @@ import {
   assertPatientMayChange,
   loadAppointment,
   notifyAppointment,
+  notifyCheckedIn,
+  notifyNextInQueue,
   requireStaffReason,
   resourceOf,
 } from './service.js';
@@ -198,6 +200,7 @@ export async function checkIn(user: AuthUser, id: string, meta: RequestMeta) {
     metadata: { queueNumber: checkedIn.queue?.tokenNumber },
   });
   void announceAppointment(checkedIn);
+  void notifyCheckedIn(checkedIn);
   return viewForRole(user.role, checkedIn);
 }
 
@@ -292,6 +295,7 @@ export async function afterConsultationStarted(
     });
   }
   void announceAppointment(appointment);
+  void notifyNextInQueue(appointment.doctor._id.toString(), appointment.startAt);
   return { ...viewForRole(user.role, appointment), encounterId: encounter.id.toString() };
 }
 

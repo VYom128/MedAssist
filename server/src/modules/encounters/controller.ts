@@ -3,11 +3,13 @@ import { ApiError } from '../../utils/ApiError.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { parsePagination } from '../../utils/pagination.js';
 import { buildRequestMeta } from '../../utils/requestContext.js';
+import { sendPdf } from '../../utils/sendFile.js';
 import * as prescriptionsService from '../prescriptions/service.js';
 import * as amendmentService from './amendment.service.js';
 import * as patientVisits from './patient.service.js';
 import * as encountersService from './service.js';
 import * as signService from './sign.service.js';
+import { visitSummaryPdf as buildVisitSummaryPdf } from './visitSummary.js';
 import type { ListEncountersQuery } from './validation.js';
 
 const currentUser = (req: Request) => {
@@ -106,4 +108,14 @@ export async function listMyVisits(req: Request, res: Response) {
 export async function listMyFollowUpsDue(req: Request, res: Response) {
   const data = await patientVisits.listFollowUpsDue(currentUser(req), buildRequestMeta(req));
   return sendSuccess(res, { data });
+}
+
+/** GET /encounters/:id/visit-summary.pdf – the patient-safe visit summary (on demand, audited). */
+export async function visitSummaryPdf(req: Request, res: Response) {
+  const { buffer, fileName } = await buildVisitSummaryPdf(
+    currentUser(req),
+    idOf(req),
+    buildRequestMeta(req),
+  );
+  sendPdf(res, buffer, fileName, { download: (req.query as { download?: boolean }).download });
 }

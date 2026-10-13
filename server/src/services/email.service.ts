@@ -1,12 +1,7 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { config } from '../config/env.js';
 import { logger, serializeError } from '../utils/logger.js';
-import {
-  passwordResetEmail,
-  patientPortalInviteEmail,
-  patientRecordsLinkedEmail,
-  staffWelcomeEmail,
-} from './email.templates.js';
+import { patientPortalInviteEmail, patientRecordsLinkedEmail } from './email.templates.js';
 
 export interface EmailMessage {
   to: string;
@@ -53,21 +48,12 @@ async function send(message: EmailMessage): Promise<void> {
 const resetLink = (token: string) => `${config.clientUrl}/reset-password/${token}`;
 
 /**
- * Transactional email. Full notifications (in-app, preferences) come in Phase 10. Calls go
- * through `emailService.send` so tests can spy on it.
+ * Transactional email. Notifications (incl. account and password-reset emails) go through
+ * notification.service and its queue; portal emails are sent here. Calls go through
+ * `emailService.send` so tests can spy on it.
  */
 export const emailService = {
   send,
-
-  /** Password reset link (valid 30 min). */
-  sendPasswordReset(to: string, token: string) {
-    return emailService.send({ to, ...passwordResetEmail(resetLink(token)) });
-  },
-
-  /** Welcome + "set your password" link for a new staff account (valid 72 h). */
-  sendAccountSetup(to: string, firstName: string, token: string) {
-    return emailService.send({ to, ...staffWelcomeEmail(firstName, resetLink(token)) });
-  },
 
   /** Patient portal invitation + "set your password" link (valid 72 h). */
   sendPatientPortalInvite(to: string, firstName: string, token: string) {

@@ -57,7 +57,7 @@ describe('background jobs', () => {
       );
       await vi.waitFor(() => expect(emails.sent).toHaveLength(2));
       expect(emails.sent[0]!.subject).toBe('Appointment reminder');
-      expect(emails.sent[0]!.text).toMatch(/^Reminder: your appointment APT-/);
+      expect(emails.sent[0]!.text).toMatch(/^Reminder: your appointment APT-/m);
 
       // Later runs pick up the 24 h 40 min one once, and never resend the first two.
       expect(await runReminderJob(fromNow(15 * MIN))).toEqual({ sent: 0, failed: 0 });

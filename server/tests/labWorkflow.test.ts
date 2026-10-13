@@ -201,13 +201,8 @@ describe('the full path ordered → released', () => {
     ]);
     // Patient and doctor are told – without clinical details.
     await vi.waitFor(() => expect(emails.sent.length).toBe(2));
-    expect(emails.sent.map((m) => m.subject).sort()).toEqual([
-      'Lab results ready',
-      'New lab report',
-    ]);
-    expect(emails.sent.find((m) => m.subject === 'New lab report')!.text).toMatch(
-      /A new lab report is available – please log in/,
-    );
+    expect(emails.sent.map((m) => m.subject)).toEqual(['New lab report', 'New lab report']);
+    expect(emails.sent[0]!.text).toMatch(/You have a new lab report\. Log in to view it\./);
     expect(JSON.stringify(emails.sent)).not.toMatch(CLINICAL);
     // Events: ids only; the patient's account is told on release.
     expect(events).toContainEqual([
@@ -366,9 +361,7 @@ describe('critical values (spec §8.7)', () => {
       to: expect.stringContaining('@'),
       subject: 'Critical lab result',
     });
-    expect(emails.sent[0]!.text).toMatch(
-      /A critical lab result needs your attention – please log in/,
-    );
+    expect(emails.sent[0]!.text).toMatch(/A critical lab result needs your attention\. Log in/);
     expect(JSON.stringify(emails.sent)).not.toMatch(CLINICAL);
     expect(events).toContainEqual([`user:${s.doctor.id}`, 'lab.critical', { orderId: s.orderId }]);
 
@@ -526,7 +519,7 @@ describe('revisions after release', () => {
     await vi.waitFor(() => expect(emails.sent.length).toBe(3));
     expect(emails.sent.map((m) => m.subject).sort()).toEqual([
       'Critical lab result',
-      'Lab results corrected',
+      'Updated lab report',
       'Updated lab report',
     ]);
     expect(JSON.stringify(emails.sent)).not.toMatch(CLINICAL);

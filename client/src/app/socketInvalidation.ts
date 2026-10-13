@@ -1,6 +1,12 @@
 import type { Dispatch } from '@reduxjs/toolkit';
 import type { Socket } from 'socket.io-client';
 import { apiSlice } from './apiSlice';
+import {
+  NOTIFICATION_LIST,
+  notificationsApi,
+  type NotificationNewEvent,
+  type NotificationReadEvent,
+} from '../features/notifications/api';
 
 /** A follow-up request changed (Phase 8): ids only. */
 export interface FollowupUpdated {
@@ -36,12 +42,14 @@ export const queueUpdatedTags = ({ doctorId, date }: QueueUpdated) => [
   { type: 'Slots' as const, id: `${doctorId}:${date}` },
   { type: 'Availability' as const, id: doctorId },
   'QueueBoard' as const,
+  'Dashboard' as const,
 ];
 
 /** Cache tags to refresh when lab orders changed. */
 export const labTags = (orderIds: readonly string[]) => [
   { type: 'LabWorklist' as const, id: 'LIST' },
   ...orderIds.map((id) => ({ type: 'LabOrder' as const, id })),
+  'Dashboard' as const,
 ];
 
 /**
@@ -49,10 +57,17 @@ export const labTags = (orderIds: readonly string[]) => [
  * calendars showing that date, appointment lists, free slots; `appointment.changed` → that
  * appointment; `lab.worklist.updated` → the lab lists and those orders; `lab.order.changed` and
  * `lab.critical` → that order and the lists (the doctor's critical alert reads them);
- * `followup.updated` → that request, the follow-up lists and timelines. Returns a function that
- * removes the listeners.
+ * `followup.updated` → that request, the follow-up lists and timelines; `notification.new` /
+ * `notification.read` → the unread count (from the payload) and the notification lists, and a
+ * new one also refreshes the dashboards (payments, releases… have no event of their own) and is
+ * handed to `onNotification` (the toast). Queue and lab events refresh the dashboards too.
+ * Returns a function that removes the listeners.
  */
-export function attachInvalidation(source: EventSource, dispatch: Dispatch): () => void {
+export function attachInvalidation(
+  source: EventSource,
+  dispatch: Dispatch,
+  onNotification?: (payload: NotificationNewEvent) => void,
+): () => void {
   const onQueue = (payload: QueueUpdated) =>
     dispatch(apiSlice.util.invalidateTags(queueUpdatedTags(payload)));
   // Timelines show appointments and lab orders (Phase 8): refetch them too.
@@ -72,6 +87,19 @@ export function attachInvalidation(source: EventSource, dispatch: Dispatch): () 
         'Timeline',
       ]),
     );
+  const setCount = (count: number) =>
+    dispatch(notificationsApi.util.upsertQueryData('getUnreadCount', undefined, count) as never);
+  const onNotificationNew = (payload: NotificationNewEvent) => {
+    setCount(payload.unreadCount);
+    dispatch(apiSlice.util.invalidateTags([NOTIFICATION_LIST, 'Dashboard']));
+    onNotification?.(payload);
+  };
+  const onNotificationRead = ({ unreadCount }: NotificationReadEvent) => {
+    setCount(unreadCount);
+    dispatch(apiSlice.util.invalidateTags([NOTIFICATION_LIST]));
+  };
+  source.on('notification.new', onNotificationNew);
+  source.on('notification.read', onNotificationRead);
   source.on('queue.updated', onQueue);
   source.on('followup.updated', onFollowup);
   source.on('appointment.changed', onAppointment);
@@ -79,6 +107,8 @@ export function attachInvalidation(source: EventSource, dispatch: Dispatch): () 
   source.on('lab.order.changed', onLabOrder);
   source.on('lab.critical', onLabOrder);
   return () => {
+    source.off('notification.new', onNotificationNew);
+    source.off('notification.read', onNotificationRead);
     source.off('queue.updated', onQueue);
     source.off('followup.updated', onFollowup);
     source.off('appointment.changed', onAppointment);

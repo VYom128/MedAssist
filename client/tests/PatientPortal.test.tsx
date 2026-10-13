@@ -4,6 +4,7 @@ import { http } from 'msw';
 import type { PatientVisit } from '../src/features/visits/api';
 import { routes } from '../src/routes/routes';
 import { addDaysToDate, formatCalendarDate } from '../src/utils/dates';
+import { patientDashboard } from './dashboards.fixtures';
 import { appointment, at, DEPARTMENTS, DOCTORS, SERVICES, TOMORROW } from './appointments.fixtures';
 import { prescription } from './encounters.fixtures';
 import { authState, makeUser, renderRoutes } from './helpers';
@@ -161,23 +162,26 @@ describe('Patient home', () => {
   it('shows a follow-up due card with "Book follow-up"; empty cards stay hidden', async () => {
     server.use(
       http.get(url('/patients/me'), () => ok({ id: 'p1', mrn: 'MRN-000001', fullName: 'Priya' })),
-      http.get(url('/appointments'), () => ok([], { meta: meta(0) })),
       http.get(url('/queue/my-position'), () => ok(null)),
-      http.get(url('/prescriptions'), () => ok([], { meta: meta(0) })),
-      http.get(url('/patients/me/follow-ups-due'), () =>
-        ok([
-          {
-            encounterId: 'e1',
-            encounterNumber: 'ENC-2026-000007',
-            visitAt: '2026-09-20T04:00:00.000Z',
-            doctor: { id: 'dr1', name: 'Anil Mehta' },
-            department: { id: 'dep1', name: 'General Medicine' },
-            dueDate: '2026-12-01',
-            overdue: false,
-            instructions: null,
-            booking: { doctorId: 'dr1', followUpOf: 'a1', type: 'follow_up' },
-          },
-        ]),
+      // Phase 10: the home cards come from one dashboard call.
+      http.get(url('/dashboard/patient'), () =>
+        ok(
+          patientDashboard({
+            followUpsDue: [
+              {
+                encounterId: 'e1',
+                encounterNumber: 'ENC-2026-000007',
+                visitAt: '2026-09-20T04:00:00.000Z',
+                doctor: { id: 'dr1', name: 'Anil Mehta' },
+                department: { id: 'dep1', name: 'General Medicine' },
+                dueDate: '2026-12-01',
+                overdue: false,
+                instructions: null,
+                booking: { doctorId: 'dr1', followUpOf: 'a1', type: 'follow_up' },
+              },
+            ],
+          }),
+        ),
       ),
     );
     renderRoutes(routes, '/patient/dashboard', authState(patient));

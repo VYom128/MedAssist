@@ -146,6 +146,7 @@ appointmentSchema.index(
 appointmentSchema.index({ patient: 1, startAt: -1 });
 appointmentSchema.index({ doctor: 1, status: 1, startAt: 1 });
 appointmentSchema.index({ status: 1, startAt: 1 }); // no-show and reminder jobs
+appointmentSchema.index({ startAt: 1 }); // reports and dashboards: every appointment in a range (Phase 10)
 
 export type AppointmentDoc = InferSchemaType<typeof appointmentSchema>;
 

@@ -15,6 +15,7 @@ import EmptyState from '../../../components/ui/EmptyState';
 import ErrorState from '../../../components/ui/ErrorState';
 import ListSkeleton from '../../../components/ui/ListSkeleton';
 import PageHeader from '../../../components/ui/PageHeader';
+import VisitSummaryButton from '../../encounters/components/VisitSummaryButton';
 import SectionCard from '../../../components/ui/SectionCard';
 import StatusPill from '../../../components/ui/StatusPill';
 import { buttonClass } from '../../../components/ui/buttonClass';
@@ -124,7 +125,12 @@ export default function MyVisitPage() {
         eyebrow="Visit summary"
         title={`Visit on ${formatDate(v.visitAt)}`}
         description={`Dr ${v.doctor.name}${v.department ? ` · ${v.department.name}` : ''}`}
-        actions={<StatusPill domain="encounter" status={v.status} />}
+        actions={
+          <span className="flex flex-wrap items-center gap-2">
+            <StatusPill domain="encounter" status={v.status} />
+            <VisitSummaryButton encounterId={v.id} encounterNumber={v.encounterNumber} />
+          </span>
+        }
       />
       {v.amended && (
         <Alert tone="info" title="Updated after the visit">

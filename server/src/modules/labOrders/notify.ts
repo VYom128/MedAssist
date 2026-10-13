@@ -1,6 +1,6 @@
 import type { Types } from 'mongoose';
 import { NOTIFICATION_TYPES, ROLES } from '../../config/constants.js';
-import { notify } from '../../services/notification.service.js';
+import { notificationLink, notify } from '../../services/notification.service.js';
 import { emitLabCritical } from '../../socket/emitter.js';
 import { logger, serializeError } from '../../utils/logger.js';
 import { patientRecipient } from '../appointments/service.js';
@@ -38,16 +38,20 @@ export async function notifySampleRejected(o: OrderRefs): Promise<void> {
         type: NOTIFICATION_TYPES.LAB_SAMPLE_REJECTED,
         title: 'Please return for a new sample',
         body: 'The clinic needs to collect a new sample from you. Please contact or visit the clinic.',
-        link: '/patient/dashboard',
-        email: true,
+        link: notificationLink(NOTIFICATION_TYPES.LAB_SAMPLE_REJECTED, ROLES.PATIENT),
+        data: { labOrderId: o._id.toString() },
       }),
       notify({
         recipients: receptionists.map((r) => ({ userId: r._id.toString(), email: r.email })),
         type: NOTIFICATION_TYPES.LAB_SAMPLE_REJECTED,
         title: 'A patient needs a new lab sample',
         body: 'A lab sample was rejected. Please arrange for the patient to return.',
-        link: `/reception/patients/${idOf(o.patient).toString()}`,
-        email: true,
+        link: notificationLink(
+          NOTIFICATION_TYPES.LAB_SAMPLE_REJECTED,
+          ROLES.RECEPTIONIST,
+          idOf(o.patient),
+        ),
+        data: { labOrderId: o._id.toString(), patientId: idOf(o.patient).toString() },
       }),
     ]);
   } catch (err) {
@@ -60,30 +64,33 @@ export async function notifyResultsReleased(o: OrderRefs, kind: 'release' | 'rev
   try {
     const id = o._id.toString();
     const revised = kind === 'revision';
+    const type = revised
+      ? NOTIFICATION_TYPES.LAB_RESULT_REVISED
+      : NOTIFICATION_TYPES.LAB_RESULT_RELEASED;
+    // A release happens once per order; every revision is its own event.
+    const dedupeKey = revised ? undefined : `${type}:${id}`;
     await Promise.all([
       notify({
         recipients: [await patientRecipient(idOf(o.patient))],
-        type: revised
-          ? NOTIFICATION_TYPES.LAB_RESULT_REVISED
-          : NOTIFICATION_TYPES.LAB_RESULT_RELEASED,
+        type,
         title: revised ? 'Updated lab report' : 'New lab report',
         body: revised
           ? 'An updated lab report is available – please log in to view it.'
           : 'A new lab report is available – please log in to view it.',
-        link: `/patient/lab-reports/${id}`,
-        email: true,
+        link: notificationLink(type, ROLES.PATIENT, id),
+        data: { labOrderId: id },
+        dedupeKey,
       }),
       notify({
         recipients: [await doctorRecipient(idOf(o.orderedBy))],
-        type: revised
-          ? NOTIFICATION_TYPES.LAB_RESULT_REVISED
-          : NOTIFICATION_TYPES.LAB_RESULT_RELEASED,
+        type,
         title: revised ? 'Lab results corrected' : 'Lab results ready',
         body: revised
           ? 'Lab results of one of your patients were corrected – please log in to review them.'
           : 'Lab results of one of your patients are ready – please log in to review them.',
-        link: `/doctor/lab-orders/${id}`,
-        email: true,
+        link: notificationLink(type, ROLES.DOCTOR, id),
+        data: { labOrderId: id },
+        dedupeKey,
       }),
     ]);
   } catch (err) {
@@ -123,8 +130,9 @@ export async function alertCritical(
       type: NOTIFICATION_TYPES.LAB_CRITICAL_VALUE,
       title: 'Critical lab result',
       body: 'A critical lab result needs your attention – please log in.',
-      link: `/doctor/lab-orders/${o._id.toString()}`,
-      email: true,
+      link: notificationLink(NOTIFICATION_TYPES.LAB_CRITICAL_VALUE, ROLES.DOCTOR, o._id),
+      data: { labOrderId: o._id.toString() },
+      dedupeKey: `${NOTIFICATION_TYPES.LAB_CRITICAL_VALUE}:${o._id.toString()}:${itemId.toString()}:${version}`,
     });
     return true;
   } catch (err) {
