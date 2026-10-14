@@ -36,6 +36,7 @@ import {
   outstanding,
   type ClinicRange,
 } from '../reports/metrics/index.js';
+import { actorNames } from '../audit/service.js';
 import { getSettings } from '../settings/service.js';
 
 /**
@@ -115,12 +116,13 @@ export async function adminDashboard(now = new Date()) {
     AuditLog.find({ outcome: 'denied' })
       .sort({ at: -1, _id: -1 })
       .limit(10)
-      .select('at action actor.role actor.name resource.type resource.number')
+      .select('at action actor resource.type resource.number')
       .lean(),
     aiUsage(R.last30),
     callsToday(now),
   ]);
   const byDay = new Map(trend.map((t) => [t.key, t]));
+  const names = await actorNames(alerts);
   return {
     ranges: {
       today: R.today,
@@ -150,7 +152,8 @@ export async function adminDashboard(now = new Date()) {
       at: a.at,
       action: a.action,
       actorRole: a.actor?.role ?? null,
-      actorName: a.actor?.name ?? null,
+      actorName:
+        (a.actor?.user ? names.get(a.actor.user.toString()) : undefined) ?? a.actor?.name ?? null,
       resourceType: a.resource?.type ?? null,
       resourceNumber: a.resource?.number ?? null,
     })),

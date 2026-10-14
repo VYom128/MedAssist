@@ -582,5 +582,21 @@ describe('audit coverage', () => {
     for (const secret of secrets) expect(stored).not.toContain(secret);
     for (const secret of secrets) expect(stored).not.toContain(hashToken(secret));
     expect(stored).not.toMatch(/passwordHash"|refreshTokenHash|ma_rt=|\$2[aby]\$/);
+
+    // No names in any entry (D206): actor id and role only, and no user's or patient's name
+    // anywhere else in the entry (changes, metadata).
+    for (const e of entries) expect(e.actor?.name ?? null, e.action).toBeNull();
+    const { Patient } = await import('../src/modules/patients/model.js');
+    const people = [
+      ...(await User.find().select('firstName lastName').lean()),
+      ...(await Patient.find().select('firstName lastName').lean()),
+    ];
+    for (const e of entries) {
+      const json = JSON.stringify(e);
+      for (const p of people) {
+        expect(json, `${e.action} names ${p.lastName}`).not.toContain(p.lastName);
+        expect(json, `${e.action} names a person`).not.toContain(`${p.firstName} ${p.lastName}`);
+      }
+    }
   });
 });

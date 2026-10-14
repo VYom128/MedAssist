@@ -56,19 +56,11 @@ describe('POST /patients', () => {
     expect(JSON.stringify(entry)).not.toMatch(/Priya|Sharma|9876543210|Penicillin/);
   });
 
-  it('admins can register patients but not record allergies (403)', async () => {
-    expect((await create(admin, valid)).status).toBe(201);
-    const res = await create(admin, {
-      ...valid,
-      phone: '9876500001',
-      firstName: 'Other',
-      allergies: [{ substance: 'Dust', severity: 'mild' }],
-    });
+  it('admins cannot register patients – read-only on patients (§2.4, D62, D204)', async () => {
+    const res = await create(admin, valid);
     expect(res.status).toBe(403);
     expectErrorShape(res.body, 'FORBIDDEN');
-    expect(res.body.error.details).toEqual([
-      { field: 'body.allergies', message: 'Your role cannot record allergies' },
-    ]);
+    expect(await Patient.countDocuments()).toBe(0);
   });
 
   it('requires consent to data processing and valid fields', async () => {

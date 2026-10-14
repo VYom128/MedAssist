@@ -374,10 +374,12 @@ describe('POST /patients/:id/portal-invite', () => {
     expect(entry?.metadata).toEqual({ userId: user!._id.toString() });
   });
 
-  it('admins can invite too', async () => {
+  it('admins cannot invite – read-only on patients (D204)', async () => {
     const emails = captureEmails();
     const { id } = await createPatient({ email: 'a@example.com' });
-    expect((await invite(id, await loginAs('admin'))).status).toBe(201);
+    expect((await invite(id, await loginAs('admin'))).status).toBe(403);
+    await emails.settled();
+    expect(emails.sent).toEqual([]);
     emails.restore();
   });
 

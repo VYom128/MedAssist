@@ -50,13 +50,17 @@ const columns: Column<AuditEntry>[] = [
   {
     key: 'actor',
     header: 'Actor',
+    // Entries store the actor's id and role; the API adds the current name (D206). A removed
+    // user or a background job shows its role only.
     cell: (e) =>
-      e.actor.name ? (
+      e.actor.name || e.actor.role ? (
         <div>
-          <p className="font-medium text-ink">{e.actor.name}</p>
+          {e.actor.name && <p className="font-medium text-ink">{e.actor.name}</p>}
           {e.actor.role && (
-            <p className="text-xs text-muted">
-              {ROLE_LABELS[e.actor.role as Role] ?? e.actor.role}
+            <p className={e.actor.name ? 'text-xs text-muted' : 'text-muted'}>
+              {e.actor.role === 'system'
+                ? 'System'
+                : (ROLE_LABELS[e.actor.role as Role] ?? e.actor.role)}
             </p>
           )}
         </div>

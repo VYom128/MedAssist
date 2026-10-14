@@ -31,7 +31,10 @@ import {
  */
 const router = Router();
 const { ADMIN, RECEPTIONIST, DOCTOR, PATIENT } = ROLES;
+/** Reads at the front desk: reception and admins (admins are read-only on patients, D204). */
 const frontDesk = [authenticate, authorize(ADMIN, RECEPTIONIST)];
+/** Patient writes: reception only (§2.4 admin R; D62, D204). */
+const reception = [authenticate, authorize(RECEPTIONIST)];
 
 router.get(
   '/',
@@ -48,7 +51,7 @@ router.get(
 );
 router.post(
   '/',
-  ...frontDesk,
+  ...reception,
   validate(createPatientSchema),
   asyncHandler(patientsController.createPatient),
 );
@@ -97,7 +100,7 @@ router.get(
 );
 router.patch(
   '/:id',
-  ...frontDesk,
+  ...reception,
   validate(updatePatientSchema),
   asyncHandler(patientsController.updatePatient),
 );
@@ -133,7 +136,7 @@ router.post(
 
 router.post(
   '/:id/portal-invite',
-  ...frontDesk,
+  ...reception,
   validate(patientIdSchema),
   asyncHandler(patientsController.inviteToPortal),
 );

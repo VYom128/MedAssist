@@ -10,6 +10,7 @@ import { getSettings } from '../modules/settings/service.js';
 import * as audit from '../services/audit.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { logger, serializeError } from '../utils/logger.js';
+import type { AuditActor } from '../utils/requestContext.js';
 
 export interface NoShowJobResult {
   marked: number;
@@ -18,7 +19,7 @@ export interface NoShowJobResult {
 }
 
 /** Audit actor for background jobs. */
-const SYSTEM_ACTOR = { user: null, role: 'system', name: 'No-show job' };
+const SYSTEM_ACTOR: AuditActor = { user: null, role: 'system' };
 
 /**
  * No-show marking (spec §4.6 step 5, §8.11): scheduled appointments whose `endAt +

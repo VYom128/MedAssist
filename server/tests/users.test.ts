@@ -154,7 +154,7 @@ describe('/users (admin)', () => {
   });
 
   describe('PATCH /users/:id', () => {
-    it('updates name/email/phone, redacts contact details in the audit entry', async () => {
+    it('updates name/email/phone, redacts names and contact details in the audit entry', async () => {
       const user = await createUser('labtech', { emailVerifiedAt: new Date() });
       const res = await api()
         .patch(`/api/v1/users/${user._id}`)
@@ -170,8 +170,9 @@ describe('/users (admin)', () => {
       const [entry] = await auditEntries('user.update');
       expect(entry?.changes).toEqual({
         fields: ['lastName', 'email', 'phone'],
-        before: { lastName: user.lastName, email: '[REDACTED]', phone: '[REDACTED]' },
-        after: { lastName: 'Iyer', email: '[REDACTED]', phone: '[REDACTED]' },
+        // Names and contact details: changed, values not kept (D206).
+        before: { lastName: '[REDACTED]', email: '[REDACTED]', phone: '[REDACTED]' },
+        after: { lastName: '[REDACTED]', email: '[REDACTED]', phone: '[REDACTED]' },
       });
     });
 

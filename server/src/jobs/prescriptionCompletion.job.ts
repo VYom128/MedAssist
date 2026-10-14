@@ -3,6 +3,7 @@ import { Prescription } from '../modules/prescriptions/model.js';
 import * as audit from '../services/audit.service.js';
 import { logger, serializeError } from '../utils/logger.js';
 import { assertTransition } from '../utils/stateMachine.js';
+import type { AuditActor } from '../utils/requestContext.js';
 
 export interface PrescriptionCompletionJobResult {
   completed: number;
@@ -11,7 +12,7 @@ export interface PrescriptionCompletionJobResult {
 }
 
 /** Audit actor for background jobs. */
-const SYSTEM_ACTOR = { user: null, role: 'system', name: 'Prescription completion job' };
+const SYSTEM_ACTOR: AuditActor = { user: null, role: 'system' };
 const DAY_MS = 24 * 60 * 60_000;
 
 /**

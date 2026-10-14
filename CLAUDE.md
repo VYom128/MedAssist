@@ -55,7 +55,7 @@ Read the relevant spec sections for the current phase before planning. Do not re
   ```ts
   await audit.record({
     action: AUDIT_ACTIONS.PATIENT_UPDATE,
-    actor: { user: user.id, role: user.role, name: `${user.firstName} ${user.lastName}` }, // or pass `req` instead
+    actor: actorOf(user),                 // { user, role } – never a name (D206); or pass `req` instead
     request: meta,                        // buildRequestMeta(req) from the controller
     resource: { type: 'patient', id: patient._id, number: patient.mrn },
     patient: patient._id,                 // whenever the action concerns a patient
@@ -63,7 +63,7 @@ Read the relevant spec sections for the current phase before planning. Do not re
   });
   await audit.recordRead({ ... });        // reads of clinical data: debounced 5 min per user + record
   ```
-  Keys matching password/token/secret/hash are redacted automatically; `diffChanges` masks email/phone.
+  Keys matching password/token/secret/hash are redacted automatically; `diffChanges` masks names, email and phone. Entries never store names (D206): `GET /audit-logs` looks them up with `actorNames()`.
 - **Patient data**: every service touching a patient calls `assertCanAccessPatient(user, patientId, scope, meta)` from `policies/patientAccess.ts` (scopes: `demographics | clinical | billing | lab`). It returns 404 (not 403) and audits `access.denied`. Put new access rules (e.g. the doctor care relationship, Phase 5) in that policy, never in controllers.
 - **RBAC matrix**: every new protected endpoint needs a row in `server/tests/helpers/rbacMatrix.ts`: `{ method, path: (c) => url, body?: (c) => validBody, roles, status }`. `rbac.test.ts` runs it for every role; `routeInventory.test.ts` fails if a mounted route has no row or answers without a token. A row that allows `doctor` or `patient` also needs an `OUTSIDER` entry (same file: `404` patient data / `'hidden'` / `403` / `'list'` / `'same'`); `rbac.ownership.test.ts` calls it as a doctor without a care relationship and as patient B, and checks a 404 is identical to a missing id's, audited `access.denied` (ids only, never debounced) and changes no data. Fixtures: `buildContext(role)` / `send(row, ctx)` in `tests/helpers/rbacContext.ts`; the mounted routes: `API_ROUTES` (`tests/helpers/routes.ts`).
 - Append-only collections use `applyAppendOnly(schema, 'Label')` from `utils/appendOnly.ts`.

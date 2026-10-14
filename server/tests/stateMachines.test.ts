@@ -382,15 +382,6 @@ const ACTIONS: Action[] = [
   },
 ];
 
-/**
- * Refusals answered with another code than §5's 409, waiting for the project owner's decision
- * (Phase 11 RBAC/contract rule: report, do not change). Each entry: action + status → code.
- */
-const PENDING_DECISION: Record<string, { status: number; code: string }> = {
-  // Paying a fully paid invoice: 422 "This invoice is fully paid" (payments.test.ts), not 409.
-  'POST /invoices/:id/payments from paid': { status: 422, code: 'PAYMENT_EXCEEDS_BALANCE' },
-};
-
 describe('every status action refuses every other status: 409, record unchanged', () => {
   let emails: ReturnType<typeof captureEmails>;
   beforeAll(async () => {
@@ -430,14 +421,8 @@ describe('every status action refuses every other status: 409, record unchanged'
         await a.model.collection.updateOne({ _id: new Types.ObjectId(id) }, { $set: { status } });
         const before = await a.model.collection.findOne({ _id: new Types.ObjectId(id) });
         const res = await send(row, c);
-        const expected = PENDING_DECISION[`${a.route} from ${status}`] ?? {
-          status: 409,
-          code: 'INVALID_STATUS_TRANSITION',
-        };
-        expect(res.status, `${a.route} from ${status}: ${JSON.stringify(res.body)}`).toBe(
-          expected.status,
-        );
-        expect(res.body.error.code, `${a.route} from ${status}`).toBe(expected.code);
+        expect(res.status, `${a.route} from ${status}: ${JSON.stringify(res.body)}`).toBe(409);
+        expect(res.body.error.code, `${a.route} from ${status}`).toBe('INVALID_STATUS_TRANSITION');
         const after = await a.model.collection.findOne({ _id: new Types.ObjectId(id) });
         expect(after, `${a.route} from ${status} changed the record`).toEqual(before);
       }

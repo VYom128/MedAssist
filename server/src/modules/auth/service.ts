@@ -44,8 +44,10 @@ const accountInactive = () =>
 const sessionRevoked = () =>
   new ApiError(401, 'Your session has ended. Please log in again.', ERROR_CODES.SESSION_REVOKED);
 
-const actorOf = (u: { _id: Types.ObjectId; role: string; firstName: string; lastName: string }) =>
-  ({ user: u._id.toString(), role: u.role, name: `${u.firstName} ${u.lastName}` }) as AuditActor;
+const actorOf = (u: { _id: Types.ObjectId; role: string }): AuditActor => ({
+  user: u._id.toString(),
+  role: u.role,
+});
 
 const clientOf = (meta: RequestMeta) => ({ userAgent: meta.userAgent, ip: meta.ip });
 
@@ -287,7 +289,7 @@ export async function logoutAll(authUser: AuthUser, meta: RequestMeta) {
 }
 
 function authActor(u: AuthUser): AuditActor {
-  return { user: u.id, role: u.role, name: `${u.firstName} ${u.lastName}` };
+  return { user: u.id, role: u.role };
 }
 
 async function loadUser(id: string): Promise<UserWithId> {

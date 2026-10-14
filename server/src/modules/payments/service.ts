@@ -35,7 +35,8 @@ import type { RecordPaymentInput, RefundInput } from './validation.js';
  * (append-only, number from the counter) and a conditional update of the invoice on the version
  * read before (`__v`), its open status and – for payments – a balance that still covers the
  * amount. Two parallel payments can therefore never exceed the balance: the loser gets 409
- * CONFLICT (the invoice changed) or 422 PAYMENT_EXCEEDS_BALANCE. The paid amounts of an issued
+ * CONFLICT (the invoice changed), 409 INVALID_STATUS_TRANSITION (it is now fully paid) or 422
+ * PAYMENT_EXCEEDS_BALANCE. The paid amounts of an issued
  * invoice change only here (`paymentWriteOptions`).
  */
 
@@ -51,12 +52,17 @@ const invoiceChanged = () =>
 const exceedsBalance = (balancePaise: number) =>
   new ApiError(
     422,
-    balancePaise === 0
-      ? 'This invoice is fully paid'
-      : 'The amount is more than the balance due on this invoice',
+    'The amount is more than the balance due on this invoice',
     ERROR_CODES.PAYMENT_EXCEEDS_BALANCE,
     { balancePaise },
   );
+
+/** A fully paid invoice takes no payment: paid → paid is not a transition (spec §5.5, D203). */
+const fullyPaid = () =>
+  new ApiError(409, 'This invoice is already fully paid', ERROR_CODES.INVALID_STATUS_TRANSITION, {
+    from: 'paid',
+    to: 'paid',
+  });
 
 /** PAY-<clinic year>-000001, inside the caller's transaction (spec §8.10). */
 async function nextPaymentNumber(session: ClientSession, at: Date) {
@@ -90,7 +96,7 @@ export async function recordPayment(
   { now = new Date(), quiet = false }: PaymentOptions = {},
 ) {
   const inv = await loadForStaff(user, invoiceId, meta);
-  if (inv.status === 'paid') throw exceedsBalance(0);
+  if (inv.status === 'paid') throw fullyPaid();
   if (!(INVOICE_OPEN_STATUSES as readonly string[]).includes(inv.status)) {
     throw new ApiError(
       409,
@@ -155,6 +161,7 @@ export async function recordPayment(
     // Lost the race: the balance may now be too small (422) or the invoice simply changed (409).
     if (err instanceof ApiError && err.code === ERROR_CODES.CONFLICT) {
       const fresh = await Invoice.findById(inv._id).select('balancePaise status').lean();
+      if (fresh?.status === 'paid') throw fullyPaid();
       if (fresh && fresh.balancePaise < input.amountPaise) throw exceedsBalance(fresh.balancePaise);
     }
     throw err;

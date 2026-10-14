@@ -1,10 +1,34 @@
 import { AuditLog } from '../src/modules/audit/model.js';
+import { User } from '../src/modules/users/model.js';
 import { flushAudit } from '../src/services/audit.service.js';
 import { loginAs, resetDb, TEST_PASSWORD } from './helpers/auth.js';
 import { api, expectErrorShape } from './helpers/testApp.js';
 
 describe('/audit-logs', () => {
   beforeEach(resetDb);
+
+  it('entries store no names; the list shows the actor’s current name (D206)', async () => {
+    const admin = await loginAs('admin');
+    const doctor = await loginAs('doctor');
+    await flushAudit();
+    const stored = await AuditLog.findOne({ 'actor.user': doctor.user._id }).lean();
+    expect(stored!.actor).toEqual({ user: doctor.user._id, role: 'doctor', name: null });
+
+    const read = async () =>
+      (await api().get(`/api/v1/audit-logs?actor=${doctor.user._id}`).set(admin.auth)).body.data[0]
+        .actor;
+    expect(await read()).toEqual({
+      user: doctor.user._id.toString(),
+      role: 'doctor',
+      name: `${doctor.user.firstName} ${doctor.user.lastName}`,
+    });
+    // Looked up when read: a renamed user shows the new name; the entry itself is unchanged.
+    await User.updateOne({ _id: doctor.user._id }, { $set: { lastName: 'Renamed' } });
+    expect((await read()).name).toBe(`${doctor.user.firstName} Renamed`);
+    await User.deleteOne({ _id: doctor.user._id });
+    expect(await read()).toMatchObject({ role: 'doctor', name: null });
+    expect((await api().get('/api/v1/audit-logs/verify').set(admin.auth)).body.data.ok).toBe(true);
+  });
 
   it('admins see login entries, newest first, with filters', async () => {
     const admin = await loginAs('admin');

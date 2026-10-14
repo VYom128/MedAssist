@@ -9,10 +9,13 @@ export interface RequestMeta {
   userAgent?: string;
 }
 
+/**
+ * Who acted, for audit entries: the user id and role only. Names are never stored (D206) – the
+ * admin audit log looks them up when it shows an entry.
+ */
 export interface AuditActor {
   user: string | null;
   role: string | null;
-  name: string | null;
 }
 
 const MAX_USER_AGENT = 256;
@@ -35,11 +38,11 @@ export function buildRequestMeta(req: Request): RequestMeta {
 /** The logged-in user as an audit actor, or null fields when nobody is logged in. */
 export function actorFromRequest(req: Request): AuditActor {
   const u = req.user;
-  if (!u) return { user: null, role: null, name: null };
-  return { user: u.id, role: u.role, name: `${u.firstName} ${u.lastName}` };
+  if (!u) return { user: null, role: null };
+  return { user: u.id, role: u.role };
 }
 
 /** A logged-in user (as passed to services) as an audit actor. */
-export function actorOf(u: AuthUser): AuditActor {
-  return { user: u.id, role: u.role, name: `${u.firstName} ${u.lastName}` };
+export function actorOf(u: Pick<AuthUser, 'id' | 'role'>): AuditActor {
+  return { user: u.id, role: u.role };
 }

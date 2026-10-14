@@ -508,7 +508,7 @@ ENDPOINTS.push(
       phone: `+9197${String(c.n).padStart(8, '0')}`,
       consent: { dataProcessing: true },
     }),
-    roles: ADMIN_RECEPTION,
+    roles: RECEPTION, // admins are read-only on patients (D204)
     status: 201,
   },
   { method: 'get', path: () => '/patients/me', roles: PATIENT, status: 200 },
@@ -541,7 +541,7 @@ ENDPOINTS.push(
   {
     method: 'post',
     path: (c) => `/patients/${c.invitablePatientId}/portal-invite`,
-    roles: ADMIN_RECEPTION,
+    roles: RECEPTION,
     status: 201,
   },
   {
@@ -575,7 +575,7 @@ ENDPOINTS.push(
     method: 'patch',
     path: (c) => `/patients/${c.patientId}`,
     body: (c) => ({ adminNotes: `Matrix note ${c.n}` }),
-    roles: ADMIN_RECEPTION,
+    roles: RECEPTION,
     status: 200,
   },
   {

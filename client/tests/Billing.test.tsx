@@ -238,6 +238,25 @@ describe('payments on an issued invoice', () => {
     expect(within(dialog).getByLabelText('Amount received')).toHaveValue('200');
   });
 
+  it('a payment on an invoice paid in full meanwhile (409, D203) says so', async () => {
+    const user = userEvent.setup({ delay: null });
+    serveInvoice(issued());
+    server.use(
+      http.post(url('/invoices/inv1/payments'), () =>
+        fail(409, 'INVALID_STATUS_TRANSITION', 'This invoice is already fully paid', {
+          from: 'paid',
+          to: 'paid',
+        }),
+      ),
+    );
+    renderRoutes(routes, '/reception/invoices/inv1', authState(reception));
+    await user.click(await screen.findByRole('button', { name: /record payment/i }));
+    const dialog = await screen.findByRole('dialog', { name: /record payment/i });
+    await user.click(within(dialog).getByRole('button', { name: /record payment/i }));
+    expect(await within(dialog).findByText('Already paid')).toBeInTheDocument();
+    expect(within(dialog).getByText(/already fully paid/)).toBeInTheDocument();
+  });
+
   it('the refund modal caps the amount at what is left of the payment', async () => {
     const user = userEvent.setup({ delay: null });
     const posted: unknown[] = [];

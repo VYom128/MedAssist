@@ -222,7 +222,7 @@ export async function assertCanAccessPatient(
   await audit.record({
     action: AUDIT_ACTIONS.ACCESS_DENIED,
     outcome: 'denied',
-    actor: { user: user.id, role: user.role, name: `${user.firstName} ${user.lastName}` },
+    actor: { user: user.id, role: user.role },
     patient: Types.ObjectId.isValid(patientId.toString()) ? patientId : null,
     request,
     metadata: { reason: 'patient_access', scope },

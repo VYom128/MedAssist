@@ -3,16 +3,20 @@ import type { AuditLogDoc } from './model.js';
 
 type AuditLike = AuditLogDoc & { _id: Types.ObjectId };
 
-/** Admin view of an audit entry (the only role that can read audit logs). */
-export function toAuditView(e: AuditLike) {
+/**
+ * Admin view of an audit entry (the only role that can read audit logs). `names` are the actors'
+ * current names (`actorNames`); entries written before D206 may still carry a stored name.
+ */
+export function toAuditView(e: AuditLike, names: Map<string, string> = new Map()) {
+  const user = e.actor?.user?.toString() ?? null;
   return {
     id: e._id.toString(),
     seq: e.seq,
     at: e.at,
     actor: {
-      user: e.actor?.user?.toString() ?? null,
+      user,
       role: e.actor?.role ?? null,
-      name: e.actor?.name ?? null,
+      name: (user ? names.get(user) : undefined) ?? e.actor?.name ?? null,
     },
     action: e.action,
     resource: e.resource?.type

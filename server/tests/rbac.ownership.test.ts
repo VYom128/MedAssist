@@ -149,7 +149,9 @@ async function ownerWords(c: Ctx): Promise<string[]> {
 
 function expectIdsOnly(entry: Record<string, unknown>, words: string[], label: string) {
   expect(entry.outcome, label).toBe('denied');
-  const json = JSON.stringify({ ...entry, actor: undefined });
+  // Ids only, for the caller too: no actor name (D206).
+  expect((entry.actor as { name?: string | null } | undefined)?.name ?? null, label).toBeNull();
+  const json = JSON.stringify(entry);
   for (const word of words)
     expect(json, `${label}: denial entry names "${word}"`).not.toContain(word);
   if (entry.patient) expect(isObjectId(entry.patient.toString()), label).toBe(true);

@@ -77,7 +77,7 @@ describe('audit.record', () => {
       .get('/api/v1/things/42?q=Priya%20Sharma')
       .set('User-Agent', 'test-agent');
     expect(res.body).toMatchObject({
-      actor: { user: actor.user, role: 'doctor', name: 'Anil Mehta' },
+      actor: { user: actor.user, role: 'doctor', name: null }, // ids only, no name (D206)
       request: {
         id: 'req-12345678',
         method: 'GET',
@@ -240,8 +240,9 @@ describe('diffChanges', () => {
       ),
     ).toEqual({
       fields: ['lastName', 'isActive'],
-      before: { lastName: 'B', isActive: true },
-      after: { lastName: 'C', isActive: false },
+      // Names are masked like contact details (D206).
+      before: { lastName: '[REDACTED]', isActive: true },
+      after: { lastName: '[REDACTED]', isActive: false },
     });
   });
 
