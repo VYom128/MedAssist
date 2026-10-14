@@ -10,7 +10,8 @@ import type { AuditLogQuery } from './validation.js';
 export async function listAuditLogs(req: Request, res: Response) {
   const query = req.query as unknown as AuditLogQuery;
   const { items, meta } = await auditLogService.listAuditLogs(query, parsePagination(query));
-  return sendSuccess(res, { data: items.map((e) => toAuditView(e)), meta });
+  const names = await auditLogService.actorNames(items);
+  return sendSuccess(res, { data: items.map((e) => toAuditView(e, names)), meta });
 }
 
 export async function verifyAuditChain(req: Request, res: Response) {

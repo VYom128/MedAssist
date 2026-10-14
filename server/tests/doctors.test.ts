@@ -106,7 +106,7 @@ describe('/doctors', () => {
       expect(await User.exists({ email: 'second@clinic.dev' })).toBeNull();
       expect(await DoctorProfile.countDocuments()).toBe(1);
       expect(await auditEntries('doctor.create')).toHaveLength(1);
-      await new Promise((r) => setTimeout(r, 50));
+      await emails.settled();
       expect(emails.sent).toHaveLength(1); // no welcome email for the rolled-back account
       emails.restore();
     });

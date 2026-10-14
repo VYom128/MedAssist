@@ -127,10 +127,14 @@ describe('POST /invoices/:id/payments', () => {
     expect(expectErrorShape(over.body, 'PAYMENT_EXCEEDS_BALANCE').error.details).toEqual({
       balancePaise: 10_000,
     });
+    // Fully paid: no transition paid → paid (§5.5, D203) – 409, unlike overpaying a balance.
     await paid(inv.id, 10_000);
     const again = await pay(inv.id, { amountPaise: 1, method: 'cash' });
-    expect(again.status).toBe(422);
-    expectErrorShape(again.body, 'PAYMENT_EXCEEDS_BALANCE');
+    expect(again.status).toBe(409);
+    expect(expectErrorShape(again.body, 'INVALID_STATUS_TRANSITION').error.details).toEqual({
+      from: 'paid',
+      to: 'paid',
+    });
 
     const patient = await createPatient();
     const draft = await post('/invoices', reception.auth, {

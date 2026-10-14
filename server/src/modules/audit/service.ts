@@ -1,5 +1,6 @@
 import type { FilterQuery } from 'mongoose';
 import { buildMeta, type Pagination } from '../../utils/pagination.js';
+import { User } from '../users/model.js';
 import { AuditLog, type AuditLogDoc } from './model.js';
 import type { AuditLogQuery } from './validation.js';
 
@@ -26,4 +27,21 @@ export async function listAuditLogs(query: AuditLogQuery, { page, limit, skip }:
     AuditLog.countDocuments(filter),
   ]);
   return { items, meta: buildMeta({ page, limit, total }) };
+}
+
+/**
+ * Display names of the users who acted in `entries`, looked up now (D206): entries store the
+ * actor's id and role only. Users that no longer exist are left out (the entry shows the role).
+ */
+export async function actorNames(
+  entries: { actor?: { user?: unknown } | null }[],
+): Promise<Map<string, string>> {
+  const ids = [
+    ...new Set(entries.map((e) => e.actor?.user?.toString()).filter((id): id is string => !!id)),
+  ];
+  if (ids.length === 0) return new Map();
+  const users = await User.find({ _id: { $in: ids } })
+    .select('firstName lastName')
+    .lean();
+  return new Map(users.map((u) => [u._id.toString(), `${u.firstName} ${u.lastName}`]));
 }

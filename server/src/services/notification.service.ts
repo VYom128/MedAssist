@@ -11,7 +11,8 @@ import { toView } from '../modules/notifications/serializer.js';
 import { getSettings } from '../modules/settings/service.js';
 import { emitNotificationNew } from '../socket/emitter.js';
 import { logger, serializeError } from '../utils/logger.js';
-import { enqueueEmail } from './emailQueue.js';
+import { drainBackgroundEmails } from './email.service.js';
+import { drainEmailQueue, enqueueEmail } from './emailQueue.js';
 import { cleanNotificationData, type NotificationData } from './notificationData.js';
 import { NOTIFICATION_EMAILS } from './notificationEmails/index.js';
 
@@ -177,9 +178,24 @@ export function setNotificationEmailsMuted(value: boolean): void {
  */
 export function notify(input: NotifyInput): Promise<void> {
   if (muted) return Promise.resolve();
-  return deliver(input).catch((err: unknown) =>
+  const run = deliver(input).catch((err: unknown) =>
     logger.error({ err: serializeError(err), type: input.type }, 'Notification failed'),
   );
+  inFlight.add(run);
+  void run.finally(() => inFlight.delete(run));
+  return run;
+}
+
+const inFlight = new Set<Promise<void>>();
+
+/**
+ * Waits until every notification started so far is stored and its email sent or given up, and
+ * every background email is out (tests use it instead of sleeping; graceful shutdown).
+ */
+export async function settleNotifications(): Promise<void> {
+  while (inFlight.size > 0) await Promise.all([...inFlight]);
+  await drainBackgroundEmails();
+  await drainEmailQueue();
 }
 
 /**

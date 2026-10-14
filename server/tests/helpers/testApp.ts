@@ -70,3 +70,10 @@ export function expectErrorShape(body: unknown, code: string): ErrorBody {
   });
   return body as ErrorBody;
 }
+
+/**
+ * `value` as JSON with record ids, hashes and tokens (long hex runs) replaced by `<hex>`, so a
+ * check like `not.toMatch(/393/)` looks at the content only – a random id can contain any digits.
+ */
+export const withoutIds = (value: unknown) =>
+  (typeof value === 'string' ? value : JSON.stringify(value)).replace(/[0-9a-f]{16,}/gi, '<hex>');

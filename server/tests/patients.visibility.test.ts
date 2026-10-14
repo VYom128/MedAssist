@@ -201,12 +201,16 @@ describe('PATCH /patients/:id', () => {
     });
   });
 
-  it('admins cannot change allergies (403) but can edit demographics', async () => {
+  it('admins cannot edit anything – read-only on patients (§2.4, D62, D204)', async () => {
     const { id } = await fullPatient();
     const admin = await loginAs('admin');
-    const res = await patch(admin, id, { allergies: [] });
-    expect(res.status).toBe(403);
-    expect((await patch(admin, id, { adminNotes: 'Admin note' })).status).toBe(200);
+    const before = await Patient.findById(id).lean();
+    for (const body of [{ allergies: [] }, { adminNotes: 'Admin note' }, { firstName: 'X' }]) {
+      const res = await patch(admin, id, body);
+      expect(res.status).toBe(403);
+      expectErrorShape(res.body, 'FORBIDDEN');
+    }
+    expect(await Patient.findById(id).lean()).toEqual(before);
   });
 
   it('cannot set chronic conditions or the MRN', async () => {

@@ -508,7 +508,7 @@ ENDPOINTS.push(
       phone: `+9197${String(c.n).padStart(8, '0')}`,
       consent: { dataProcessing: true },
     }),
-    roles: ADMIN_RECEPTION,
+    roles: RECEPTION, // admins are read-only on patients (D204)
     status: 201,
   },
   { method: 'get', path: () => '/patients/me', roles: PATIENT, status: 200 },
@@ -541,7 +541,7 @@ ENDPOINTS.push(
   {
     method: 'post',
     path: (c) => `/patients/${c.invitablePatientId}/portal-invite`,
-    roles: ADMIN_RECEPTION,
+    roles: RECEPTION,
     status: 201,
   },
   {
@@ -575,7 +575,7 @@ ENDPOINTS.push(
     method: 'patch',
     path: (c) => `/patients/${c.patientId}`,
     body: (c) => ({ adminNotes: `Matrix note ${c.n}` }),
-    roles: ADMIN_RECEPTION,
+    roles: RECEPTION,
     status: 200,
   },
   {
@@ -1280,3 +1280,132 @@ export const PATTERN_CTX = {
 /** "GET /users/:id" for a row (query string dropped). */
 export const routeKey = (row: Row) =>
   `${row.method.toUpperCase()} ${row.path(PATTERN_CTX).split('?')[0]}`;
+
+/**
+ * What a user of the same role gets on another user's records (spec §2.3, §10.2; checked by
+ * rbac.ownership.test.ts): a doctor with no care relationship, patient B on patient A's records.
+ * Every row that allows `doctor` or `patient` needs an entry here (the test fails otherwise).
+ *
+ * - `404`: patient data – exactly the answer for an id that does not exist, an `access.denied`
+ *   audit entry (outcome `denied`, ids only), and a write changes nothing.
+ * - `'hidden'`: the same 404 for the caller's own account data (sessions, notifications), which
+ *   is not patient data and so not audited.
+ * - `403`: forbidden openly – doctors are public, so a 404 would hide nothing (D53).
+ * - `'list'`: 200 without the other person's records, and counts (`meta.total`) without them.
+ * - `'same'`: the route has no owner (catalogue, slots) or acts on the caller only: the outsider
+ *   gets the row's own status.
+ */
+export type Outsider = 404 | 'hidden' | 403 | 'list' | 'same';
+
+const SAME_FOR_BOTH = { doctor: 'same', patient: 'same' } as const;
+
+export const OUTSIDER: Record<string, Partial<Record<'doctor' | 'patient', Outsider>>> = {
+  // Own account
+  'GET /auth/me': SAME_FOR_BOTH,
+  'PATCH /auth/me': SAME_FOR_BOTH,
+  'GET /auth/sessions': SAME_FOR_BOTH,
+  'DELETE /auth/sessions/:id': { doctor: 'hidden', patient: 'hidden' },
+  'POST /auth/change-password': SAME_FOR_BOTH,
+  'POST /auth/logout-all': SAME_FOR_BOTH,
+  'POST /auth/logout': SAME_FOR_BOTH,
+  // Doctors' own profile, schedule and leave (D53)
+  'PATCH /doctors/:id': { doctor: 403 },
+  'GET /doctors/:id/schedule': { doctor: 403 },
+  'PUT /doctors/:id/schedule': { doctor: 403 },
+  'GET /doctors/:id/leaves': { doctor: 403 },
+  'POST /doctors/:id/leaves': { doctor: 403 },
+  'POST /doctors/:id/leaves/:leaveId/cancel': { doctor: 403 },
+  'GET /doctors/:id/slots': SAME_FOR_BOTH,
+  'GET /doctors/:id/availability': SAME_FOR_BOTH,
+  // Catalogue
+  'GET /lab-tests': SAME_FOR_BOTH,
+  'GET /lab-tests/:id': SAME_FOR_BOTH,
+  // Follow-up requests
+  'POST /follow-up-requests': { patient: 'same' },
+  'GET /follow-up-requests': { doctor: 'list', patient: 'list' },
+  'GET /follow-up-requests/:id': { doctor: 404, patient: 404 },
+  'POST /follow-up-requests/:id/messages': { doctor: 404, patient: 404 },
+  'POST /follow-up-requests/:id/review': { doctor: 404 },
+  'POST /follow-up-requests/:id/schedule': { doctor: 404 },
+  'POST /follow-up-requests/:id/close': { doctor: 404, patient: 404 },
+  'POST /follow-up-requests/:id/reject': { doctor: 404 },
+  // Patients
+  'GET /patients': { doctor: 'list' },
+  'GET /patients/me': { patient: 'same' },
+  'PATCH /patients/me': { patient: 'same' },
+  'GET /patients/me/timeline': { patient: 'same' },
+  'GET /patients/me/visits': { patient: 'same' },
+  'GET /patients/me/follow-ups-due': { patient: 'same' },
+  'GET /patients/:id/timeline': { doctor: 404 },
+  'GET /patients/:id': { doctor: 404, patient: 404 },
+  'PATCH /patients/:id/clinical-profile': { doctor: 404 },
+  // Appointments and queue
+  'GET /appointments': { doctor: 'list', patient: 'list' },
+  'GET /appointments/calendar': { doctor: 'list' },
+  'POST /appointments': { patient: 404 },
+  'GET /appointments/:id': { doctor: 404, patient: 404 },
+  'POST /appointments/:id/reschedule': { patient: 404 },
+  'POST /appointments/:id/cancel': { doctor: 404, patient: 404 },
+  'POST /appointments/:id/start': { doctor: 404 },
+  'POST /appointments/:id/complete': { doctor: 404 },
+  'GET /appointments/:id/slip.pdf': { patient: 404 },
+  'GET /queue': { doctor: 403 },
+  'POST /queue/call-next': { doctor: 'same' },
+  'GET /queue/my-position': { patient: 'same' },
+  // Encounters, AI summaries and explanations
+  'GET /appointments/:id/encounter': { doctor: 404 },
+  'GET /encounters': { doctor: 'list' },
+  'GET /encounters/:id': { doctor: 404, patient: 404 },
+  'PATCH /encounters/:id': { doctor: 404 },
+  'POST /encounters/:id/sign': { doctor: 404 },
+  'POST /encounters/:id/amendments': { doctor: 404 },
+  'GET /encounters/:id/amendments': { doctor: 404 },
+  'PUT /encounters/:id/prescription': { doctor: 404 },
+  'GET /encounters/:id/visit-summary.pdf': { doctor: 404, patient: 404 },
+  'GET /formulary': { doctor: 'same' },
+  'POST /encounters/:id/summary/generate': { doctor: 404 },
+  'GET /encounters/:id/summary': { doctor: 404 },
+  'PATCH /encounters/:id/summary/:summaryId': { doctor: 404 },
+  'POST /encounters/:id/summary/:summaryId/approve': { doctor: 404 },
+  'POST /encounters/:id/summary/:summaryId/reject': { doctor: 404 },
+  'POST /prescriptions/:id/explain': { doctor: 404, patient: 404 },
+  'POST /prescriptions/:id/explain/feedback': { patient: 404 },
+  'POST /encounters/:id/follow-up/explain': { doctor: 404, patient: 404 },
+  // Notifications, search, dashboards
+  'GET /notifications': { doctor: 'list', patient: 'list' },
+  'GET /notifications/unread-count': SAME_FOR_BOTH,
+  'POST /notifications/:id/read': { doctor: 'hidden', patient: 'hidden' },
+  'POST /notifications/read-all': SAME_FOR_BOTH,
+  'GET /search': { doctor: 'list', patient: 'list' },
+  'GET /dashboard/doctor': { doctor: 'same' },
+  'GET /dashboard/patient': { patient: 'same' },
+  // Prescriptions (doctors list them per patient: another patient → 404)
+  'GET /prescriptions': { doctor: 404, patient: 'list' },
+  'GET /prescriptions/:id': { doctor: 404, patient: 404 },
+  'GET /prescriptions/:id/print': { doctor: 404, patient: 404 },
+  'POST /prescriptions/:id/cancel': { doctor: 404 },
+  'POST /prescriptions/:id/reissue': { doctor: 404 },
+  'POST /prescriptions/:id/issue': { doctor: 404 },
+  // Lab orders
+  'GET /lab-orders': { doctor: 404, patient: 'list' },
+  'GET /lab-orders/:id': { doctor: 404, patient: 404 },
+  'POST /lab-orders': { doctor: 404 },
+  'PATCH /lab-orders/:id': { doctor: 404 },
+  'POST /lab-orders/:id/discard': { doctor: 404 },
+  'POST /lab-orders/:id/cancel': { doctor: 404 },
+  'POST /lab-orders/:id/items/:itemId/cancel': { doctor: 404 },
+  'POST /lab-orders/:id/acknowledge': { doctor: 404 },
+  'GET /lab-orders/:id/report.pdf': { doctor: 404, patient: 404 },
+  // Documents (lists filtered by another patient → 404)
+  'POST /documents': { doctor: 404, patient: 404 },
+  'GET /documents': { doctor: 404, patient: 404 },
+  'GET /documents/:id': { doctor: 404, patient: 404 },
+  'GET /documents/:id/download': { doctor: 404, patient: 404 },
+  'POST /documents/:id/delete': { doctor: 404, patient: 404 },
+  // Invoices and payments (patients only; doctors have no billing access)
+  'GET /invoices': { patient: 'list' },
+  'GET /invoices/:id': { patient: 404 },
+  'GET /invoices/:id/pdf': { patient: 404 },
+  'GET /invoices/:id/payments': { patient: 404 },
+  'GET /payments/:id/receipt.pdf': { patient: 404 },
+};

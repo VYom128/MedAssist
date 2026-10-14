@@ -85,11 +85,19 @@ export default function RecordPaymentModal({
           message:
             balance === undefined
               ? err.message
-              : balance === 0
-                ? 'This invoice is already fully paid.'
-                : `Only ${formatINR(balance)} is still due. The invoice has been refreshed.`,
+              : `Only ${formatINR(balance)} is still due. The invoice has been refreshed.`,
         });
         if (balance !== undefined) setAmount(balance);
+      } else if (isApiQueryError(err) && err.code === 'INVALID_STATUS_TRANSITION') {
+        // Paid in full meanwhile (D203), or no longer open (draft, void).
+        const from = (err.details as { from?: string } | undefined)?.from;
+        setServerError({
+          title: from === 'paid' ? 'Already paid' : 'This invoice cannot take a payment',
+          message:
+            from === 'paid'
+              ? 'This invoice is already fully paid. The invoice has been refreshed.'
+              : err.message,
+        });
       } else if (isApiQueryError(err) && err.code === 'CONFLICT') {
         setServerError({
           title: 'The invoice just changed',

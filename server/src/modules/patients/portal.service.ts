@@ -35,10 +35,9 @@ const resourceOf = (p: Pick<PatientLike, '_id' | 'mrn'>) => ({
   number: p.mrn,
 });
 
-const userActor = (u: Pick<UserWithId, '_id' | 'role' | 'firstName' | 'lastName'>): AuditActor => ({
+const userActor = (u: Pick<UserWithId, '_id' | 'role'>): AuditActor => ({
   user: u._id.toString(),
   role: u.role,
-  name: `${u.firstName} ${u.lastName}`,
 });
 
 const isDuplicateKey = (err: unknown, key: string) =>

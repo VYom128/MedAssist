@@ -1,4 +1,5 @@
 import { emailService, type EmailMessage } from '../../src/services/email.service.js';
+import { settleNotifications } from '../../src/services/notification.service.js';
 
 /** Captures every email sent while the returned spy is active (nothing is actually sent). */
 export function captureEmails() {
@@ -9,6 +10,8 @@ export function captureEmails() {
   return {
     sent,
     restore: () => spy.mockRestore(),
+    /** Waits until every notification and email started so far is done (no sleeping). */
+    settled: () => settleNotifications(),
     /** Waits for a background send and returns the token from the last link in it. */
     async lastToken(): Promise<string> {
       await vi.waitFor(() => expect(sent.length).toBeGreaterThan(0));

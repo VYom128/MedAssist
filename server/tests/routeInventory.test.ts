@@ -1,8 +1,7 @@
-import type { Router } from 'express';
 import { Types } from 'mongoose';
-import apiRoutes from '../src/routes/index.js';
 import { loginAs, resetDb } from './helpers/auth.js';
 import { ENDPOINTS, PUBLIC_ENDPOINTS, routeKey } from './helpers/rbacMatrix.js';
+import { API_ROUTES } from './helpers/routes.js';
 import { api } from './helpers/testApp.js';
 
 /**
@@ -33,32 +32,7 @@ const PUBLIC = new Set([
 /** Mount prefixes whose every route is admin-only. */
 const ADMIN_PREFIXES = ['/users', '/audit-logs'];
 
-interface Layer {
-  route?: { path: string; methods: Record<string, boolean> };
-  name: string;
-  regexp: RegExp;
-  handle: { stack?: Layer[] };
-}
-
-/** "/users" from Express 4's mount regexp `^\/users\/?(?=\/|$)`. */
-function mountPath(regexp: RegExp): string {
-  return regexp.source.replace(/^\^/, '').replace('\\/?(?=\\/|$)', '').replace(/\\(.)/g, '$1');
-}
-
-function listRoutes(stack: Layer[], prefix = ''): string[] {
-  return stack.flatMap((layer) => {
-    if (layer.route) {
-      const path = `${prefix}${layer.route.path}`.replace(/(.)\/$/, '$1');
-      return Object.keys(layer.route.methods).map((m) => `${m.toUpperCase()} ${path}`);
-    }
-    if (layer.name === 'router' && layer.handle.stack) {
-      return listRoutes(layer.handle.stack, `${prefix}${mountPath(layer.regexp)}`);
-    }
-    return [];
-  });
-}
-
-const ROUTES = listRoutes((apiRoutes as unknown as Router & { stack: Layer[] }).stack);
+const ROUTES = API_ROUTES;
 const PROTECTED = ROUTES.filter((r) => !PUBLIC.has(r));
 const withIds = (route: string) => route.replace(/:\w+/g, new Types.ObjectId().toString());
 

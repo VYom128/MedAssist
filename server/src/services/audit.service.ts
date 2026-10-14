@@ -49,8 +49,11 @@ export type AuditEntry = AuditLogDoc & { _id: unknown };
 
 export const REDACTED = '[REDACTED]';
 const SECRET_KEY = /password|token|secret|hash/i;
-/** Personal contact details: the audit log records that they changed, not their values. */
-const PII_FIELDS = new Set(['email', 'phone']);
+/**
+ * Names and contact details: the audit log records that they changed, not their values (names:
+ * D206 – entries carry ids only).
+ */
+const PII_FIELDS = new Set(['email', 'phone', 'firstName', 'lastName']);
 
 /** Replaces the value of every key matching password|token|secret|hash, at any depth. */
 export function redactSecrets<T>(value: T): T {
@@ -169,7 +172,8 @@ function toDocument(input: AuditEntryInput, seq: number, prevHash: string) {
   return new AuditLog({
     seq,
     at: new Date(),
-    actor: { user: actor?.user ?? null, role: actor?.role ?? null, name: actor?.name ?? null },
+    // `name` stays in the stored shape (older entries have one) but is never written (D206).
+    actor: { user: actor?.user ?? null, role: actor?.role ?? null, name: null },
     action: input.action,
     resource: input.resource
       ? {

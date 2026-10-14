@@ -91,9 +91,18 @@ export function emailFailure(err: unknown): { code: string; responseCode?: numbe
   };
 }
 
+const background = new Set<Promise<void>>();
+
 /** Sends without waiting; failures are logged. Used where timing must not reveal anything. */
 export function sendInBackground(sending: () => Promise<void>, kind: string): void {
-  sending().catch((err: unknown) =>
+  const run = sending().catch((err: unknown) =>
     logger.error({ email: emailFailure(err), kind }, 'Email sending failed'),
   );
+  background.add(run);
+  void run.finally(() => background.delete(run));
+}
+
+/** Waits for every background send started so far (tests, graceful shutdown). */
+export async function drainBackgroundEmails(): Promise<void> {
+  while (background.size > 0) await Promise.all([...background]);
 }

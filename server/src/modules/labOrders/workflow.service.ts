@@ -208,6 +208,8 @@ export async function rejectSample(
  */
 export async function recollectSample(user: AuthUser, id: string, meta: RequestMeta) {
   const o = await forLab(user, id, meta);
+  // draft → ordered is placing an order when its note is signed, never a recollection.
+  assertFrom(o, 'sample_rejected', 'ordered');
   const rejected = o.sample?.sampleId ?? 'sample';
   const note = `${rejected} rejected: ${o.sample?.rejection?.reason ?? 'no reason given'}`.slice(
     0,
@@ -429,7 +431,8 @@ export async function sendBack(
  */
 export async function releaseOrder(user: AuthUser, id: string, meta: RequestMeta) {
   const o = await forLab(user, id, meta);
-  assertTransition('labOrder', o.status, 'released');
+  // Only a verified order is released; released → released is a revision (revision.service).
+  assertFrom(o, 'verified', 'released');
   const now = new Date();
   const report = await prepareReleaseReport(await loadLabOrder(o._id, { detail: true }), {
     kind: 'release',

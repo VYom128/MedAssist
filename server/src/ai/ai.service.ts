@@ -172,7 +172,7 @@ export async function generateJson<T>(request: AiCallRequest<T>): Promise<AiCall
     await audit.record({
       action: AUDIT_ACTIONS.AI_CALL,
       outcome: status,
-      actor: request.user ? actorOf(request.user) : { user: null, role: 'system', name: 'AI' },
+      actor: request.user ? actorOf(request.user) : { user: null, role: 'system' },
       resource: request.source
         ? { type: request.source.type, id: request.source.id }
         : { type: 'ai_call' },

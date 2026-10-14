@@ -34,8 +34,9 @@ describe('me, logout and sessions', () => {
     const [entry] = await auditEntries('auth.profile_update');
     expect(entry?.changes).toEqual({
       fields: ['firstName', 'phone'],
-      before: { firstName: user.firstName, phone: '[REDACTED]' },
-      after: { firstName: 'Meera', phone: '[REDACTED]' },
+      // Names and phone: the fields changed, the values are not kept (D206).
+      before: { firstName: '[REDACTED]', phone: '[REDACTED]' },
+      after: { firstName: '[REDACTED]', phone: '[REDACTED]' },
     });
 
     for (const body of [{ role: 'admin' }, { email: 'x@y.dev' }, {}]) {

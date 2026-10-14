@@ -125,7 +125,7 @@ describe('seed', { timeout: 120_000 }, () => {
     });
 
     // No welcome emails: the seed sets demo passwords instead.
-    await new Promise((r) => setTimeout(r, 50));
+    await emails.settled();
     expect(emails.sent).toHaveLength(0);
     emails.restore();
   });
