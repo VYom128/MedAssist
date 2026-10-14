@@ -12,7 +12,7 @@ Read the relevant spec sections for the current phase before planning. Do not re
 
 ## Stack
 - Monorepo with npm workspaces: `server/` and `client/`
-- Server: Node 20+, Express 4, Mongoose 8, Zod, Pino, JWT + bcryptjs, Socket.IO, Multer, PDFKit, Nodemailer
+- Server: Node 24 LTS, Express 4, Mongoose 8, Zod, Pino, JWT + bcryptjs, Socket.IO, Multer, PDFKit, Nodemailer
 - Client: React 18, Vite, React Router v6, Redux Toolkit + RTK Query, Tailwind CSS, react-hook-form + Zod
 - TypeScript with ES modules (strict). File names in the spec and below (`model.js`, `api.js`, `AppRoutes.jsx`) mean `.ts` / `.tsx`. Server imports use `.js` extensions (NodeNext).
 - Tests: Vitest + Supertest + mongodb-memory-server (replica set, for transactions); React Testing Library

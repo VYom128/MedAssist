@@ -11,7 +11,7 @@ AI-assisted summaries.
 
 ## Prerequisites
 
-- **Node.js 20+** and **npm 10+** (`.nvmrc` pins 20)
+- **Node.js 24 LTS** and **npm 10+** (`.nvmrc` pins 24)
 - **MongoDB**: a MongoDB Atlas cluster, or a local MongoDB running as a **replica set**
   (required from Phase 2: creating a doctor, saving a schedule and the seed use transactions)
 

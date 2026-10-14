@@ -5,7 +5,7 @@
   "description": "MedAssist \u2013 Clinic Operations & Patient Care Portal",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "workspaces": [
     "server",

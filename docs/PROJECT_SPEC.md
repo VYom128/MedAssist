@@ -186,7 +186,7 @@ flowchart LR
 ### 3.2 Tech stack
 | Layer | Choice | Notes |
 |---|---|---|
-| Runtime | Node.js 20+, ES modules | JavaScript, no TypeScript |
+| Runtime | Node.js 24 LTS (D193), ES modules | JavaScript, no TypeScript |
 | API | Express 4 | REST, JSON, `/api/v1` |
 | Database | MongoDB (Atlas in prod), Mongoose 8 | Replica set required for transactions |
 | Validation | Zod | Body, query, params, and env |
@@ -2116,3 +2116,4 @@ Phase 1 key decisions: patient self-registration creates a User only, with no Pa
 | D190 | 2026-10-13 | **Reports**: `GET /reports/<type>` JSON or `format=csv`; at most 366 days → **422** `VALIDATION_ERROR` (the code's catalogue status is 400, used for a backwards range); CSV with a BOM, clinic dates, rupees with 2 decimals, a totals row and `'`-prefixed cells starting with `= + - @` (numbers excepted), streamed; `report.export` audit (type, range, group, row count); 30 exports per user per hour. Revenue and utilisation admin only; reception appointments + no-shows; lab techs lab turnaround. | §7.18. |
 | D191 | 2026-10-13 | **Seed**: notifications for every demo login except the admin through the real `notify()` with emails muted and `seed:`-prefixed dedupe keys (re-running adds none); the lab TAT job runs once; seeded lab times are back-dated so turnaround looks realistic, but stored lab report PDFs still show the seed run's time; patient1's follow-up falls back to the latest signed note. | Demo data. |
 | D192 | 2026-10-13 | **Client printing**: `PrintHeader` + `@media print` rules hide the shell, buttons, tab rows and filters, print text black and start each `.print-section` on a new page; Print on reports, the reception appointment list (list view – the current page of results) and the queue. `Table` gained a `footerRow` (totals). | §12.3. |
+| D193 | 2026-10-14 | **Node.js 24 LTS** (`.nvmrc` 24, `engines` `>=24`, `@types/node` 24) instead of "Node.js 20+": Node 20 left support in April 2026 and Node 22 is in maintenance; the whole suite passes on 24. | §3.1 runtime, §18. |
