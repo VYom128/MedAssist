@@ -20,7 +20,7 @@ Read the relevant spec sections for the current phase before planning. Do not re
 
 ## Commands
 - `npm run dev` – run server + client (`dev:server` / `dev:client` for one side). Dev API port is 5001 (macOS AirPlay holds 5000).
-- `npm test` – server then client tests (`npm run test:client` for client only); `npm run test:coverage -w server` for coverage
+- `npm test` – server then client tests (`npm run test:client` for client only); `npm run test:coverage` for coverage (server fails below 80 % lines on services and policies; client is reported only)
 - `npm run lint` / `npm run lint:fix` / `npm run format` / `npm run format:check` / `npm run typecheck`
 - `npm run seed` – seed demo data (clinic set-up, staff, 8 doctors, lab tests, 60 patients with logins `patient1…8` and the pending sign-up `pending1`, ~310 appointments incl. today's live queue, notes, prescriptions, ~80 lab orders, ~215 invoices with payments, 15 follow-up requests and follow-up reminders (patient1 has one due in two days); password `Password@123`; prints the kiosk board URL); `npm run seed -- --reset` wipes first. Needs MongoDB as a replica set.
 - `npm run smoke` – API smoke test against the seeded DB (auth, RBAC, audit chain, Phase 2 data, public field exposure, patients and field visibility, all demo logins, Phase 4: appointments, a live double-booking race, a Socket.IO event, the kiosk board, Phase 5–7 role views, lab reports and invoices, Phase 10 dashboards, notifications, a report + CSV, search and a slip; it books one appointment and cancels it again). Reuses a server already running on `PORT` (and leaves it running); otherwise starts a temporary one on a free port and stops only that.

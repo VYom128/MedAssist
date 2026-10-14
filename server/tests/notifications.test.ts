@@ -4,7 +4,7 @@ import { FORMULARY } from '../src/data/formulary.js';
 import { patientRecipient } from '../src/modules/appointments/service.js';
 import { Notification } from '../src/modules/notifications/model.js';
 import { emailService } from '../src/services/email.service.js';
-import { configureEmailQueue } from '../src/services/emailQueue.js';
+import { configureEmailQueue, drainEmailQueue } from '../src/services/emailQueue.js';
 import { notify, notificationLink } from '../src/services/notification.service.js';
 import { NOTIFICATION_EMAILS } from '../src/services/notificationEmails/index.js';
 import { setSocketServer } from '../src/socket/emitter.js';
@@ -194,6 +194,35 @@ describe('notify()', () => {
     expect(n?.channels?.email).toMatchObject({ sent: false, attempts: 4, error: 'EAUTH' });
     send.mockRestore();
     emails = captureEmails();
+  });
+
+  it('in production mode notify() returns before the email is sent; drain waits for retries', async () => {
+    emails.restore();
+    configureEmailQueue({ inline: false, delaysMs: [20, 20, 20] });
+    let release!: () => void;
+    const firstTry = new Promise<void>((r) => (release = r));
+    const send = vi
+      .spyOn(emailService, 'send')
+      .mockImplementationOnce(async () => {
+        await firstTry;
+        throw 'not an Error object'; // a thrown non-Error value is retried like any failure
+      })
+      .mockResolvedValue(undefined);
+    try {
+      const user = await createUser('patient');
+      await booked(user._id.toString()); // resolves while the first try is still waiting
+      let n = await Notification.findOne().lean();
+      expect(n?.channels?.email?.sent).not.toBe(true);
+      release();
+      await drainEmailQueue();
+      expect(send).toHaveBeenCalledTimes(2);
+      n = await Notification.findOne().lean();
+      expect(n?.channels?.email).toMatchObject({ sent: true, attempts: 2, error: null });
+    } finally {
+      configureEmailQueue({ inline: true });
+      send.mockRestore();
+      emails = captureEmails();
+    }
   });
 
   it('builds role links from the catalogue', () => {
