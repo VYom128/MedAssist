@@ -4,3 +4,6 @@ coverage
 package-lock.json
 docs
 CLAUDE.md
+e2e/.stack
+test-results
+playwright-report

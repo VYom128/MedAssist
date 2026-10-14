@@ -660,7 +660,7 @@ For the email step set `EMAIL_TRANSPORT=smtp` and Ethereal's `SMTP_HOST=smtp.eth
 - [x] Full seed data (spec §15.3) + demo accounts in README
 - [x] RBAC matrix test across all endpoints
 - [x] Coverage ≥ 80 % on services and policies; frontend component tests
-- [ ] Optional Playwright end-to-end happy path
+- [x] Optional Playwright end-to-end happy path
 - [x] Responsive and accessibility pass
 - [x] Security review (spec §10 checklist)
 - [ ] GitHub Actions CI (lint, format, tests, build)

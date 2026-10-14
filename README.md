@@ -159,20 +159,21 @@ missing or invalid, the server names it and exits with code 1.
 
 Run from the repo root.
 
-| Command                                     | What it does                                                                                                                                 |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                               | Server (nodemon + tsx) and client (Vite) together                                                                                            |
-| `npm run dev:server` / `npm run dev:client` | One side only                                                                                                                                |
-| `npm test`                                  | Server tests (Vitest + Supertest + in-memory replica set), then client tests (Vitest + React Testing Library)                                |
-| `npm run test:client`                       | Client tests only                                                                                                                            |
-| `npm run seed` / `npm run seed -- --reset`  | Demo clinic and accounts (see above)                                                                                                         |
-| `npm run smoke`                             | API smoke test (auth, RBAC, audit chain, seeded clinic data, public fields, demo logins). Reuses a running API                               |
-| `npm run test:coverage`                     | Tests with v8 coverage (`server/coverage/`, `client/coverage/`); the server run fails below 80 % lines on services and policies (spec §15.1) |
-| `npm run lint` / `npm run lint:fix`         | ESLint (flat config) over the whole repo                                                                                                     |
-| `npm run format` / `npm run format:check`   | Prettier                                                                                                                                     |
-| `npm run typecheck`                         | `tsc --noEmit` for server and client                                                                                                         |
-| `npm run build`                             | Compile server to `server/dist`, build client to `client/dist`                                                                               |
-| `npm start`                                 | Run the compiled server                                                                                                                      |
+| Command                                     | What it does                                                                                                                                                                                                                 |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                               | Server (nodemon + tsx) and client (Vite) together                                                                                                                                                                            |
+| `npm run dev:server` / `npm run dev:client` | One side only                                                                                                                                                                                                                |
+| `npm test`                                  | Server tests (Vitest + Supertest + in-memory replica set), then client tests (Vitest + React Testing Library)                                                                                                                |
+| `npm run test:client`                       | Client tests only                                                                                                                                                                                                            |
+| `npm run seed` / `npm run seed -- --reset`  | Demo clinic and accounts (see above)                                                                                                                                                                                         |
+| `npm run smoke`                             | API smoke test (auth, RBAC, audit chain, seeded clinic data, public fields, demo logins). Reuses a running API                                                                                                               |
+| `npm run test:coverage`                     | Tests with v8 coverage (`server/coverage/`, `client/coverage/`); the server run fails below 80 % lines on services and policies (spec §15.1)                                                                                 |
+| `npm run e2e`                               | End-to-end happy path in Chromium (spec §15.2): starts its own stack – in-memory MongoDB, fresh seed, API with mock AI, production client build – and keeps a trace on failure. First run: `npx playwright install chromium` |
+| `npm run lint` / `npm run lint:fix`         | ESLint (flat config) over the whole repo                                                                                                                                                                                     |
+| `npm run format` / `npm run format:check`   | Prettier                                                                                                                                                                                                                     |
+| `npm run typecheck`                         | `tsc --noEmit` for server and client                                                                                                                                                                                         |
+| `npm run build`                             | Compile server to `server/dist`, build client to `client/dist`                                                                                                                                                               |
+| `npm start`                                 | Run the compiled server                                                                                                                                                                                                      |
 
 The first test run downloads a MongoDB binary (about 100 MB) for mongodb-memory-server.
 

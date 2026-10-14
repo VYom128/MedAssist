@@ -74,3 +74,40 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:coverage -w client
+
+  # The §15.2 happy path in a real browser (Playwright, Chromium only), on main only so PRs stay
+  # fast: it builds its own stack (in-memory MongoDB, fresh seed, mock AI) and takes a few minutes.
+  e2e:
+    name: End-to-end happy path
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [checks, server-tests, client-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: mongodb-binaries-${{ runner.os }}-
+      # Browsers are cached per Playwright version; system libraries are installed every run.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - name: Upload the trace and report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
