@@ -34,7 +34,7 @@ describe('Doctor: own profile', () => {
     expect(screen.queryByLabelText('Consultation fee')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Registration number')).not.toBeInTheDocument();
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.clear(bio);
     await user.type(bio, 'Family medicine');
     await user.type(screen.getByLabelText('Languages'), 'Kannada{Enter}');

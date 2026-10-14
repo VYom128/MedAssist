@@ -41,7 +41,7 @@ describe('Doctors (admin)', () => {
     expect(second).toHaveTextContent('Inactive');
     expect(lastQuery.get('includeInactive')).toBe('true');
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.selectOptions(screen.getByLabelText('Bookings'), 'no');
     await waitFor(() => expect(lastQuery.get('accepting')).toBe('false'));
     await waitFor(() =>
@@ -72,7 +72,7 @@ describe('Doctors (admin)', () => {
     const toastModule = await import('react-hot-toast');
     const toastSuccess = vi.spyOn(toastModule.default, 'success');
     const { router } = renderRoutes(routes, '/admin/doctors', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Add doctor' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add doctor' });
 
@@ -148,7 +148,7 @@ describe('Doctor detail (admin)', () => {
       }),
     );
     renderRoutes(routes, '/admin/doctors/dr1', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     expect(await screen.findByRole('heading', { name: 'Dr Anil Mehta' })).toBeInTheDocument();
     expect(screen.getByLabelText('Registration number')).toHaveValue('KMC-12345');
     expect(screen.getByLabelText('Consultation fee')).toHaveValue('500');
@@ -207,7 +207,7 @@ describe('Doctor detail (admin)', () => {
     renderRoutes(routes, '/admin/doctors/dr1?tab=leave', authState(admin));
     expect(await screen.findByText('27 Sep 2030 – 29 Sep 2030')).toBeInTheDocument();
     expect(screen.getByText('Conference')).toBeInTheDocument();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(
       screen.getByRole('button', { name: 'Cancel leave 27 Sep 2030 – 29 Sep 2030' }),
     );

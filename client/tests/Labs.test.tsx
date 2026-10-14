@@ -137,7 +137,7 @@ describe('lab worklist', () => {
   it('switching tabs and searching filter the list; "Released today" asks for today', async () => {
     const requests = serveWorklist();
     renderRoutes(routes, '/lab/worklist', authState(labtech));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: /Processing/ }, { timeout: 5000 }));
     expect((await screen.findAllByText('LAB-2026-000014')).length).toBeGreaterThan(0);
     await user.click(screen.getByRole('tab', { name: /Released today/ }));
@@ -193,7 +193,7 @@ describe('lab order page', () => {
   it('collect sample → the label page with the sample ID', async () => {
     const calls = serveOrder(labOrder());
     const { router } = openOrder();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(
       await screen.findByRole('button', { name: 'Collect sample' }, { timeout: 5000 }),
     );
@@ -209,7 +209,7 @@ describe('lab order page', () => {
   it('reject sample needs a reason', async () => {
     const calls = serveOrder(labOrder({ status: 'sample_collected', sample: collectedSample }));
     openOrder();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(
       await screen.findByRole('button', { name: 'Reject sample' }, { timeout: 5000 }),
     );
@@ -227,7 +227,7 @@ describe('lab order page', () => {
   it('results entry: reference for this patient, live flag, values sent without flags', async () => {
     const calls = serveOrder(labOrder({ status: 'processing', sample: collectedSample }));
     openOrder();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const hb = await screen.findByLabelText(/Haemoglobin/, {}, { timeout: 5000 });
     // Female, 38 years → the female adult range.
     expect(screen.getByText('Ref. 12–15.5 g/dL')).toBeInTheDocument();
@@ -255,7 +255,7 @@ describe('lab order page', () => {
   it('a non-number stays on the page with an error', async () => {
     const calls = serveOrder(labOrder({ status: 'processing', sample: collectedSample }));
     openOrder();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.type(await screen.findByLabelText(/Haemoglobin/, {}, { timeout: 5000 }), 'abc');
     await user.click(screen.getByRole('button', { name: 'Save CBC' }));
     expect(await screen.findByText('Enter a number')).toBeInTheDocument();
@@ -272,7 +272,7 @@ describe('lab order page', () => {
       ),
     );
     openOrder();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const hb = await screen.findByLabelText(/Haemoglobin/, {}, { timeout: 5000 });
     await user.type(hb, '9999999');
     await user.click(screen.getByRole('button', { name: 'Save CBC' }));
@@ -338,7 +338,7 @@ describe('lab order page', () => {
       }),
     );
     openOrder();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(
       await screen.findByRole('button', { name: 'Revise result' }, { timeout: 5000 }),
     );
@@ -401,7 +401,7 @@ describe('lab order page', () => {
       }),
     );
     openOrder();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Verify' }, { timeout: 5000 }));
     await user.click(await screen.findByRole('button', { name: 'Release' }));
     const dialog = await screen.findByRole('dialog');
@@ -450,7 +450,7 @@ describe('lab order page', () => {
       labOrder({ status: 'released', sample: collectedSample, items: [released] }),
     );
     openOrder();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const alert = await screen.findByText(
       'Correction waiting for verification',
       {},
@@ -469,7 +469,7 @@ describe('lab order page', () => {
   it('cancel a test with a reason', async () => {
     const calls = serveOrder(labOrder());
     openOrder();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Cancel test' }, { timeout: 5000 }));
     const dialog = await screen.findByRole('dialog');
     await user.type(within(dialog).getByLabelText(/Reason/), 'Reagent unavailable');

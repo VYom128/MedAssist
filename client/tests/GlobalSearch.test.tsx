@@ -50,7 +50,7 @@ describe('Global search', () => {
   it('waits 250 ms after typing and needs 2 characters', async () => {
     const terms = searchHandler();
     renderRoutes(routes, '/reception/dashboard', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const input = await box();
     await user.type(input, 'p');
     expect(await screen.findByText('Type at least 2 characters.')).toBeVisible();
@@ -66,7 +66,7 @@ describe('Global search', () => {
   it('groups the results and moves through them with ↑ ↓ and Enter', async () => {
     searchHandler();
     const { router } = renderRoutes(routes, '/reception/dashboard', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const input = await box();
     await user.type(input, 'pri');
     const list = await screen.findByRole('listbox', { name: 'Search results' });
@@ -94,7 +94,7 @@ describe('Global search', () => {
   it('Esc closes the results; ⌘K and Ctrl+K focus the box', async () => {
     searchHandler();
     renderRoutes(routes, '/reception/dashboard', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const input = await box();
     expect(input).not.toHaveFocus();
     fireEvent.keyDown(window, { key: 'k', metaKey: true });
@@ -113,7 +113,7 @@ describe('Global search', () => {
   it('says so when nothing matches', async () => {
     searchHandler({ groups: ['patients', 'appointments'], patients: [], appointments: [] });
     renderRoutes(routes, '/reception/dashboard', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.type(await box(), 'zz');
     expect(await screen.findByText('No results for “zz”.')).toBeVisible();
   });

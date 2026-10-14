@@ -45,7 +45,9 @@ describe('DepartmentsPage', () => {
     expect(rows[0]).toHaveTextContent('2');
     expect(lastQuery.get('includeInactive')).toBe('false');
 
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Show inactive' }));
+    await userEvent
+      .setup({ delay: null })
+      .click(screen.getByRole('button', { name: 'Show inactive' }));
     await waitFor(() => expect(lastQuery.get('includeInactive')).toBe('true'));
   });
 
@@ -56,7 +58,7 @@ describe('DepartmentsPage', () => {
       ),
     );
     renderRoutes(routes, '/admin/departments', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const table = await screen.findByRole('table', { name: 'Departments' });
     await user.click(within(table).getByRole('button', { name: 'Deactivate General Medicine' }));
     const dialog = await screen.findByRole('dialog', { name: 'Deactivate General Medicine?' });
@@ -81,7 +83,7 @@ describe('DepartmentsPage', () => {
       }),
     );
     renderRoutes(routes, '/admin/departments', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Add department' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add department' });
     await user.type(within(dialog).getByLabelText('Name'), 'Dermatology');
@@ -115,7 +117,9 @@ describe('DepartmentsPage', () => {
       }),
     );
     renderRoutes(routes, '/admin/departments', authState(admin));
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Try again' }));
+    await userEvent
+      .setup({ delay: null })
+      .click(await screen.findByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('table', { name: 'Departments' })).toBeInTheDocument();
   });
 });

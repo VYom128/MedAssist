@@ -115,7 +115,7 @@ const scrollToEnd = () => fireEvent.scroll(draftRegion(), { target: { scrollTop:
 const approveButton = () => screen.getByRole('button', { name: 'Approve' });
 
 async function openAiTab() {
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   await user.click(await screen.findByRole('tab', { name: 'AI summary' }, { timeout: 5000 }));
   return user;
 }
@@ -184,7 +184,7 @@ describe('Approve', () => {
       state: summaryState({ draft: summary(), noteSigned: true }),
     });
     openConsult();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByText('AI draft – review before use', {}, { timeout: 5000 });
     expect(approveButton()).toBeDisabled();
     scrollToEnd();
@@ -219,7 +219,7 @@ describe('Approve', () => {
       state: summaryState({ draft: summary(), noteSigned: true }),
     });
     openConsult();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Reject' }, { timeout: 5000 }));
     const dialog = await screen.findByRole('dialog', { name: 'Reject the AI draft?' });
     await user.type(
@@ -379,7 +379,7 @@ describe('Encounter view', () => {
       }),
     );
     renderRoutes(routes, '/doctor/encounters/e1', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     expect(
       await screen.findByText(
         /^AI-assisted · reviewed by Dr Anil Mehta on /,

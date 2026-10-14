@@ -41,7 +41,7 @@ describe('PatientsPage', () => {
   it('debounces the search box and keeps the query in the URL', async () => {
     const { router } = renderRoutes(routes, '/reception/patients', authState(reception));
     await screen.findByRole('table', { name: 'Patients' });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.type(screen.getByLabelText('Search'), 'pri');
 
     // Not yet: the request waits for typing to pause.
@@ -55,7 +55,7 @@ describe('PatientsPage', () => {
   it('keeps filters in the URL and sends them to the API', async () => {
     const { router } = renderRoutes(routes, '/reception/patients', authState(reception));
     await screen.findByRole('table', { name: 'Patients' });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.selectOptions(screen.getByLabelText('Age'), '60-120');
     await user.selectOptions(screen.getByLabelText('Portal'), 'yes');
     await waitFor(() => expect(router.state.location.search).toBe('?age=60-120&portal=yes'));
@@ -79,7 +79,9 @@ describe('PatientsPage', () => {
     const { router } = renderRoutes(routes, '/admin/patients', authState(admin));
     await screen.findByRole('table', { name: 'Patients' });
     expect(screen.queryByRole('link', { name: 'New patient' })).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Show inactive only' }));
+    await userEvent
+      .setup({ delay: null })
+      .click(screen.getByRole('button', { name: 'Show inactive only' }));
     await waitFor(() => expect(router.state.location.search).toBe('?inactive=1'));
     await waitFor(() => expect(queries.at(-1)?.get('isActive')).toBe('false'));
   });
@@ -111,7 +113,7 @@ describe('PatientDetailPage – field visibility (spec §2.5)', () => {
     expect(screen.queryByText(/Penicillin/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit details' })).not.toBeInTheDocument();
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(screen.getByRole('button', { name: 'Deactivate' }));
     const dialog = await screen.findByRole('dialog', { name: 'Deactivate patient?' });
     await user.type(within(dialog).getByLabelText('Reason'), 'Duplicate record');
@@ -140,7 +142,7 @@ describe('PatientDetailPage – field visibility (spec §2.5)', () => {
       }),
     );
     renderRoutes(routes, '/reception/patients/p1?tab=portal', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Invite to patient portal' }));
     await user.click(await screen.findByRole('button', { name: 'Send invitation' }));
     await waitFor(() => expect(invited).toBe(true));

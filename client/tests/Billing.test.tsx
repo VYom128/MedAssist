@@ -62,7 +62,7 @@ const discountInput = (lineNo = 1) =>
 
 describe('draft invoice editor', () => {
   it('shows the server totals after saving, not the client preview', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const patches = serveInvoice(invoice(), {
       // The server's own calculation differs from the preview (e.g. a tax rule): it wins.
       onPatch: () =>
@@ -115,7 +115,7 @@ describe('draft invoice editor', () => {
   });
 
   it('a 409 conflict stops autosave and offers "Reload latest"', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     let fresh = false;
     server.use(
       ...catalogue,
@@ -147,7 +147,7 @@ describe('draft invoice editor', () => {
   });
 
   it('the receptionist is told an admin must approve; the admin can save the same discount', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     serveInvoice(invoice(), {
       onPatch: () =>
         fail(
@@ -198,13 +198,13 @@ describe('draft invoice editor', () => {
 async function screenFind() {
   await screen.findByRole('list', { name: 'Invoice lines' });
   const input = discountInput();
-  await userEvent.setup().clear(input);
+  await userEvent.setup({ delay: null }).clear(input);
   return input;
 }
 
 describe('payments on an issued invoice', () => {
   it('the payment modal defaults to the balance, needs a reference for UPI/card, and shows PAYMENT_EXCEEDS_BALANCE', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const posted: unknown[] = [];
     serveInvoice(issued());
     server.use(
@@ -239,7 +239,7 @@ describe('payments on an issued invoice', () => {
   });
 
   it('the refund modal caps the amount at what is left of the payment', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const posted: unknown[] = [];
     serveInvoice(
       issued({ status: 'partially_paid', amountPaidPaise: 20_000, balancePaise: 30_000 }),

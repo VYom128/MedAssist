@@ -52,7 +52,7 @@ describe('Reception appointments – list view', () => {
       '/reception/appointments?view=list',
       authState(reception),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     // The first render loads the lazy page bundle: allow more time.
     const table = await screen.findByRole('table', { name: 'Appointments' }, { timeout: 5000 });
     expect(within(table).getByRole('link', { name: 'Priya Sharma' })).toHaveAttribute(
@@ -96,7 +96,7 @@ describe('Reception appointments – calendar', () => {
 
   it('day view with a column per doctor; clicking an event opens the drawer', async () => {
     renderRoutes(routes, '/reception/appointments', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const event = await screen.findByText('000045 · Priya S.', {}, { timeout: 5000 });
     expect(screen.getAllByText('Anil Mehta').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Kavya Iyer').length).toBeGreaterThan(0);
@@ -157,7 +157,7 @@ describe('Booking modal', () => {
       }),
     );
     renderRoutes(routes, '/reception/appointments', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Book appointment' }));
     const dialog = await screen.findByRole('dialog', { name: 'Book appointment' });
 
@@ -203,7 +203,7 @@ describe('Booking modal', () => {
     catalogHandlers();
     server.use(http.get(url('/appointments/calendar'), () => ok([])));
     renderRoutes(routes, '/reception/appointments', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Book appointment' }));
     const dialog = await screen.findByRole('dialog', { name: 'Book appointment' });
     await user.click(within(dialog).getByRole('button', { name: 'Book appointment' }));
@@ -259,12 +259,15 @@ describe('Appointment details page', () => {
 
   it('check in asks first, then updates the status', async () => {
     renderRoutes(routes, '/reception/appointments/a1', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Check in' }));
     const dialog = await screen.findByRole('dialog', { name: 'Check in' });
     await user.click(within(dialog).getByRole('button', { name: 'Check in' }));
     await waitFor(() => expect(calls).toEqual([{ path: 'check-in', body: {} }]));
-    expect(await screen.findAllByText('Checked in')).not.toHaveLength(0);
+    // The "Checked in" detail label is always there, so wait for the refetched appointment: the
+    // status pill joins it and the token appears. Only then is Check in gone.
+    await waitFor(() => expect(screen.getAllByText('Checked in')).toHaveLength(2));
+    expect(screen.getByText('7')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Check in' })).not.toBeInTheDocument();
   });
 
@@ -279,7 +282,7 @@ describe('Appointment details page', () => {
       ),
     );
     renderRoutes(routes, '/reception/appointments/a1', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Check in' }));
     const dialog = await screen.findByRole('dialog', { name: 'Check in' });
     await user.click(within(dialog).getByRole('button', { name: 'Check in' }));
@@ -290,7 +293,7 @@ describe('Appointment details page', () => {
 
   it('cancelling needs a reason', async () => {
     renderRoutes(routes, '/reception/appointments/a1', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Cancel appointment' }));
     const dialog = await screen.findByRole('dialog', { name: 'Cancel APT-2026-000045' });
     await user.click(within(dialog).getByRole('button', { name: 'Cancel appointment' }));
@@ -339,7 +342,7 @@ describe('Leave impact', () => {
       ),
     );
     renderRoutes(routes, '/doctor/schedule', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Leave' }));
     await user.click((await screen.findAllByRole('button', { name: 'Add leave' }))[0]!);
     const dialog = await screen.findByRole('dialog', { name: 'Add leave' });

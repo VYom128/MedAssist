@@ -64,7 +64,7 @@ describe('New follow-up request (patient)', () => {
       }),
     );
     renderRoutes(routes, '/patient/follow-ups/new', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     expect(
       await screen.findByRole('note', { name: 'Not for emergencies' }, { timeout: 5000 }),
     ).toHaveTextContent(
@@ -144,7 +144,7 @@ describe('Request thread', () => {
       }),
     );
     renderRoutes(routes, '/reception/follow-ups/f1', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const thread = await screen.findByRole('list', { name: 'Messages' }, { timeout: 5000 });
     const note = within(thread).getByText(STAFF_NOTE.text).closest('li')!;
     expect(within(note).getByText(/Internal – not visible to patient/)).toBeInTheDocument();
@@ -216,7 +216,9 @@ describe('Reception inbox', () => {
     );
     expect(screen.getByRole('tab', { name: 'Closed (0)' })).toBeInTheDocument();
     const list = await screen.findByRole('list', { name: 'Follow-up requests' });
-    await userEvent.setup().click(within(list).getByRole('link', { name: /Priya Sharma/ }));
+    await userEvent
+      .setup({ delay: null })
+      .click(within(list).getByRole('link', { name: /Priya Sharma/ }));
     expect(await screen.findByRole('list', { name: 'Messages' })).toBeInTheDocument();
     for (const action of ['Mark in review', 'Assign doctor', 'Schedule', 'Close', 'Reject']) {
       expect(screen.getByRole('button', { name: action })).toBeInTheDocument();
@@ -232,7 +234,7 @@ describe('Reception inbox', () => {
       fail(409, 'SLOT_UNAVAILABLE', 'That time was just taken'),
     );
     renderRoutes(routes, '/reception/follow-ups/f1', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Schedule' }, { timeout: 5000 }));
     const dialog = await screen.findByRole('dialog', { name: /Book a follow-up/ });
     await user.click(

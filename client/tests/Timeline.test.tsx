@@ -52,7 +52,7 @@ describe('Timeline', () => {
       }),
     );
     renderRoutes(routes, '/patient/timeline', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const feed = await screen.findByRole('feed', { name: 'My timeline' }, { timeout: 5000 });
     expect(within(feed).getAllByRole('listitem')).toHaveLength(2);
 
@@ -86,7 +86,7 @@ describe('Timeline', () => {
       }),
     );
     renderRoutes(routes, '/patient/timeline', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByRole('feed', {}, { timeout: 5000 });
     await user.click(screen.getByRole('button', { name: 'Invoices' }));
     await waitFor(() => expect(queries.at(-1)?.get('types')).toBe('invoice'));

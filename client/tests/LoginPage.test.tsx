@@ -7,7 +7,7 @@ import { fail, ok, server, url } from './msw/server';
 
 describe('LoginPage', () => {
   const fill = async (email: string, password: string) => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.type(screen.getByLabelText('Email'), email);
     await user.type(screen.getByLabelText('Password'), password);
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
@@ -22,7 +22,9 @@ describe('LoginPage', () => {
       }),
     );
     renderRoutes(routes, '/login', authState(null));
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Sign in' }));
+    await userEvent
+      .setup({ delay: null })
+      .click(await screen.findByRole('button', { name: 'Sign in' }));
     expect(await screen.findByText('Enter your email')).toBeInTheDocument();
     expect(screen.getByText('Enter your password')).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toHaveAttribute('aria-invalid', 'true');
@@ -61,7 +63,9 @@ describe('LoginPage', () => {
     renderRoutes(routes, '/login', authState(null));
     const input = await screen.findByLabelText('Password');
     expect(input).toHaveAttribute('type', 'password');
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Show password' }));
+    await userEvent
+      .setup({ delay: null })
+      .click(screen.getByRole('button', { name: 'Show password' }));
     expect(input).toHaveAttribute('type', 'text');
   });
 

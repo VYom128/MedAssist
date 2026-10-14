@@ -90,7 +90,7 @@ describe('Notification bell', () => {
       }),
     );
     renderRoutes(routes, '/doctor/dashboard', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const button = await screen.findByRole('button', { name: 'Notifications, 2 unread' });
     button.focus();
     await user.keyboard('{Enter}');
@@ -122,7 +122,7 @@ describe('Notification bell', () => {
 
   it('"View all" goes to /notifications', async () => {
     const { router } = renderRoutes(routes, '/patient/dashboard', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await bell());
     await user.click(await screen.findByRole('menuitem', { name: 'View all' }));
     await waitFor(() => expect(router.state.location.pathname).toBe('/notifications'));
@@ -155,7 +155,7 @@ describe('/notifications', () => {
       }),
     );
     const { router } = renderRoutes(routes, '/notifications', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: /Your lab report is ready/ }));
     await waitFor(() => expect(read).toEqual(['n7']));
     await waitFor(() => expect(router.state.location.pathname).toBe('/patient/invoices'));
@@ -170,7 +170,7 @@ describe('/notifications', () => {
       }),
     );
     const { router } = renderRoutes(routes, '/notifications', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByText('No notifications yet');
     await user.click(screen.getByRole('tab', { name: 'Unread' }));
     expect(await screen.findByText('No unread notifications')).toBeVisible();

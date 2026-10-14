@@ -81,7 +81,7 @@ describe('SettingsPage', () => {
   const open = async () => {
     renderRoutes(routes, '/admin/settings', authState(admin));
     await screen.findByLabelText('Clinic name');
-    return userEvent.setup();
+    return userEvent.setup({ delay: null });
   };
 
   it('saves only the changed fields, with tax as basis points', async () => {

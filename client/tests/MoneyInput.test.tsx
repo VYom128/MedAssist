@@ -16,7 +16,7 @@ function Harness({ initial = null }: { initial?: number | null }) {
 describe('MoneyInput', () => {
   it('the user types rupees; the value is integer paise', async () => {
     render(<Harness />);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const input = screen.getByLabelText('Fee');
     const paise = screen.getByLabelText('paise');
 
@@ -38,7 +38,7 @@ describe('MoneyInput', () => {
     render(<Harness initial={60_000} />);
     const input = screen.getByLabelText('Fee');
     expect(input).toHaveValue('600');
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.clear(input);
     await user.type(input, '0750.50');
     await user.tab();

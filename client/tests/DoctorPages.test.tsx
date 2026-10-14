@@ -73,7 +73,7 @@ describe('Patient page (doctor)', () => {
       }),
     );
     renderRoutes(routes, '/doctor/patients/p1', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     expect(
       await screen.findByRole('alert', { name: 'Allergies' }, { timeout: 5000 }),
     ).toHaveTextContent('Penicillin');
@@ -128,7 +128,7 @@ describe('Notes', () => {
     expect(within(rows[2]!).getByText('v2')).toBeInTheDocument();
     expect(within(rows[0]!).getByRole('link')).toHaveAttribute('href', '/doctor/consult/a1');
     expect(within(rows[2]!).getByRole('link')).toHaveAttribute('href', '/doctor/encounters/e3');
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(screen.getByRole('tab', { name: 'Drafts' }));
     await waitFor(() => expect(params?.get('status')).toBe('draft'));
   });
@@ -204,7 +204,7 @@ describe('Issued prescription on a signed note', () => {
       }),
     );
     renderRoutes(routes, '/doctor/consult/a1', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Reissue' }, { timeout: 5000 }));
     const dialog = await screen.findByRole('dialog', { name: 'Reissue prescription' });
     await user.type(within(dialog).getByLabelText('Reason for the change'), 'Dose to change');

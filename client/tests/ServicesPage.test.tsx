@@ -82,7 +82,7 @@ describe('ServicesPage', () => {
   it('filters by status and type through the API', async () => {
     const { router } = renderRoutes(routes, '/admin/services', authState(admin));
     await screen.findByRole('table', { name: 'Services' });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.selectOptions(screen.getByLabelText('Status'), 'inactive');
     await waitFor(() => expect(lastQuery.get('isActive')).toBe('false'));
     await user.selectOptions(screen.getByLabelText('Type'), 'procedure');
@@ -99,7 +99,7 @@ describe('ServicesPage', () => {
       }),
     );
     renderRoutes(routes, '/admin/services', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Add service' }));
     const dialog = await screen.findByRole('dialog', { name: 'Add service' });
     await user.type(within(dialog).getByLabelText('Code'), 'proc-neb');
@@ -142,7 +142,7 @@ describe('ServicesPage', () => {
       }),
     );
     renderRoutes(routes, '/admin/services', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const table = await screen.findByRole('table', { name: 'Services' });
     await user.click(within(table).getByRole('button', { name: 'Edit General consultation' }));
     const dialog = await screen.findByRole('dialog', { name: 'Edit General consultation' });

@@ -133,7 +133,7 @@ describe('doctor: results to review and the critical alert', () => {
     const banner = await screen.findByRole('alert', { name: 'Critical lab result' });
     expect(banner).toHaveTextContent('Priya Sharma (LAB-2026-000077)');
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(within(banner).getByRole('link', { name: 'Review now' }));
     expect(await screen.findByText('Critical low')).toBeInTheDocument();
     expect(screen.getByText('Some results are not verified yet')).toBeInTheDocument();
@@ -337,7 +337,7 @@ describe('patient: documents and FileUpload', () => {
       return original(config);
     }) as typeof httpClient.request);
     renderRoutes(routes, '/patient/documents', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Upload' }, { timeout: 5000 }));
     const form = screen.getByRole('form', { name: 'Upload a document' });
     // Patients may upload referrals and other papers only.
@@ -355,7 +355,7 @@ describe('patient: documents and FileUpload', () => {
 
     const exe = new File(['MZ'], 'setup.exe', { type: 'application/x-msdownload' });
     // A browser's file dialog filters by `accept`; a drop or 'All files' does not.
-    await userEvent.setup({ applyAccept: false }).upload(input, exe);
+    await userEvent.setup({ delay: null, applyAccept: false }).upload(input, exe);
     expect(within(form).getByRole('alert')).toHaveTextContent(
       'Only PDF, JPG and PNG files can be uploaded.',
     );

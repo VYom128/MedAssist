@@ -27,7 +27,7 @@ describe('PendingLinksPage', () => {
     // Sidebar badge shows the count.
     expect(screen.getAllByText('1').length).toBeGreaterThan(0);
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(within(list).getByRole('button', { name: 'Confirm identity' }));
     const dialog = await screen.findByRole('dialog', { name: 'Confirm identity?' });
     expect(dialog).toHaveTextContent('photo ID');
@@ -47,7 +47,7 @@ describe('PendingLinksPage', () => {
       }),
     );
     renderRoutes(routes, '/reception/pending-links', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Not this person' }));
     const dialog = await screen.findByRole('dialog', { name: 'Not this person?' });
     await user.click(within(dialog).getByRole('button', { name: 'Create separate record' }));

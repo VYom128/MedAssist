@@ -39,7 +39,7 @@ describe('/patient/profile', () => {
     expect(health).toHaveTextContent('Asthma');
     expect(within(health).queryByRole('button')).not.toBeInTheDocument();
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const city = screen.getByLabelText('City');
     await user.clear(city);
     await user.type(city, 'Pune');
@@ -61,7 +61,7 @@ describe('/patient/profile', () => {
       }),
     );
     renderRoutes(routes, '/patient/profile', authState(linked));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('switch', { name: 'AI explanations' }));
     const dialog = await screen.findByRole('dialog', { name: 'Turn off AI explanations?' });
     expect(dialog).toHaveTextContent('no longer be offered plain-language AI explanations');
