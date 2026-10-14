@@ -74,8 +74,14 @@ seed (locale `en_IN`), so every run produces the same data:
 
 It is idempotent: running it again changes nothing, and demo accounts are reset to the demo
 password, active, unlocked and without a forced password change. `npm run seed -- --reset` wipes
-the data first (development only). The seed refuses to run when `NODE_ENV=production`. It needs
-MongoDB as a replica set. When `KIOSK_KEY` is set it also prints the queue board URL.
+the data first (development only). Everything is relative to the run date in the clinic timezone,
+so there is always a live queue today, upcoming bookings and recent activity. It needs MongoDB as
+a replica set, takes about 45 s, and ends with a table of documents per collection and the demo
+logins. When `KIOSK_KEY` is set it also prints the queue board URL (never in production).
+
+With `NODE_ENV=production` the seed refuses to run unless you pass `--demo` **and** set
+`ALLOW_DEMO_SEED=true` – the way to fill the hosted demo database (`npm run seed -- --demo`,
+optionally with `--reset`). It then prints a loud warning; unset `ALLOW_DEMO_SEED` afterwards.
 
 Every password is **`Password@123`**; the seed prints the full table (including the 6 generated
 doctors).

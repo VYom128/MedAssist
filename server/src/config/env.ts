@@ -87,6 +87,10 @@ const envSchema = z
     // functions directly. Run them on one API instance only.
     JOBS_ENABLED: booleanString,
 
+    // Seeding the hosted demo database (spec §15.3, D199): with NODE_ENV=production the seed
+    // runs only with `--demo` AND this set to "true". Never set it for a real clinic.
+    ALLOW_DEMO_SEED: booleanString,
+
     // File storage (spec §10.3, §12.2). 'local' writes under UPLOAD_DIR (never served statically);
     // 's3' and 'cloudinary' come in Phase 11. Tests default to a per-process temp directory.
     STORAGE_DRIVER: z.enum(['local', 's3', 'cloudinary']).default('local'),
@@ -255,6 +259,7 @@ export const config = Object.freeze({
   }),
   kiosk: Object.freeze({ key: env.KIOSK_KEY }),
   jobs: Object.freeze({ enabled: env.JOBS_ENABLED }),
+  seed: Object.freeze({ allowDemo: env.ALLOW_DEMO_SEED }),
   storage: Object.freeze({
     driver: env.STORAGE_DRIVER,
     /** Absolute path of the local driver's directory. */
