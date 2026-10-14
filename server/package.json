@@ -15,6 +15,7 @@
     "seed": "tsx src/seed/index.ts",
     "smoke": "tsx scripts/smoke.ts",
     "ai:eval": "tsx scripts/aiEval.ts",
+    "db:indexes": "tsx src/migrations/indexes.ts",
     "migrate:link-patients": "tsx src/migrations/linkPatients.ts"
   },
   "dependencies": {

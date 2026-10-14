@@ -1,10 +1,11 @@
 import { config } from '../../config/env.js';
+import { cloudinaryStorage } from './cloudinary.js';
 import { localStorage } from './local.js';
 import type { StorageAdapter } from './types.js';
 
 export type { StorageAdapter } from './types.js';
 
-/** Drivers that come with Phase 11: every call fails until they are configured. */
+/** A driver that is not available (s3; cloudinary without settings): every call fails. */
 function notConfigured(driver: 's3' | 'cloudinary'): StorageAdapter {
   const fail = async (): Promise<never> => {
     throw new Error(`Storage driver "${driver}" is not configured`);
@@ -14,12 +15,29 @@ function notConfigured(driver: 's3' | 'cloudinary'): StorageAdapter {
 
 let adapter: StorageAdapter | null = null;
 
+function createAdapter(): StorageAdapter {
+  const { driver, uploadDir, cloudinary } = config.storage;
+  if (driver === 'local') return localStorage(uploadDir);
+  // env.ts refuses cloudinary without its settings, so this is only a fallback.
+  if (
+    driver === 'cloudinary' &&
+    cloudinary.cloudName &&
+    cloudinary.apiKey &&
+    cloudinary.apiSecret
+  ) {
+    return cloudinaryStorage({
+      cloudName: cloudinary.cloudName,
+      apiKey: cloudinary.apiKey,
+      apiSecret: cloudinary.apiSecret,
+      folder: cloudinary.folder,
+    });
+  }
+  return notConfigured(driver);
+}
+
 /** The storage adapter for STORAGE_DRIVER (one per process). */
 export function getStorage(): StorageAdapter {
-  adapter ??=
-    config.storage.driver === 'local'
-      ? localStorage(config.storage.uploadDir)
-      : notConfigured(config.storage.driver);
+  adapter ??= createAdapter();
   return adapter;
 }
 

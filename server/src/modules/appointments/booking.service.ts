@@ -513,6 +513,7 @@ export async function rescheduleAppointment(
       startAt: slot.startAt,
       endAt: slot.endAt,
       reminderSentAt: undefined, // remind again before the new time
+      reminderSkippedAt: undefined,
       updatedBy: user.id,
     });
     await appt.save({ session });

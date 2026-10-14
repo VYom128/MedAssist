@@ -11,11 +11,26 @@ const isTestEnv = process.env.NODE_ENV === 'test';
 // Tests connect to an in-memory replica set, so MONGO_URI is only required outside test.
 const mongoUriRequired = !isTestEnv;
 
-/** Secrets are required outside test; tests get a fixed placeholder so they need no .env. */
+/**
+ * A secret that looks like an example rather than a generated value: a placeholder from the docs
+ * (`<generate-me>`), a dictionary word, or too few different characters (e.g. 'a' * 32).
+ */
+export function looksWeak(value: string): boolean {
+  if (/[<>]|generate|change.?me|example|placeholder|secret|password/i.test(value)) return true;
+  return new Set(value).size < 12;
+}
+
+/**
+ * Secrets are required outside test – at least 32 characters and not weak (`looksWeak`); tests
+ * get a fixed placeholder so they need no .env.
+ */
 const secret = (name: string) =>
   isTestEnv
     ? z.string().min(32).default(`test-only-${name.toLowerCase()}-0123456789abcdef`)
-    : z.string({ error: 'Required' }).min(32, 'Must be at least 32 characters');
+    : z
+        .string({ error: 'Required' })
+        .min(32, 'Must be at least 32 characters')
+        .refine((v) => !looksWeak(v), 'Looks like a placeholder – generate a random value');
 
 /** "true"/"false" strings (z.coerce.boolean would treat "false" as true). */
 const booleanString = z
@@ -102,6 +117,19 @@ const envSchema = z
         isTestEnv ? path.join(tmpdir(), `medassist-test-uploads-${process.pid}`) : './uploads',
       ),
     MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(50).default(10),
+    // Cloudinary (STORAGE_DRIVER=cloudinary, production): files are uploaded as private
+    // ("authenticated") raw assets under CLOUDINARY_FOLDER and only ever downloaded by the API.
+    CLOUDINARY_CLOUD_NAME: z.string().trim().min(1).optional(),
+    CLOUDINARY_API_KEY: z.string().trim().min(1).optional(),
+    CLOUDINARY_API_SECRET: z.string().trim().min(16, 'Must be at least 16 characters').optional(),
+    CLOUDINARY_FOLDER: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9_-]+(\/[a-z0-9_-]+)*$/, 'Letters, digits, "-", "_" and "/" only')
+      .default('medassist'),
+
+    // Build information shown by /health (Render sets RENDER_GIT_COMMIT on every deploy).
+    RENDER_GIT_COMMIT: z.string().trim().min(1).optional(),
 
     // AI (spec §9, Phase 9). 'mock' = deterministic output, no network (dev default; tests and
     // the seed always use it). 'openai_compatible' = any OpenAI-style chat-completions API
@@ -191,6 +219,28 @@ const envSchema = z
         message: 'Must be outside the client folder',
       });
     }
+    if (env.STORAGE_DRIVER === 's3') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['STORAGE_DRIVER'],
+        message: 'The s3 driver is not available – use local or cloudinary',
+      });
+    }
+    if (env.STORAGE_DRIVER === 'cloudinary') {
+      for (const key of [
+        'CLOUDINARY_CLOUD_NAME',
+        'CLOUDINARY_API_KEY',
+        'CLOUDINARY_API_SECRET',
+      ] as const) {
+        if (env[key] === undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key],
+            message: 'Required when STORAGE_DRIVER=cloudinary',
+          });
+        }
+      }
+    }
     if (env.AI_PROVIDER === 'openai_compatible' && env.AI_API_KEY === undefined) {
       ctx.addIssue({
         code: 'custom',
@@ -211,7 +261,10 @@ const envSchema = z
     }
   });
 
-const parsed = envSchema.safeParse(process.env);
+// An empty value counts as unset (a blank optional variable on a host must not fail validation).
+const parsed = envSchema.safeParse(
+  Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== '')),
+);
 
 if (!parsed.success) {
   // The logger depends on config, so report with console and stop before anything else starts.
@@ -265,7 +318,14 @@ export const config = Object.freeze({
     /** Absolute path of the local driver's directory. */
     uploadDir: path.resolve(env.UPLOAD_DIR),
     maxUploadBytes: env.MAX_UPLOAD_MB * 1024 * 1024,
+    cloudinary: Object.freeze({
+      cloudName: env.CLOUDINARY_CLOUD_NAME,
+      apiKey: env.CLOUDINARY_API_KEY,
+      apiSecret: env.CLOUDINARY_API_SECRET,
+      folder: env.CLOUDINARY_FOLDER,
+    }),
   }),
+  build: Object.freeze({ commit: env.RENDER_GIT_COMMIT ?? null }),
   ai: Object.freeze({
     /** Tests always use the mock provider, whatever the environment says. */
     provider: isTestEnv ? ('mock' as const) : env.AI_PROVIDER,

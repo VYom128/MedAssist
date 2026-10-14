@@ -27,8 +27,9 @@ async function loadEnv(vars: Record<string, string>) {
 }
 
 const SECRETS = {
-  JWT_ACCESS_SECRET: 'a'.repeat(32),
-  AUDIT_HASH_SECRET: 'b'.repeat(32),
+  // Test values only (not used anywhere else): long and varied enough to pass looksWeak.
+  JWT_ACCESS_SECRET: 'test-jwt-0123456789abcdefghijklmnopq',
+  AUDIT_HASH_SECRET: 'test-audit-0123456789abcdefghijklmno',
 };
 
 describe('config/env', () => {
@@ -55,6 +56,58 @@ describe('config/env', () => {
       trustProxy: 2,
     });
     expect((await loadEnv({ ...base, TRUST_PROXY: 'yes' })).code).toBe(1);
+  });
+
+  it('treats empty values as unset (blank optional variables on a host)', async () => {
+    const res = await loadEnv({
+      MONGO_URI: 'mongodb://127.0.0.1:27017/x',
+      ...SECRETS,
+      KIOSK_KEY: '',
+      SMTP_USER: '',
+      LOG_LEVEL: '',
+    });
+    expect(res.code).toBe(0);
+    expect(JSON.parse(res.stdout)).toMatchObject({ kiosk: {}, logLevel: 'info' });
+  });
+
+  it('rejects weak or placeholder secrets', async () => {
+    const base = { MONGO_URI: 'mongodb://127.0.0.1:27017/x', ...SECRETS };
+    for (const weak of [
+      'a'.repeat(40),
+      '<generate-me>-0123456789abcdefghijklmnop',
+      'my-super-secret-value-0123456789abcd',
+    ]) {
+      const res = await loadEnv({ ...base, JWT_ACCESS_SECRET: weak });
+      expect(res.code, weak).toBe(1);
+      expect(res.stderr).toContain('JWT_ACCESS_SECRET: Looks like a placeholder');
+      expect(res.stderr).not.toContain(weak); // values are never printed
+    }
+  });
+
+  it('cloudinary needs its three settings; s3 is not available', async () => {
+    const base = { MONGO_URI: 'mongodb://127.0.0.1:27017/x', ...SECRETS };
+    const cloud = await loadEnv({ ...base, STORAGE_DRIVER: 'cloudinary' });
+    expect(cloud.code).toBe(1);
+    for (const key of ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET']) {
+      expect(cloud.stderr).toContain(`${key}: Required when STORAGE_DRIVER=cloudinary`);
+    }
+    const ok = await loadEnv({
+      ...base,
+      STORAGE_DRIVER: 'cloudinary',
+      CLOUDINARY_CLOUD_NAME: 'demo-cloud',
+      CLOUDINARY_API_KEY: '123456789012345',
+      CLOUDINARY_API_SECRET: 'test-cloudinary-0123456789',
+    });
+    expect(ok.code).toBe(0);
+    expect(JSON.parse(ok.stdout)).toMatchObject({
+      storage: {
+        driver: 'cloudinary',
+        cloudinary: { cloudName: 'demo-cloud', folder: 'medassist' },
+      },
+    });
+    expect((await loadEnv({ ...base, STORAGE_DRIVER: 's3' })).stderr).toContain(
+      'The s3 driver is not available',
+    );
   });
 
   it('parses JWT_ACCESS_EXPIRES_IN durations into seconds', async () => {
@@ -129,6 +182,9 @@ describe('config/env', () => {
       COOKIE_SECURE: 'true',
       COOKIE_SAMESITE: 'none',
       STORAGE_DRIVER: 'cloudinary',
+      CLOUDINARY_CLOUD_NAME: 'demo-cloud',
+      CLOUDINARY_API_KEY: '123456789012345',
+      CLOUDINARY_API_SECRET: 'test-cloudinary-0123456789',
       EMAIL_TRANSPORT: 'smtp',
       SMTP_HOST: 'smtp.example.com',
       SMTP_PORT: '587',

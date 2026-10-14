@@ -116,14 +116,25 @@ describe('runFollowUpReminderJob', () => {
     return { reminder, patient, patientId: pid, doctorId: doctor, visit };
   }
 
-  it('emails only the reminders due in two days, with a booking link and no clinical details', async () => {
+  it('emails the reminders due within two days, with a booking link and no clinical details', async () => {
     const due = await reminderDueIn(2);
-    await reminderDueIn(1);
-    await reminderDueIn(3);
+    const late = await reminderDueIn(1); // yesterday's run was missed (API asleep): sent late
+    const later = await reminderDueIn(3); // not yet
+    const passed = await reminderDueIn(-1); // the follow-up date has gone: too late
     const result = await runFollowUpReminderJob(new Date());
-    expect(result).toEqual({ sent: 1, skipped: 0, failed: 0 });
-    expect(emails.sent).toHaveLength(1);
-    const [mail] = emails.sent;
+    expect(result).toEqual({ sent: 2, skipped: 1, failed: 0 });
+    expect(await FollowupReminder.findById(late.reminder._id).lean()).toMatchObject({
+      status: 'sent',
+    });
+    expect(await FollowupReminder.findById(later.reminder._id).lean()).toMatchObject({
+      status: 'pending',
+    });
+    expect(await FollowupReminder.findById(passed.reminder._id).lean()).toMatchObject({
+      status: 'skipped',
+      skipReason: 'missed',
+    });
+    expect(emails.sent).toHaveLength(2);
+    const mail = emails.sent.find((m) => m.to === due.patient!.user.email);
     expect(mail!.to).toBe(due.patient!.user.email);
     const text = JSON.stringify(mail);
     expect(text).toContain(

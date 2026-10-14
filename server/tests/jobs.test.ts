@@ -1,5 +1,5 @@
 import type { Server } from 'socket.io';
-import { startJobs } from '../src/jobs/index.js';
+import { catchUpJobs, JOBS, startJobs } from '../src/jobs/index.js';
 import { runNoShowJob } from '../src/jobs/noShow.job.js';
 import { runReminderJob } from '../src/jobs/reminders.job.js';
 import { Appointment } from '../src/modules/appointments/model.js';
@@ -17,7 +17,10 @@ const fromNow = (ms: number) => new Date(NOW.getTime() + ms);
 
 let doctorId: string;
 let slot = 0;
-/** An appointment whose patient has an email; each gets its own start minute. */
+/**
+ * An appointment whose patient has an email; each gets its own start minute. Booked an hour
+ * before the job's clock (NOW), as a real booking always precedes the run.
+ */
 async function appt(startAt: Date, extra: Record<string, unknown> = {}) {
   slot += 1;
   const patient = await createPatient({ email: `p${slot}@example.com` });
@@ -25,6 +28,7 @@ async function appt(startAt: Date, extra: Record<string, unknown> = {}) {
     patient: patient.id,
     doctor: doctorId,
     startAt: new Date(startAt.getTime() + (slot % 7) * 1000), // distinct starts
+    createdAt: fromNow(-HOUR),
     ...extra,
   });
 }
@@ -50,7 +54,7 @@ describe('background jobs', () => {
       await appt(fromNow(24 * HOUR), { reminderSentAt: fromNow(-HOUR) }); // already reminded
       await appt(fromNow(24 * HOUR + MIN), { status: 'cancelled' });
 
-      expect(await runReminderJob(NOW)).toEqual({ sent: 2, failed: 0 });
+      expect(await runReminderJob(NOW)).toEqual({ sent: 2, skipped: 0, failed: 0 });
       const reminded = await Appointment.find({ reminderSentAt: NOW }).lean();
       expect(reminded.map((a) => a._id.toString()).sort()).toEqual(
         [due._id.toString(), edge._id.toString()].sort(),
@@ -60,9 +64,30 @@ describe('background jobs', () => {
       expect(emails.sent[0]!.text).toMatch(/^Reminder: your appointment APT-/m);
 
       // Later runs pick up the 24 h 40 min one once, and never resend the first two.
-      expect(await runReminderJob(fromNow(15 * MIN))).toEqual({ sent: 0, failed: 0 });
-      expect(await runReminderJob(fromNow(30 * MIN))).toEqual({ sent: 1, failed: 0 });
-      expect(await runReminderJob(fromNow(45 * MIN))).toEqual({ sent: 0, failed: 0 });
+      expect(await runReminderJob(fromNow(15 * MIN))).toEqual({ sent: 0, skipped: 0, failed: 0 });
+      expect(await runReminderJob(fromNow(30 * MIN))).toEqual({ sent: 1, skipped: 0, failed: 0 });
+      expect(await runReminderJob(fromNow(45 * MIN))).toEqual({ sent: 0, skipped: 0, failed: 0 });
+    });
+
+    it('catches up after the API slept: late but before the visit → sent once', async () => {
+      const a = await appt(fromNow(24 * HOUR));
+      // Asleep at the reminder time; wakes 3 hours later – the visit is still 21 hours away.
+      expect(await runReminderJob(fromNow(3 * HOUR))).toEqual({ sent: 1, skipped: 0, failed: 0 });
+      expect(await runReminderJob(fromNow(4 * HOUR))).toEqual({ sent: 0, skipped: 0, failed: 0 });
+      const after = await Appointment.findById(a._id).lean();
+      expect(after?.reminderSentAt).toEqual(fromNow(3 * HOUR));
+      await vi.waitFor(() => expect(emails.sent).toHaveLength(1));
+    });
+
+    it('a visit that started while the API slept is skipped, never reminded late', async () => {
+      const a = await appt(fromNow(24 * HOUR));
+      const wake = fromNow(24 * HOUR + 5 * MIN);
+      expect(await runReminderJob(wake)).toEqual({ sent: 0, skipped: 1, failed: 0 });
+      expect(await runReminderJob(wake)).toEqual({ sent: 0, skipped: 0, failed: 0 });
+      const after = await Appointment.findById(a._id).lean();
+      expect(after).toMatchObject({ reminderSkippedAt: wake });
+      expect(after?.reminderSentAt ?? null).toBeNull();
+      expect(emails.sent).toHaveLength(0);
     });
 
     it('overlapping runs never send the same reminder twice', async () => {
@@ -155,6 +180,17 @@ describe('background jobs', () => {
         spy.mockRestore();
       }
     });
+  });
+
+  it('catchUpJobs runs every job once with the same clock and survives a failing one', async () => {
+    const spies = JOBS.map((j) => vi.spyOn(j, 'run'));
+    spies[0]!.mockRejectedValueOnce(new Error('boom'));
+    await expect(catchUpJobs(NOW)).resolves.toBeUndefined();
+    for (const spy of spies) {
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledWith(NOW);
+      spy.mockRestore();
+    }
   });
 
   it('startJobs does nothing when JOBS_ENABLED is off (tests)', async () => {

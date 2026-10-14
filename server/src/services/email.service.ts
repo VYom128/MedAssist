@@ -1,6 +1,6 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { config } from '../config/env.js';
-import { logger, serializeError } from '../utils/logger.js';
+import { logger } from '../utils/logger.js';
 import { patientPortalInviteEmail, patientRecordsLinkedEmail } from './email.templates.js';
 
 export interface EmailMessage {
@@ -74,9 +74,26 @@ export function sendEmail(message: EmailMessage): Promise<void> {
   return emailService.send(message);
 }
 
+/**
+ * What may be logged about a failed send: the error's code/name and the SMTP response code –
+ * never its message, which can quote the recipient's address (spec §10.3).
+ */
+export function emailFailure(err: unknown): { code: string; responseCode?: number } {
+  const e = (err && typeof err === 'object' ? err : {}) as {
+    code?: unknown;
+    name?: unknown;
+    responseCode?: unknown;
+  };
+  const code = typeof e.code === 'string' ? e.code : typeof e.name === 'string' ? e.name : 'Error';
+  return {
+    code: code.slice(0, 60),
+    ...(typeof e.responseCode === 'number' ? { responseCode: e.responseCode } : {}),
+  };
+}
+
 /** Sends without waiting; failures are logged. Used where timing must not reveal anything. */
 export function sendInBackground(sending: () => Promise<void>, kind: string): void {
   sending().catch((err: unknown) =>
-    logger.error({ err: serializeError(err), kind }, 'Email sending failed'),
+    logger.error({ email: emailFailure(err), kind }, 'Email sending failed'),
   );
 }

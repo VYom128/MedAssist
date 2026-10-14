@@ -24,8 +24,10 @@ export interface FollowUpReminderJobResult {
 const formatDay = (date: Date) => formatInTimeZone(date, 'UTC', 'dd MMM yyyy');
 
 /**
- * Follow-up reminders (spec §8.11, §4.10): daily at 09:00 clinic time. Pending reminders whose
- * follow-up is due in exactly two clinic days: already booked (an appointment linked to the visit
+ * Follow-up reminders (spec §8.11, §4.10, D202): daily at 09:00 clinic time (and at start-up).
+ * Pending reminders whose follow-up is due within two clinic days – earlier ones too, so a run
+ * missed while the API slept is caught up; once the follow-up date has passed the reminder is
+ * skipped ('missed') instead. Already booked (an appointment linked to the visit
  * with `followUpOf`, or a later one with the same doctor, not cancelled or missed) → skipped;
  * no portal login with an email → skipped; otherwise the patient is emailed a booking link with
  * the doctor and the visit prefilled – no clinical details. Each reminder is claimed with a
@@ -34,8 +36,13 @@ const formatDay = (date: Date) => formatInTimeZone(date, 'UTC', 'dd MMM yyyy');
  */
 export async function runFollowUpReminderJob(now = new Date()): Promise<FollowUpReminderJobResult> {
   const { timezone } = await getSettings();
-  const dueDate = addDaysToDate(clinicToday(timezone, now), FOLLOWUP_RULES.reminderDaysBefore);
-  const due = await FollowupReminder.find({ status: 'pending', dueDate: calendarDate(dueDate) })
+  const today = clinicToday(timezone, now);
+  const dueDate = addDaysToDate(today, FOLLOWUP_RULES.reminderDaysBefore);
+  // Catch-up (D202): every pending reminder due by now, not only today's – the API may have slept.
+  const due = await FollowupReminder.find({
+    status: 'pending',
+    dueDate: { $lte: calendarDate(dueDate) },
+  })
     .sort({ _id: 1 })
     .limit(JOB_RULES.batchSize)
     .lean();
@@ -46,6 +53,13 @@ export async function runFollowUpReminderJob(now = new Date()): Promise<FollowUp
 
   for (const r of due) {
     try {
+      // The follow-up date has passed: too late to remind.
+      if (r.dueDate < calendarDate(today)) {
+        if ((await claim(r._id, { status: 'skipped', skipReason: 'missed' })).modifiedCount) {
+          result.skipped += 1;
+        }
+        continue;
+      }
       const appointments = await Appointment.find({
         patient: r.patient,
         status: { $nin: NOT_BOOKED_STATUSES },

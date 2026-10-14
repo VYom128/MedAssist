@@ -186,12 +186,23 @@ describe('notify()', () => {
     expect(n?.channels?.email).toMatchObject({ sent: true, attempts: 3, error: null });
 
     send.mockReset();
-    send.mockRejectedValue(Object.assign(new Error('secret body text'), { code: 'EAUTH' }));
+    // SMTP messages can quote the recipient: only the code may reach the log.
+    send.mockRejectedValue(
+      Object.assign(new Error('550 5.1.1 <p@example.com>: Recipient address rejected'), {
+        code: 'EENVELOPE',
+        responseCode: 550,
+      }),
+    );
+    const warn = vi.spyOn(logger, 'warn');
     await Notification.deleteMany({});
     await expect(booked(user._id.toString())).resolves.toBeUndefined();
     expect(send).toHaveBeenCalledTimes(4); // 1 try + 3 retries
     n = await Notification.findOne().lean();
-    expect(n?.channels?.email).toMatchObject({ sent: false, attempts: 4, error: 'EAUTH' });
+    expect(n?.channels?.email).toMatchObject({ sent: false, attempts: 4, error: 'EENVELOPE' });
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).toContain('"code":"EENVELOPE","responseCode":550');
+    expect(logged).not.toContain('p@example.com');
+    warn.mockRestore();
     send.mockRestore();
     emails = captureEmails();
   });
