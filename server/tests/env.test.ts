@@ -48,6 +48,15 @@ describe('config/env', () => {
     });
   });
 
+  it('trusts one proxy hop by default; TRUST_PROXY=2 for the Vercel rewrite', async () => {
+    const base = { MONGO_URI: 'mongodb://127.0.0.1:27017/x', ...SECRETS };
+    expect(JSON.parse((await loadEnv(base)).stdout)).toMatchObject({ trustProxy: 1 });
+    expect(JSON.parse((await loadEnv({ ...base, TRUST_PROXY: '2' })).stdout)).toMatchObject({
+      trustProxy: 2,
+    });
+    expect((await loadEnv({ ...base, TRUST_PROXY: 'yes' })).code).toBe(1);
+  });
+
   it('parses JWT_ACCESS_EXPIRES_IN durations into seconds', async () => {
     const res = await loadEnv({
       MONGO_URI: 'mongodb://127.0.0.1:27017/x',
@@ -87,6 +96,28 @@ describe('config/env', () => {
     expect(res.code).toBe(1);
     expect(res.stderr).toContain('EMAIL_TRANSPORT');
     expect(res.stderr).toContain('COOKIE_SECURE');
+    // Defaults that only make sense locally fail fast too.
+    expect(res.stderr).toContain('CLIENT_URL: Must be the deployed https:// client URL');
+    expect(res.stderr).toContain('STORAGE_DRIVER: Must not be local in production');
+  });
+
+  it('in production: an http or localhost CLIENT_URL and SMTP without a login are refused', async () => {
+    const res = await loadEnv({
+      NODE_ENV: 'production',
+      MONGO_URI: 'mongodb://127.0.0.1:27017/x',
+      ...SECRETS,
+      CLIENT_URL: 'http://medassist.example.com',
+      COOKIE_SECURE: 'true',
+      STORAGE_DRIVER: 'cloudinary',
+      EMAIL_TRANSPORT: 'smtp',
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_PORT: '587',
+      MAIL_FROM: 'MedAssist <no-reply@example.com>',
+    });
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain('CLIENT_URL');
+    expect(res.stderr).toContain('SMTP_USER: Required for SMTP in production');
+    expect(res.stderr).toContain('SMTP_PASS: Required for SMTP in production');
   });
 
   it('starts in production with smtp and secure cookies', async () => {
@@ -94,11 +125,15 @@ describe('config/env', () => {
       NODE_ENV: 'production',
       MONGO_URI: 'mongodb://127.0.0.1:27017/x',
       ...SECRETS,
+      CLIENT_URL: 'https://medassist.example.com',
       COOKIE_SECURE: 'true',
       COOKIE_SAMESITE: 'none',
+      STORAGE_DRIVER: 'cloudinary',
       EMAIL_TRANSPORT: 'smtp',
       SMTP_HOST: 'smtp.example.com',
       SMTP_PORT: '587',
+      SMTP_USER: 'apikey',
+      SMTP_PASS: 'smtp-password-placeholder',
       MAIL_FROM: 'MedAssist <no-reply@example.com>',
     });
     expect(res.code).toBe(0);

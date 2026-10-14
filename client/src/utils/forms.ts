@@ -35,9 +35,22 @@ export function applyServerFieldErrors<T extends FieldValues>(
   return applied;
 }
 
-/** Only allow same-app paths as a post-login redirect (blocks //evil.com and absolute URLs). */
+/**
+ * Only allow same-app paths as a post-login redirect. Blocks absolute and protocol-relative URLs
+ * (//evil.com) and their disguises: browsers read "\" as "/" and drop tabs and newlines, so
+ * "/\evil.com" and "/\t/evil.com" would leave the site too. The result is re-checked against our
+ * own origin.
+ */
 export function safeNextPath(next: string | null): string | null {
-  return next && next.startsWith('/') && !next.startsWith('//') ? next : null;
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return null;
+  // eslint-disable-next-line no-control-regex -- control characters are exactly what we refuse
+  if (/[\\\u0000-\u001f\u007f]/.test(next)) return null;
+  try {
+    const url = new URL(next, window.location.origin);
+    return url.origin === window.location.origin ? `${url.pathname}${url.search}${url.hash}` : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -51,6 +51,9 @@ const envSchema = z
       .positive()
       .default(15 * 60 * 1000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+    // Proxies in front of the API whose X-Forwarded-For entries are trusted (client IP for rate
+    // limits and audit). Render alone = 1; Vercel rewrite → Render = 2 (D197).
+    TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(1),
 
     // Auth (spec §10.1). The refresh token is random bytes stored hashed, so it needs no secret.
     JWT_ACCESS_SECRET: secret('JWT_ACCESS_SECRET'),
@@ -144,6 +147,36 @@ const envSchema = z
         message: 'Must be smtp in production (console prints reset links)',
       });
     }
+    if (env.NODE_ENV === 'production') {
+      // CORS, cookies, socket origin and every email link use it; the default is localhost.
+      const client = new URL(env.CLIENT_URL);
+      if (client.protocol !== 'https:' || ['localhost', '127.0.0.1'].includes(client.hostname)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['CLIENT_URL'],
+          message: 'Must be the deployed https:// client URL in production',
+        });
+      }
+      // The host's disk is not kept between deploys (Render, Railway without a volume).
+      if (env.STORAGE_DRIVER === 'local') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['STORAGE_DRIVER'],
+          message: 'Must not be local in production (files would be lost on redeploy)',
+        });
+      }
+      if (env.EMAIL_TRANSPORT === 'smtp') {
+        for (const key of ['SMTP_USER', 'SMTP_PASS'] as const) {
+          if (env[key] === undefined) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [key],
+              message: 'Required for SMTP in production',
+            });
+          }
+        }
+      }
+    }
     // Uploads must never land where the client build could serve them.
     const clientDir = path.resolve(process.cwd(), '..', 'client');
     const uploadDir = path.resolve(env.UPLOAD_DIR);
@@ -200,6 +233,7 @@ export const config = Object.freeze({
   clientUrl: env.CLIENT_URL,
   logLevel: env.LOG_LEVEL,
   rateLimit: Object.freeze({ windowMs: env.RATE_LIMIT_WINDOW_MS, max: env.RATE_LIMIT_MAX }),
+  trustProxy: env.TRUST_PROXY,
   auth: Object.freeze({
     accessSecret: env.JWT_ACCESS_SECRET,
     /** Access token lifetime in seconds. */

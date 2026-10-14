@@ -662,7 +662,7 @@ For the email step set `EMAIL_TRANSPORT=smtp` and Ethereal's `SMTP_HOST=smtp.eth
 - [x] Coverage ≥ 80 % on services and policies; frontend component tests
 - [ ] Optional Playwright end-to-end happy path
 - [x] Responsive and accessibility pass
-- [ ] Security review (spec §10 checklist)
+- [x] Security review (spec §10 checklist)
 - [ ] GitHub Actions CI (lint, format, tests, build)
 - [ ] Deploy: MongoDB Atlas, API on Render/Railway, client on Vercel, files on Cloudinary
 - [ ] Final README: setup, architecture overview, demo accounts, screenshots

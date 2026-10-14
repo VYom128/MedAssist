@@ -107,5 +107,12 @@ describe('LoginPage', () => {
     await screen.findByRole('heading', { name: 'Sign in' });
     await fill('admin@medassist.dev', 'Password@123');
     await waitFor(() => expect(second.router.state.location.pathname).toBe('/admin/dashboard'));
+    second.unmount();
+
+    // "/\evil.example" is "//evil.example" to a browser (open redirect): ignored as well.
+    const third = renderRoutes(routes, '/login?next=%2F%5Cevil.example', authState(null));
+    await screen.findByRole('heading', { name: 'Sign in' });
+    await fill('admin@medassist.dev', 'Password@123');
+    await waitFor(() => expect(third.router.state.location.pathname).toBe('/admin/dashboard'));
   });
 });

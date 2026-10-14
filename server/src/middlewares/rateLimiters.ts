@@ -3,6 +3,7 @@ import { ipKeyGenerator, rateLimit, type Options } from 'express-rate-limit';
 import { DOCUMENT_RULES, REPORT_RULES, ROLES } from '../config/constants.js';
 import { config } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
+import { verifyAccessToken } from '../utils/tokens.js';
 
 /**
  * Builds a per-IP rate limiter whose 429 response goes through errorHandler
@@ -17,10 +18,32 @@ export function createRateLimiter(options: Partial<Options> = {}) {
   });
 }
 
-/** Global API limiter: 300 requests / 15 min per IP (configurable via env). Off in tests. */
+/**
+ * Global limiter key (D197): the user id when the request carries a valid access token (signature
+ * and expiry checked, no database lookup), otherwise the client IP. Behind the Vercel rewrite
+ * many users share few addresses, so a per-IP budget alone would throttle them together; a forged
+ * or expired token counts against the IP.
+ */
+export function apiLimiterKey(req: Request): string {
+  const token = req.headers.authorization?.match(/^Bearer ([A-Za-z0-9._-]+)$/)?.[1];
+  if (token) {
+    try {
+      return `user:${verifyAccessToken(token).sub}`;
+    } catch {
+      // invalid or expired: fall back to the IP
+    }
+  }
+  return `ip:${ipKeyGenerator(req.ip ?? '')}`;
+}
+
+/**
+ * Global API limiter: 300 requests / 15 min (configurable via env) per signed-in user, or per IP
+ * for anonymous requests. Off in tests.
+ */
 export const apiLimiter = createRateLimiter({
   windowMs: config.rateLimit.windowMs,
   limit: config.rateLimit.max,
+  keyGenerator: apiLimiterKey,
   skip: () => config.isTest,
 });
 
