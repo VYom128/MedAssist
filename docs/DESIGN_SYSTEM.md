@@ -116,9 +116,9 @@ already animates.
 | `SectionCard` | Titled block: `title`, `description`, `icon`, `actions`, `footer` (save area). Forms: wrap the `SectionCard` in the `<form>` so the footer's submit button is inside it. |
 | `PageHeader` | `title` (h1), `description`, `actions`, `eyebrow`, `back`. Every page starts with one. |
 | `StatCard` | One real number: `label`, `value`, `icon` + `tone`, `hint`, `trend` (`direction`, visible `label`, `sentiment`), `status` dot + text, `to` makes it a link. |
-| `ChartCard` | Frame for a chart: `title`, `description`, `actions`, `loading` / `error` + `onRetry` / `empty`, `height`, and `summary` (text alternative; the chart is hidden from screen readers when given). |
+| `ChartCard` | Frame for a chart: `title`, `description`, `actions`, `loading` / `error` + `onRetry` / `empty`, `height`, and `summary` (text alternative; the chart is then hidden from screen readers and made `inert`, so it is out of the tab order too). |
 | `QuickLinkCard` | Link card: icon chip, title, one-line description, optional `badge`. |
-| `StatusPill` | `domain` + `status` from the central map (below). Icon + label, never colour alone. |
+| `StatusPill` | `domain` + `status` from the central map (below). Icon + label, never colour alone. `wrap` lets a long label break over lines on narrow screens (e.g. the patient wording of a critical lab flag). |
 | `Badge` | Small label for non-status things (role, count). Tones: neutral, info, success, warning, danger, purple, primary; optional `icon` or `dot`. |
 | `Avatar` | Initials, `sm`/`md`/`lg`/`xl`, tint picked from the name (never red). Decorative unless `labelled`. |
 | `IconChip` | Line icon on a tinted square (`tone`, `size`). Decorative. |

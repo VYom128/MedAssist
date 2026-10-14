@@ -89,7 +89,15 @@ export default function ChartCard({
         {state === 'ready' && (
           <>
             {summary && <p className="sr-only">{summary}</p>}
-            <div aria-hidden={summary ? true : undefined} className="h-full">
+            <div
+              aria-hidden={summary ? true : undefined}
+              // The text summary stands in for the chart, so the chart must not take focus either
+              // (Recharts makes its surface focusable). React 18 has no `inert` prop.
+              ref={(el) => {
+                el?.toggleAttribute('inert', Boolean(summary));
+              }}
+              className="h-full"
+            >
               {children}
             </div>
           </>

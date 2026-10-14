@@ -2,7 +2,7 @@
   "name": "med-assist",
   "version": "0.1.0",
   "private": true,
-  "description": "MedAssist \u2013 Clinic Operations & Patient Care Portal",
+  "description": "MedAssist – Clinic Operations & Patient Care Portal",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -35,6 +35,7 @@
     "concurrently": "^10.0.5",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.12.0",

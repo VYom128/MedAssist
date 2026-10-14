@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
@@ -50,6 +51,19 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
+    },
+  },
+
+  // Accessibility (spec §13.3, §17: WCAG 2.1 AA) – static JSX checks on the app code.
+  {
+    ...jsxA11y.flatConfigs.recommended,
+    files: ['client/src/**/*.tsx'],
+    rules: {
+      ...jsxA11y.flatConfigs.recommended.rules,
+      // `role` on our own components is a prop (e.g. <FollowupDetail role="patient" />).
+      'jsx-a11y/aria-role': ['error', { ignoreNonDOM: true }],
+      // Checkbox labels put their text in nested spans (title + description).
+      'jsx-a11y/label-has-associated-control': ['error', { depth: 3 }],
     },
   },
 

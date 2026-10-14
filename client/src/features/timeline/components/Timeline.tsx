@@ -166,8 +166,10 @@ export default function Timeline({
       )}
       {items.length > 0 && (
         <div
+          // A named region, not role="feed": a feed may only hold articles (and needs Page Up/Down);
+          // these are month sections with ordered lists.
           aria-label={label}
-          role="feed"
+          role="region"
           aria-busy={query.isFetching}
           className={`transition-opacity duration-200 ease-standard ${query.isFetching && !query.isFetchingNextPage ? 'opacity-60' : ''}`}
         >

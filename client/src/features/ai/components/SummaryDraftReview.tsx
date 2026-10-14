@@ -200,11 +200,14 @@ export default function SummaryDraftReview({
           >
             <Sparkles className="h-4 w-4 text-consult-700" aria-hidden="true" /> AI draft
           </h3>
+          {/* A scrollable region must be focusable so keyboard users can scroll it (axe
+              scrollable-region-focusable); reading it to the end enables Approve. */}
           <div
             ref={attachDraft}
             onScroll={onDraftScroll}
             role="region"
             aria-label="AI draft sections"
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- see above
             tabIndex={0}
             data-scroll-region="ai-draft"
             className="max-h-[28rem] overflow-y-auto rounded-control border border-warning-100 p-4 focus-visible:outline-2 focus-visible:outline-primary-600"

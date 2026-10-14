@@ -7,7 +7,10 @@ import type { InvoiceListTotals } from '../api';
 export default function InvoiceSummaryStrip({ totals }: { totals: InvoiceListTotals | undefined }) {
   const value = (paise: number | undefined) => (paise === undefined ? '—' : formatINR(paise));
   return (
-    <div className="grid gap-4 sm:grid-cols-3" aria-label="Totals for these invoices">
+    <div
+      className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      aria-label="Totals for these invoices"
+    >
       <StatCard
         label="Billed"
         value={<span className="tabular">{value(totals?.billedPaise)}</span>}
