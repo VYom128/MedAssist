@@ -54,28 +54,45 @@ in development.
 
 ## Demo accounts
 
-`npm run seed` builds a configured demo clinic (spec §15.3): clinic settings (Bengaluru,
-Asia/Kolkata, INR, Mon–Sat), 5 departments, 12 services, 8 doctors with profiles and weekly
-schedules (2 with upcoming leave), 15 lab tests with reference ranges, and the logins below. It is
-idempotent: running it again changes nothing, and demo accounts are reset to the demo password,
-active, unlocked and without a forced password change. `npm run seed -- --reset` first wipes the
-data (development only). The seed refuses to run when `NODE_ENV=production`. Every password is
-**`Password@123`**; the seed prints the full table (including the 6 generated doctors).
+`npm run seed` builds a demo clinic through the real services (spec §15.3), with a fixed faker
+seed (locale `en_IN`), so every run produces the same data:
 
-| Role         | Email                                                  | Lands on               |
-| ------------ | ------------------------------------------------------ | ---------------------- |
-| Admin        | `admin@medassist.dev`                                  | `/admin/dashboard`     |
-| Receptionist | `reception1@medassist.dev`, `reception2@medassist.dev` | `/reception/dashboard` |
-| Lab tech     | `lab1@medassist.dev`, `lab2@medassist.dev`             | `/lab/dashboard`       |
-| Doctor       | `dr.mehta@medassist.dev` (General Medicine)            | `/doctor/dashboard`    |
-| Doctor       | `dr.iyer@medassist.dev` (Paediatrics)                  | `/doctor/dashboard`    |
-| Patient      | `patient1@medassist.dev`, `patient2@medassist.dev`     | `/patient/dashboard`   |
+| Data                               | Amount                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Clinic settings                    | Bengaluru, Asia/Kolkata, INR, Mon–Sat                                                            |
+| Staff                              | 1 admin, 2 receptionists, 2 lab technicians                                                      |
+| Departments / services / lab tests | 5 / 12 / 15 (with reference ranges)                                                              |
+| Doctors                            | 8 with weekly schedules, 2 with upcoming leave                                                   |
+| Patients                           | 60 (8 with portal logins, 1 pending self-sign-up), some with allergies and conditions            |
+| Appointments                       | ~310 over the past 60 days and the next 14, including today's live queue                         |
+| Visit notes / prescriptions        | ~210 signed notes (3 amended), ~175 prescriptions, follow-up plans                               |
+| Lab orders                         | ~80 in every status, 3 critical values, 2 rejected samples                                       |
+| Invoices / payments                | ~210 invoices (draft, issued, partly paid, paid, 2 void), ~170 payments, 2 refunds               |
+| Follow-up requests                 | 15 in different states, plus follow-up reminders                                                 |
+| AI                                 | 3 approved summaries (1 shared with patient1) and patient1's cached explanations (mock provider) |
+| Notifications                      | ~105 unread, for every demo login except the admin (no emails are sent)                          |
 
-Patients can also sign up at `/register`. Their Patient record and linking arrive in Phase 3.
+It is idempotent: running it again changes nothing, and demo accounts are reset to the demo
+password, active, unlocked and without a forced password change. `npm run seed -- --reset` wipes
+the data first (development only). The seed refuses to run when `NODE_ENV=production`. It needs
+MongoDB as a replica set. When `KIOSK_KEY` is set it also prints the queue board URL.
 
-Admin set-up pages: `/admin/settings`, `/admin/departments`, `/admin/services`, `/admin/doctors`
-(profile, weekly schedule, leave) and `/admin/lab-tests`. Doctors manage their own hours and leave
-at `/doctor/schedule` and their bio and languages at `/doctor/profile`.
+Every password is **`Password@123`**; the seed prints the full table (including the 6 generated
+doctors).
+
+| Role         | Email                                                  | Lands on                   |
+| ------------ | ------------------------------------------------------ | -------------------------- |
+| Admin        | `admin@medassist.dev`                                  | `/admin/dashboard`         |
+| Receptionist | `reception1@medassist.dev`, `reception2@medassist.dev` | `/reception/dashboard`     |
+| Lab tech     | `lab1@medassist.dev`, `lab2@medassist.dev`             | `/lab/dashboard`           |
+| Doctor       | `dr.mehta@medassist.dev` (General Medicine)            | `/doctor/dashboard`        |
+| Doctor       | `dr.iyer@medassist.dev` (Paediatrics)                  | `/doctor/dashboard`        |
+| Patient      | `patient1@medassist.dev` … `patient8@medassist.dev`    | `/patient/dashboard`       |
+| Pending      | `pending1@medassist.dev` (sign-up awaiting linking)    | `/patient/verify-identity` |
+
+`patient1` has the richest demo record: a follow-up due in two days, a shared AI summary,
+plain-language explanations in English and Hindi, invoices and lab reports. New patients can also
+sign up at `/register`; reception links them to a patient record at `/reception/pending-links`.
 
 ## Authentication overview
 
