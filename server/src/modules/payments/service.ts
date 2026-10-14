@@ -354,7 +354,15 @@ export async function loadPaymentForReader(user: AuthUser, paymentId: string, me
     .lean();
   if (!payment) throw ApiError.notFound('Payment not found');
   const inv = await loadInvoice((payment.invoice as unknown as { _id: Types.ObjectId })._id);
-  await assertCanReadInvoice(user, inv, meta);
+  try {
+    await assertCanReadInvoice(user, inv, meta);
+  } catch (err) {
+    // Someone else's payment must look exactly like a missing one (spec §10.2), not "Invoice not
+    // found"; the denial is already audited.
+    if (err instanceof ApiError && err.statusCode === 404)
+      throw ApiError.notFound('Payment not found');
+    throw err;
+  }
   return { payment: payment as unknown as PaymentLike, invoice: inv };
 }
 
