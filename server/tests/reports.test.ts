@@ -10,7 +10,7 @@ import { errorHandler } from '../src/middlewares/errorHandler.js';
 import { paiseToRupeeString } from '../src/utils/money.js';
 import { auditEntries, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
 import { at, createDoctor, createPatient, insertAppointment } from './helpers/fixtures.js';
-import { api, expectErrorShape, serve } from './helpers/testApp.js';
+import { api, expectErrorShape, serve, withoutIds } from './helpers/testApp.js';
 
 /**
  * Reports (spec §7.18, Phase 10): JSON { rows, totals, meta } and streamed CSV (BOM, clinic
@@ -172,7 +172,7 @@ describe('CSV export', () => {
       actor: { role: 'admin' },
       metadata: { report: 'revenue', from: '2026-03-30', to: '2026-03-31', format: 'csv', rows: 2 },
     });
-    expect(JSON.stringify(entry)).not.toMatch(/1250|125050/);
+    expect(withoutIds(entry)).not.toMatch(/1250|125050/);
   });
 
   it('lets the browser read the file name (CORS exposes Content-Disposition)', async () => {

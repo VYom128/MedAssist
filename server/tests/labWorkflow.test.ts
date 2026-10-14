@@ -367,7 +367,7 @@ describe('critical values (spec §8.7)', () => {
 
     // Saving again (still critical) does not alert twice.
     await enter(s, [hb(4.2), smear('Negative')]);
-    await new Promise((r) => setTimeout(r, 50));
+    await emails.settled();
     expect(emails.sent).toHaveLength(1);
     expect(events.filter(([, e]) => e === 'lab.critical')).toHaveLength(1);
 
@@ -387,7 +387,7 @@ describe('critical values (spec §8.7)', () => {
       hasCritical: true,
       items: [{ results: [{ flag: 'critical_high' }] }],
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await emails.settled();
     expect(emails.sent).toEqual([]);
     expect(events.filter(([, e]) => e === 'lab.critical')).toEqual([]);
   });

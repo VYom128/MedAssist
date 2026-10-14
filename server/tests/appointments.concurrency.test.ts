@@ -133,6 +133,13 @@ describe('booking races', () => {
     expect(statuses(results)).toEqual([200, 409]);
     expect(codes(results)).toEqual(['SLOT_UNAVAILABLE']);
     expect(await Appointment.countDocuments({ startAt: at(day, '11:00') })).toBe(1);
+    // Atomic: the loser is exactly as before – old slot, still scheduled, no history entry.
+    const loserIndex = results.findIndex((r) => r.status === 409);
+    const loser = await Appointment.findById(booked[loserIndex]!.body.data.id).lean();
+    expect(loser!.startAt).toEqual(new Date(booked[loserIndex]!.body.data.startAt));
+    expect(loser!.status).toBe('scheduled');
+    expect(loser!.isSlotActive).toBe(true);
+    expect(loser!.statusHistory).toHaveLength(1);
   }, 60_000);
 
   it('a booking racing a cancellation of the same slot never double-books', async () => {

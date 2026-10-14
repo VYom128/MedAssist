@@ -15,7 +15,7 @@ import {
   loginAsPatient,
   setSettings,
 } from './helpers/fixtures.js';
-import { api, expectErrorShape } from './helpers/testApp.js';
+import { api, expectErrorShape, withoutIds } from './helpers/testApp.js';
 
 /**
  * Invoices API (spec §7.15, §8.9, Phase 7 decisions): manual drafts, editing with the discount
@@ -434,7 +434,7 @@ describe('POST /invoices/:id/issue', () => {
     expect(mail.to).toBe('asha@example.com');
     const content = JSON.stringify(mail);
     expect(content).toContain(issued.invoiceNumber);
-    expect(content).not.toMatch(/₹|Rs\.?|393|333|Dressing/);
+    expect(withoutIds(mail)).not.toMatch(/₹|Rs\.?|393|333|Dressing/);
     const [entry] = await auditEntries('invoice.issue');
     expect(entry).toMatchObject({ resource: { number: issued.invoiceNumber } });
   });

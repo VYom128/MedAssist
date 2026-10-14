@@ -13,11 +13,12 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.ts'],
       reporter: ['text', 'html'],
-      // Spec §15.1: at least 80 % of lines on services and policies (checked per group).
+      // Spec §15.1: at least 80 % of lines on services and policies – every file, not just on
+      // average, so CI fails as soon as one service or policy drops below.
       thresholds: {
-        'src/services/**': { lines: 80 },
-        'src/policies/**': { lines: 80 },
-        'src/modules/**/*service.ts': { lines: 80 },
+        'src/services/**': { lines: 80, perFile: true },
+        'src/policies/**': { lines: 80, perFile: true },
+        'src/modules/**/*service.ts': { lines: 80, perFile: true },
       },
     },
   },

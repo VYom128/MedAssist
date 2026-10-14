@@ -6,7 +6,7 @@ import { config } from './config/env.js';
 import { createApp } from './app.js';
 import { startJobs } from './jobs/index.js';
 import { flushAudit } from './services/audit.service.js';
-import { drainEmailQueue } from './services/emailQueue.js';
+import { settleNotifications } from './services/notification.service.js';
 import { initStorage } from './services/storage/index.js';
 import { closeSocket, initSocket } from './socket/index.js';
 import { listen, PortInUseError } from './utils/listen.js';
@@ -51,7 +51,7 @@ async function start() {
     closeSocket(io); // disconnect real-time clients so server.close() can finish
     server.close(async () => {
       try {
-        await drainEmailQueue(); // emails being sent or retried (bounded by the timeout above)
+        await settleNotifications(); // notifications and emails in flight (bounded by the timeout above)
         await flushAudit(); // finish queued audit writes before the connection closes
         await disconnectDB();
         logger.info('Shutdown complete');

@@ -3,7 +3,7 @@ import { User } from '../src/modules/users/model.js';
 import { auditEntries, loginAs, resetDb, type LoggedIn } from './helpers/auth.js';
 import { captureEmails } from './helpers/email.js';
 import { createPatient, loginAsPatient } from './helpers/fixtures.js';
-import { api, expectErrorShape } from './helpers/testApp.js';
+import { api, expectErrorShape, withoutIds } from './helpers/testApp.js';
 
 const GENERIC = "We couldn't create your account. Please contact the clinic.";
 
@@ -262,7 +262,7 @@ describe('reception: pending links, confirm and reject', () => {
       to: 'priya@example.com',
       subject: 'Your MedAssist records are now available',
     });
-    expect(emails.sent[0]!.text).not.toMatch(/MRN|1990/);
+    expect(withoutIds(emails.sent[0]!.text)).not.toMatch(/MRN|1990/);
     emails.restore();
     const [entry] = await auditEntries('patient.link_confirm');
     expect(entry?.metadata).toEqual({ userId });

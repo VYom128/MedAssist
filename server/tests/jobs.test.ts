@@ -113,7 +113,7 @@ describe('background jobs', () => {
         { $set: { 'consent.communications.email': false } },
       );
       expect((await runReminderJob(NOW)).sent).toBe(1);
-      await new Promise((r) => setTimeout(r, 50));
+      await emails.settled();
       expect(emails.sent).toEqual([]);
     });
   });

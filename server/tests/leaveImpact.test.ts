@@ -110,7 +110,7 @@ describe('leave and schedule impact', () => {
       await createUser('receptionist', { email: 'desk@clinic.dev' });
       const res = await addLeave({ date: day, fullDay: true });
       expect(res.body.data.affectedAppointments).toEqual([]);
-      await new Promise((r) => setTimeout(r, 100));
+      await emails.settled();
       expect(emails.sent).toEqual([]);
     });
 
