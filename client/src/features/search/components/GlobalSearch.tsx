@@ -241,6 +241,8 @@ export default function GlobalSearch() {
           </span>
 
           {showPanel && (
+            // Keyboard use stays in the input (combobox pattern); this only keeps its focus.
+            // eslint-disable-next-line jsx-a11y/no-static-element-interactions
             <div
               className="absolute inset-x-0 top-full z-40 mt-2 max-h-[min(28rem,70vh)] overflow-y-auto rounded-card border border-line bg-surface p-1.5 shadow-overlay motion-safe:animate-fade-in"
               // Keep focus in the input while clicking results.
@@ -287,6 +289,8 @@ export default function GlobalSearch() {
                     <ul role="group" aria-label={GROUP_LABELS[g]}>
                       {options.map((o, i) =>
                         o.group !== g ? null : (
+                          // Options are chosen with ↑↓ Enter on the input (aria-activedescendant).
+                          // eslint-disable-next-line jsx-a11y/click-events-have-key-events
                           <li
                             key={o.key}
                             id={optionId(i)}

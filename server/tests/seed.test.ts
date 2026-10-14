@@ -179,16 +179,7 @@ describe('seed', { timeout: 120_000 }, () => {
     expect(blocked.status).toBe(403);
   });
 
-  it('every demo login works with the demo password, without a forced change', async () => {
-    await runSeed();
-    const logins = demoLogins();
-    expect(logins).toHaveLength(DEMO_ACCOUNTS.length + 8 + 9);
-    for (const { email } of logins) {
-      const res = await api().post('/api/v1/auth/login').send({ email, password: DEMO_PASSWORD });
-      expect(res.status, email).toBe(200);
-      expect(res.body.data.user.mustChangePassword, email).toBe(false);
-    }
-  });
+  // Every demo login is checked in seed.full.test.ts (one seed for all its checks).
 
   it('is idempotent: a second run creates and changes nothing', async () => {
     await runSeed();

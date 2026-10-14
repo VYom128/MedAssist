@@ -41,7 +41,7 @@ describe('Weekly schedule editor (doctor: own schedule)', () => {
 
   it('shows an inline error for overlapping sessions and sends the right payload', async () => {
     renderRoutes(routes, '/doctor/schedule', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     expect(await screen.findByText('Current schedule')).toBeInTheDocument();
     const monday = screen.getByRole('group', { name: 'Monday' });
     expect(within(monday).getAllByLabelText('Start')[0]).toHaveValue('09:00');
@@ -84,7 +84,7 @@ describe('Weekly schedule editor (doctor: own schedule)', () => {
 
   it('checks start < end and 5-minute steps; removing a session works', async () => {
     renderRoutes(routes, '/doctor/schedule', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const monday = await screen.findByRole('group', { name: 'Monday' });
     const [start] = within(monday).getAllByLabelText('Start');
     const [end] = within(monday).getAllByLabelText('End');
@@ -115,7 +115,7 @@ describe('Leave (doctor: own leave)', () => {
       }),
     );
     renderRoutes(routes, '/doctor/schedule', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Leave' }));
     expect(await screen.findByText('No upcoming leave')).toBeInTheDocument();
     await user.click(screen.getAllByRole('button', { name: 'Add leave' })[0]!);

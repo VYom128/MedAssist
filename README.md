@@ -11,7 +11,7 @@ AI-assisted summaries.
 
 ## Prerequisites
 
-- **Node.js 20+** and **npm 10+** (`.nvmrc` pins 20)
+- **Node.js 24 LTS** and **npm 10+** (`.nvmrc` pins 24)
 - **MongoDB**: a MongoDB Atlas cluster, or a local MongoDB running as a **replica set**
   (required from Phase 2: creating a doctor, saving a schedule and the seed use transactions)
 
@@ -54,28 +54,51 @@ in development.
 
 ## Demo accounts
 
-`npm run seed` builds a configured demo clinic (spec §15.3): clinic settings (Bengaluru,
-Asia/Kolkata, INR, Mon–Sat), 5 departments, 12 services, 8 doctors with profiles and weekly
-schedules (2 with upcoming leave), 15 lab tests with reference ranges, and the logins below. It is
-idempotent: running it again changes nothing, and demo accounts are reset to the demo password,
-active, unlocked and without a forced password change. `npm run seed -- --reset` first wipes the
-data (development only). The seed refuses to run when `NODE_ENV=production`. Every password is
-**`Password@123`**; the seed prints the full table (including the 6 generated doctors).
+`npm run seed` builds a demo clinic through the real services (spec §15.3), with a fixed faker
+seed (locale `en_IN`), so every run produces the same data:
 
-| Role         | Email                                                  | Lands on               |
-| ------------ | ------------------------------------------------------ | ---------------------- |
-| Admin        | `admin@medassist.dev`                                  | `/admin/dashboard`     |
-| Receptionist | `reception1@medassist.dev`, `reception2@medassist.dev` | `/reception/dashboard` |
-| Lab tech     | `lab1@medassist.dev`, `lab2@medassist.dev`             | `/lab/dashboard`       |
-| Doctor       | `dr.mehta@medassist.dev` (General Medicine)            | `/doctor/dashboard`    |
-| Doctor       | `dr.iyer@medassist.dev` (Paediatrics)                  | `/doctor/dashboard`    |
-| Patient      | `patient1@medassist.dev`, `patient2@medassist.dev`     | `/patient/dashboard`   |
+| Data                               | Amount                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Clinic settings                    | Bengaluru, Asia/Kolkata, INR, Mon–Sat                                                            |
+| Staff                              | 1 admin, 2 receptionists, 2 lab technicians                                                      |
+| Departments / services / lab tests | 5 / 12 / 15 (with reference ranges)                                                              |
+| Doctors                            | 8 with weekly schedules, 2 with upcoming leave                                                   |
+| Patients                           | 60 (8 with portal logins, 1 pending self-sign-up), some with allergies and conditions            |
+| Appointments                       | ~310 over the past 60 days and the next 14, including today's live queue                         |
+| Visit notes / prescriptions        | ~210 signed notes (3 amended), ~175 prescriptions, follow-up plans                               |
+| Lab orders                         | ~80 in every status, 3 critical values, 2 rejected samples                                       |
+| Invoices / payments                | ~210 invoices (draft, issued, partly paid, paid, 2 void), ~170 payments, 2 refunds               |
+| Follow-up requests                 | 15 in different states, plus follow-up reminders                                                 |
+| AI                                 | 3 approved summaries (1 shared with patient1) and patient1's cached explanations (mock provider) |
+| Notifications                      | ~105 unread, for every demo login except the admin (no emails are sent)                          |
 
-Patients can also sign up at `/register`. Their Patient record and linking arrive in Phase 3.
+It is idempotent: running it again changes nothing, and demo accounts are reset to the demo
+password, active, unlocked and without a forced password change. `npm run seed -- --reset` wipes
+the data first (development only). Everything is relative to the run date in the clinic timezone,
+so there is always a live queue today, upcoming bookings and recent activity. It needs MongoDB as
+a replica set, takes about 45 s, and ends with a table of documents per collection and the demo
+logins. When `KIOSK_KEY` is set it also prints the queue board URL (never in production).
 
-Admin set-up pages: `/admin/settings`, `/admin/departments`, `/admin/services`, `/admin/doctors`
-(profile, weekly schedule, leave) and `/admin/lab-tests`. Doctors manage their own hours and leave
-at `/doctor/schedule` and their bio and languages at `/doctor/profile`.
+With `NODE_ENV=production` the seed refuses to run unless you pass `--demo` **and** set
+`ALLOW_DEMO_SEED=true` – the way to fill the hosted demo database (`npm run seed -- --demo`,
+optionally with `--reset`). It then prints a loud warning; unset `ALLOW_DEMO_SEED` afterwards.
+
+Every password is **`Password@123`**; the seed prints the full table (including the 6 generated
+doctors).
+
+| Role         | Email                                                  | Lands on                   |
+| ------------ | ------------------------------------------------------ | -------------------------- |
+| Admin        | `admin@medassist.dev`                                  | `/admin/dashboard`         |
+| Receptionist | `reception1@medassist.dev`, `reception2@medassist.dev` | `/reception/dashboard`     |
+| Lab tech     | `lab1@medassist.dev`, `lab2@medassist.dev`             | `/lab/dashboard`           |
+| Doctor       | `dr.mehta@medassist.dev` (General Medicine)            | `/doctor/dashboard`        |
+| Doctor       | `dr.iyer@medassist.dev` (Paediatrics)                  | `/doctor/dashboard`        |
+| Patient      | `patient1@medassist.dev` … `patient8@medassist.dev`    | `/patient/dashboard`       |
+| Pending      | `pending1@medassist.dev` (sign-up awaiting linking)    | `/patient/verify-identity` |
+
+`patient1` has the richest demo record: a follow-up due in two days, a shared AI summary,
+plain-language explanations in English and Hindi, invoices and lab reports. New patients can also
+sign up at `/register`; reception links them to a patient record at `/reception/pending-links`.
 
 ## Authentication overview
 
@@ -103,6 +126,10 @@ MedAssist uses a short-lived **access token** plus a rotating **refresh token** 
 - **Access control:** routes use `authenticate` → `authorize(...roles)`. Patient data goes
   through `canAccessPatient()`. Denials and every sensitive action land in the hash-chained audit
   log (`GET /api/v1/audit-logs`, `GET /api/v1/audit-logs/verify`, admin only).
+
+## Deployment
+
+Atlas, Render, Vercel, Cloudinary, Brevo and Groq: step by step, every variable, rollback and troubleshooting in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) (`render.yaml`, `client/vercel.json`).
 
 ## Environment variables (server)
 
@@ -136,20 +163,23 @@ missing or invalid, the server names it and exits with code 1.
 
 Run from the repo root.
 
-| Command                                     | What it does                                                                                                   |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`                               | Server (nodemon + tsx) and client (Vite) together                                                              |
-| `npm run dev:server` / `npm run dev:client` | One side only                                                                                                  |
-| `npm test`                                  | Server tests (Vitest + Supertest + in-memory replica set), then client tests (Vitest + React Testing Library)  |
-| `npm run test:client`                       | Client tests only                                                                                              |
-| `npm run seed` / `npm run seed -- --reset`  | Demo clinic and accounts (see above)                                                                           |
-| `npm run smoke`                             | API smoke test (auth, RBAC, audit chain, seeded clinic data, public fields, demo logins). Reuses a running API |
-| `npm run test:coverage -w server`           | Server tests with v8 coverage (`server/coverage/`)                                                             |
-| `npm run lint` / `npm run lint:fix`         | ESLint (flat config) over the whole repo                                                                       |
-| `npm run format` / `npm run format:check`   | Prettier                                                                                                       |
-| `npm run typecheck`                         | `tsc --noEmit` for server and client                                                                           |
-| `npm run build`                             | Compile server to `server/dist`, build client to `client/dist`                                                 |
-| `npm start`                                 | Run the compiled server                                                                                        |
+| Command                                                  | What it does                                                                                                                                                                                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                            | Server (nodemon + tsx) and client (Vite) together                                                                                                                                                                            |
+| `npm run dev:server` / `npm run dev:client`              | One side only                                                                                                                                                                                                                |
+| `npm test`                                               | Server tests (Vitest + Supertest + in-memory replica set), then client tests (Vitest + React Testing Library)                                                                                                                |
+| `npm run test:client`                                    | Client tests only                                                                                                                                                                                                            |
+| `npm run seed` / `npm run seed -- --reset`               | Demo clinic and accounts (see above)                                                                                                                                                                                         |
+| `npm run smoke`                                          | API smoke test (auth, RBAC, audit chain, seeded clinic data, public fields, demo logins). Reuses a running API                                                                                                               |
+| `npm run test:coverage`                                  | Tests with v8 coverage (`server/coverage/`, `client/coverage/`); the server run fails below 80 % lines on services and policies (spec §15.1)                                                                                 |
+| `npm run e2e`                                            | End-to-end happy path in Chromium (spec §15.2): starts its own stack – in-memory MongoDB, fresh seed, API with mock AI, production client build – and keeps a trace on failure. First run: `npx playwright install chromium` |
+| `npm run lint` / `npm run lint:fix`                      | ESLint (flat config) over the whole repo                                                                                                                                                                                     |
+| `npm run format` / `npm run format:check`                | Prettier                                                                                                                                                                                                                     |
+| `npm run typecheck`                                      | `tsc --noEmit` for server and client                                                                                                                                                                                         |
+| `npm run build`                                          | Compile server to `server/dist`, build client to `client/dist`                                                                                                                                                               |
+| `npm start`                                              | Run the compiled server                                                                                                                                                                                                      |
+| `npm run build:server` / `build:client` / `start:server` | One side only (Render builds and starts the server this way, Vercel builds the client)                                                                                                                                       |
+| `npm run db:indexes` / `npm run db:indexes -- --apply`   | Production indexes: list what is missing or stale (dry run), then create/drop them – production builds none on boot                                                                                                          |
 
 The first test run downloads a MongoDB binary (about 100 MB) for mongodb-memory-server.
 

@@ -8,6 +8,7 @@ import { API_PREFIX, BODY_LIMIT } from './config/constants.js';
 import { config } from './config/env.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { notFound } from './middlewares/notFound.js';
+import { rejectOperatorKeys } from './middlewares/rejectOperatorKeys.js';
 import { apiLimiter } from './middlewares/rateLimiters.js';
 import { requestId } from './middlewares/requestId.js';
 import apiRoutes from './routes/index.js';
@@ -23,8 +24,9 @@ export function createApp({ extraRoutes }: CreateAppOptions = {}): Express {
   const app = express();
 
   app.disable('x-powered-by');
-  // Behind Render/Railway proxies (spec §18): trust the first hop for client IPs.
-  app.set('trust proxy', 1);
+  // Behind proxies (spec §18): how many X-Forwarded-For hops to trust for the client IP –
+  // 1 for Render alone, 2 for the Vercel rewrite in front of Render (TRUST_PROXY, D197).
+  app.set('trust proxy', config.trustProxy);
 
   app.use(requestId);
   app.use(
@@ -66,6 +68,7 @@ export function createApp({ extraRoutes }: CreateAppOptions = {}): Express {
   app.use(express.json({ limit: BODY_LIMIT }));
   app.use(express.urlencoded({ extended: true, limit: BODY_LIMIT }));
   app.use(cookieParser());
+  app.use(rejectOperatorKeys);
 
   app.use('/api', apiLimiter);
   app.use(API_PREFIX, apiRoutes);

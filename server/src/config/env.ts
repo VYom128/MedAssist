@@ -11,11 +11,26 @@ const isTestEnv = process.env.NODE_ENV === 'test';
 // Tests connect to an in-memory replica set, so MONGO_URI is only required outside test.
 const mongoUriRequired = !isTestEnv;
 
-/** Secrets are required outside test; tests get a fixed placeholder so they need no .env. */
+/**
+ * A secret that looks like an example rather than a generated value: a placeholder from the docs
+ * (`<generate-me>`), a dictionary word, or too few different characters (e.g. 'a' * 32).
+ */
+export function looksWeak(value: string): boolean {
+  if (/[<>]|generate|change.?me|example|placeholder|secret|password/i.test(value)) return true;
+  return new Set(value).size < 12;
+}
+
+/**
+ * Secrets are required outside test – at least 32 characters and not weak (`looksWeak`); tests
+ * get a fixed placeholder so they need no .env.
+ */
 const secret = (name: string) =>
   isTestEnv
     ? z.string().min(32).default(`test-only-${name.toLowerCase()}-0123456789abcdef`)
-    : z.string({ error: 'Required' }).min(32, 'Must be at least 32 characters');
+    : z
+        .string({ error: 'Required' })
+        .min(32, 'Must be at least 32 characters')
+        .refine((v) => !looksWeak(v), 'Looks like a placeholder – generate a random value');
 
 /** "true"/"false" strings (z.coerce.boolean would treat "false" as true). */
 const booleanString = z
@@ -51,6 +66,9 @@ const envSchema = z
       .positive()
       .default(15 * 60 * 1000),
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+    // Proxies in front of the API whose X-Forwarded-For entries are trusted (client IP for rate
+    // limits and audit). Render alone = 1; Vercel rewrite → Render = 2 (D197).
+    TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(1),
 
     // Auth (spec §10.1). The refresh token is random bytes stored hashed, so it needs no secret.
     JWT_ACCESS_SECRET: secret('JWT_ACCESS_SECRET'),
@@ -84,6 +102,10 @@ const envSchema = z
     // functions directly. Run them on one API instance only.
     JOBS_ENABLED: booleanString,
 
+    // Seeding the hosted demo database (spec §15.3, D199): with NODE_ENV=production the seed
+    // runs only with `--demo` AND this set to "true". Never set it for a real clinic.
+    ALLOW_DEMO_SEED: booleanString,
+
     // File storage (spec §10.3, §12.2). 'local' writes under UPLOAD_DIR (never served statically);
     // 's3' and 'cloudinary' come in Phase 11. Tests default to a per-process temp directory.
     STORAGE_DRIVER: z.enum(['local', 's3', 'cloudinary']).default('local'),
@@ -95,6 +117,19 @@ const envSchema = z
         isTestEnv ? path.join(tmpdir(), `medassist-test-uploads-${process.pid}`) : './uploads',
       ),
     MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(50).default(10),
+    // Cloudinary (STORAGE_DRIVER=cloudinary, production): files are uploaded as private
+    // ("authenticated") raw assets under CLOUDINARY_FOLDER and only ever downloaded by the API.
+    CLOUDINARY_CLOUD_NAME: z.string().trim().min(1).optional(),
+    CLOUDINARY_API_KEY: z.string().trim().min(1).optional(),
+    CLOUDINARY_API_SECRET: z.string().trim().min(16, 'Must be at least 16 characters').optional(),
+    CLOUDINARY_FOLDER: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9_-]+(\/[a-z0-9_-]+)*$/, 'Letters, digits, "-", "_" and "/" only')
+      .default('medassist'),
+
+    // Build information shown by /health (Render sets RENDER_GIT_COMMIT on every deploy).
+    RENDER_GIT_COMMIT: z.string().trim().min(1).optional(),
 
     // AI (spec §9, Phase 9). 'mock' = deterministic output, no network (dev default; tests and
     // the seed always use it). 'openai_compatible' = any OpenAI-style chat-completions API
@@ -144,6 +179,36 @@ const envSchema = z
         message: 'Must be smtp in production (console prints reset links)',
       });
     }
+    if (env.NODE_ENV === 'production') {
+      // CORS, cookies, socket origin and every email link use it; the default is localhost.
+      const client = new URL(env.CLIENT_URL);
+      if (client.protocol !== 'https:' || ['localhost', '127.0.0.1'].includes(client.hostname)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['CLIENT_URL'],
+          message: 'Must be the deployed https:// client URL in production',
+        });
+      }
+      // The host's disk is not kept between deploys (Render, Railway without a volume).
+      if (env.STORAGE_DRIVER === 'local') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['STORAGE_DRIVER'],
+          message: 'Must not be local in production (files would be lost on redeploy)',
+        });
+      }
+      if (env.EMAIL_TRANSPORT === 'smtp') {
+        for (const key of ['SMTP_USER', 'SMTP_PASS'] as const) {
+          if (env[key] === undefined) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [key],
+              message: 'Required for SMTP in production',
+            });
+          }
+        }
+      }
+    }
     // Uploads must never land where the client build could serve them.
     const clientDir = path.resolve(process.cwd(), '..', 'client');
     const uploadDir = path.resolve(env.UPLOAD_DIR);
@@ -153,6 +218,28 @@ const envSchema = z
         path: ['UPLOAD_DIR'],
         message: 'Must be outside the client folder',
       });
+    }
+    if (env.STORAGE_DRIVER === 's3') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['STORAGE_DRIVER'],
+        message: 'The s3 driver is not available – use local or cloudinary',
+      });
+    }
+    if (env.STORAGE_DRIVER === 'cloudinary') {
+      for (const key of [
+        'CLOUDINARY_CLOUD_NAME',
+        'CLOUDINARY_API_KEY',
+        'CLOUDINARY_API_SECRET',
+      ] as const) {
+        if (env[key] === undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key],
+            message: 'Required when STORAGE_DRIVER=cloudinary',
+          });
+        }
+      }
     }
     if (env.AI_PROVIDER === 'openai_compatible' && env.AI_API_KEY === undefined) {
       ctx.addIssue({
@@ -174,7 +261,10 @@ const envSchema = z
     }
   });
 
-const parsed = envSchema.safeParse(process.env);
+// An empty value counts as unset (a blank optional variable on a host must not fail validation).
+const parsed = envSchema.safeParse(
+  Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== '')),
+);
 
 if (!parsed.success) {
   // The logger depends on config, so report with console and stop before anything else starts.
@@ -200,6 +290,7 @@ export const config = Object.freeze({
   clientUrl: env.CLIENT_URL,
   logLevel: env.LOG_LEVEL,
   rateLimit: Object.freeze({ windowMs: env.RATE_LIMIT_WINDOW_MS, max: env.RATE_LIMIT_MAX }),
+  trustProxy: env.TRUST_PROXY,
   auth: Object.freeze({
     accessSecret: env.JWT_ACCESS_SECRET,
     /** Access token lifetime in seconds. */
@@ -221,12 +312,20 @@ export const config = Object.freeze({
   }),
   kiosk: Object.freeze({ key: env.KIOSK_KEY }),
   jobs: Object.freeze({ enabled: env.JOBS_ENABLED }),
+  seed: Object.freeze({ allowDemo: env.ALLOW_DEMO_SEED }),
   storage: Object.freeze({
     driver: env.STORAGE_DRIVER,
     /** Absolute path of the local driver's directory. */
     uploadDir: path.resolve(env.UPLOAD_DIR),
     maxUploadBytes: env.MAX_UPLOAD_MB * 1024 * 1024,
+    cloudinary: Object.freeze({
+      cloudName: env.CLOUDINARY_CLOUD_NAME,
+      apiKey: env.CLOUDINARY_API_KEY,
+      apiSecret: env.CLOUDINARY_API_SECRET,
+      folder: env.CLOUDINARY_FOLDER,
+    }),
   }),
+  build: Object.freeze({ commit: env.RENDER_GIT_COMMIT ?? null }),
   ai: Object.freeze({
     /** Tests always use the mock provider, whatever the environment says. */
     provider: isTestEnv ? ('mock' as const) : env.AI_PROVIDER,

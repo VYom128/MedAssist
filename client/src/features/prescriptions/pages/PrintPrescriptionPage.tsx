@@ -116,64 +116,74 @@ export default function PrintPrescriptionPage() {
             <p className="text-2xl font-bold" aria-hidden="true">
               ℞
             </p>
-            <table className="mt-2 w-full border-collapse text-left">
-              <caption className="sr-only">Prescribed drugs</caption>
-              <thead>
-                <tr className="border-b border-ink">
-                  <th scope="col" className="py-1 pr-2">
-                    #
-                  </th>
-                  <th scope="col" className="py-1 pr-2">
-                    Drug
-                  </th>
-                  <th scope="col" className="py-1 pr-2">
-                    Dose
-                  </th>
-                  <th scope="col" className="py-1 pr-2">
-                    How often
-                  </th>
-                  <th scope="col" className="py-1 pr-2">
-                    When
-                  </th>
-                  <th scope="col" className="py-1">
-                    Duration
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map((item, i) => (
-                  <tr key={i} className="border-b border-line align-top">
-                    <td className="py-1.5 pr-2">{i + 1}</td>
-                    <td className="py-1.5 pr-2">
-                      <span className="font-semibold">
-                        {item.drugName}
-                        {item.strength ? ` ${item.strength}` : ''}
-                      </span>
-                      {item.genericName && item.genericName !== item.drugName && (
-                        <span className="block text-xs">{item.genericName}</span>
-                      )}
-                      {item.instructions && (
-                        <span className="block text-xs">{item.instructions}</span>
-                      )}
-                    </td>
-                    <td className="py-1.5 pr-2">
-                      {item.dose}
-                      {item.route
-                        ? ` (${DRUG_ROUTE_LABELS[item.route as DrugRoute] ?? item.route})`
-                        : ''}
-                    </td>
-                    <td className="py-1.5 pr-2">{item.frequencyLabel}</td>
-                    <td className="py-1.5 pr-2">
-                      {item.timing ? DRUG_TIMING_LABELS[item.timing] : ''}
-                    </td>
-                    <td className="py-1.5">
-                      {item.durationDays ? days(item.durationDays) : ''}
-                      {item.quantity ? ` · ${item.quantity}` : ''}
-                    </td>
+            {/* On a phone screen the six columns scroll here (focusable, so the keyboard can
+                scroll it too); on paper they always fit. */}
+            <div
+              role="region"
+              aria-label="Drug table"
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- see above
+              tabIndex={0}
+              className="overflow-x-auto focus-visible:outline-2 focus-visible:outline-primary-600 print:overflow-visible"
+            >
+              <table className="mt-2 w-full border-collapse text-left">
+                <caption className="sr-only">Prescribed drugs</caption>
+                <thead>
+                  <tr className="border-b border-ink">
+                    <th scope="col" className="py-1 pr-2">
+                      #
+                    </th>
+                    <th scope="col" className="py-1 pr-2">
+                      Drug
+                    </th>
+                    <th scope="col" className="py-1 pr-2">
+                      Dose
+                    </th>
+                    <th scope="col" className="py-1 pr-2">
+                      How often
+                    </th>
+                    <th scope="col" className="py-1 pr-2">
+                      When
+                    </th>
+                    <th scope="col" className="py-1">
+                      Duration
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {data.items.map((item, i) => (
+                    <tr key={i} className="border-b border-line align-top">
+                      <td className="py-1.5 pr-2">{i + 1}</td>
+                      <td className="py-1.5 pr-2">
+                        <span className="font-semibold">
+                          {item.drugName}
+                          {item.strength ? ` ${item.strength}` : ''}
+                        </span>
+                        {item.genericName && item.genericName !== item.drugName && (
+                          <span className="block text-xs">{item.genericName}</span>
+                        )}
+                        {item.instructions && (
+                          <span className="block text-xs">{item.instructions}</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-2">
+                        {item.dose}
+                        {item.route
+                          ? ` (${DRUG_ROUTE_LABELS[item.route as DrugRoute] ?? item.route})`
+                          : ''}
+                      </td>
+                      <td className="py-1.5 pr-2">{item.frequencyLabel}</td>
+                      <td className="py-1.5 pr-2">
+                        {item.timing ? DRUG_TIMING_LABELS[item.timing] : ''}
+                      </td>
+                      <td className="py-1.5">
+                        {item.durationDays ? days(item.durationDays) : ''}
+                        {item.quantity ? ` · ${item.quantity}` : ''}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
 
           {data.generalInstructions && (

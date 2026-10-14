@@ -114,6 +114,8 @@ const appointmentSchema = new Schema(
     /** Set by undo-no-show; the no-show job leaves such appointments alone. Not in §6.12. */
     noShowUndoneAt: Date,
     reminderSentAt: Date,
+    /** The reminder was due while the API slept and the visit had already started (D202). */
+    reminderSkippedAt: Date,
     statusHistory: { type: [statusHistorySchema], default: [] },
     bookedBy: { type: ObjectId, ref: 'User' },
     updatedBy: { type: ObjectId, ref: 'User' },

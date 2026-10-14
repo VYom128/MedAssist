@@ -1,5 +1,5 @@
 import type { LabResult } from '../api';
-import { formatResultValue, isAbnormalFlag } from '../format';
+import { formatResultValue, isAbnormalFlag, isCriticalFlag } from '../format';
 import { LabFlagPill } from './LabBadges';
 
 /**
@@ -39,6 +39,8 @@ export default function ResultsTable({
       <tbody>
         {results.map((r) => {
           const abnormal = isAbnormalFlag(r.flag);
+          // The patient wording of a critical flag is long: on phones it takes its own line.
+          const longFlag = audience === 'patient' && isCriticalFlag(r.flag);
           return (
             <tr
               key={r.parameterKey}
@@ -56,7 +58,9 @@ export default function ResultsTable({
               <td className="text-xs text-muted sm:py-2 sm:pr-3 sm:text-sm">
                 {r.referenceText ?? ''}
               </td>
-              <td className="text-right sm:py-2 sm:text-left">
+              <td
+                className={`${longFlag ? 'col-span-2 text-left' : 'text-right'} sm:col-span-1 sm:py-2 sm:text-left`}
+              >
                 <LabFlagPill flag={r.flag} audience={audience} />
               </td>
             </tr>

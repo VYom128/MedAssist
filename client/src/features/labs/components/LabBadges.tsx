@@ -29,7 +29,7 @@ export function LabFlagPill({
   const patientCritical =
     audience === 'patient' && (flag === 'critical_low' || flag === 'critical_high');
   return (
-    <StatusPill domain="labFlag" status={flag} size="sm">
+    <StatusPill domain="labFlag" status={flag} size="sm" wrap={patientCritical}>
       {patientCritical ? PATIENT_CRITICAL_TEXT : undefined}
     </StatusPill>
   );

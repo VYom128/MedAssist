@@ -138,7 +138,7 @@ describe('My prescriptions', () => {
       ),
     );
     renderRoutes(routes, '/patient/prescriptions', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const table = await screen.findByRole(
       'table',
       { name: 'Active prescriptions' },
@@ -264,7 +264,7 @@ describe('Booking a follow-up', () => {
       '/patient/appointments/book?doctor=dr1&followUpOf=a1',
       authState(patient),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     expect(
       await screen.findByText('Booking a follow-up visit', {}, { timeout: 5000 }),
     ).toBeInTheDocument();

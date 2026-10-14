@@ -95,7 +95,7 @@ describe('Consult workspace', () => {
   it('tabs are keyboard-navigable', async () => {
     setup();
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByRole('tab', { name: 'Vitals' }, { timeout: 5000 });
     tab('Vitals').focus();
     await user.keyboard('{ArrowRight}');
@@ -108,7 +108,7 @@ describe('Consult workspace', () => {
   it('autosaves on blur with expectedVersion, then sends the new revision', async () => {
     const { patches } = setup();
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Notes' }, { timeout: 5000 }));
     await user.type(screen.getByLabelText(/Chief complaint/), 'Cough');
     await user.tab(); // blur saves at once
@@ -128,7 +128,7 @@ describe('Consult workspace', () => {
   it('"Share diagnosis with patient" saves at once and shows in the sign summary', async () => {
     const { patches } = setup({ note: signableNote() });
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(
       await screen.findByRole('tab', { name: 'Diagnosis & plan' }, { timeout: 5000 }),
     );
@@ -150,7 +150,7 @@ describe('Consult workspace', () => {
   it('autosaves 2 s after typing stops, one request at a time', async () => {
     const { patches } = setup();
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Notes' }, { timeout: 5000 }));
     await user.type(screen.getByLabelText(/Examination/), 'Chest clear');
     expect(patches).toHaveLength(0);
@@ -163,7 +163,7 @@ describe('Consult workspace', () => {
       patch: () => fail(409, 'CONFLICT', 'This note was changed in another tab'),
     });
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Notes' }, { timeout: 5000 }));
     await user.type(screen.getByLabelText(/Chief complaint/), 'Mine');
     await user.tab();
@@ -193,7 +193,7 @@ describe('Consult workspace', () => {
         n === 1 ? HttpResponse.error() : ok({ ...encounter(), ...(body as object), revision: 1 }),
     });
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Notes' }, { timeout: 5000 }));
     await user.type(screen.getByLabelText(/Chief complaint/), 'Cough');
     await user.tab();
@@ -206,11 +206,11 @@ describe('Consult workspace', () => {
   it('vitals: live BMI, out-of-range values are not sent, unusual values highlighted', async () => {
     const { patches } = setup();
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByRole('tab', { name: 'Vitals' }, { timeout: 5000 });
     await user.type(screen.getByLabelText('Weight (kg)'), '70');
     await user.type(screen.getByLabelText('Height (cm)'), '175');
-    expect(screen.getByText('22.9 kg/m²')).toBeInTheDocument();
+    expect(await screen.findByText('22.9 kg/m²')).toBeInTheDocument();
     await user.type(screen.getByLabelText('Pulse (/min)'), '400');
     expect(screen.getByText('Between 20 and 250')).toBeInTheDocument();
     await user.clear(screen.getByLabelText('Pulse (/min)'));
@@ -229,7 +229,7 @@ describe('Consult workspace', () => {
   it('warns before leaving with unsaved changes', async () => {
     setup({ patch: () => new Promise(() => undefined) }); // the save never finishes
     const { router } = open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Notes' }, { timeout: 5000 }));
     await user.type(screen.getByLabelText(/Chief complaint/), 'Cough');
     void router.navigate('/doctor/queue');
@@ -244,7 +244,7 @@ describe('Review & sign', () => {
   it('client problems block signing and link to the right tab', async () => {
     setup();
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(
       await screen.findByRole('button', { name: /Review & sign/ }, { timeout: 5000 }),
     );
@@ -270,7 +270,7 @@ describe('Review & sign', () => {
       ),
     );
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(
       await screen.findByRole('button', { name: /Review & sign/ }, { timeout: 5000 }),
     );
@@ -321,7 +321,7 @@ describe('Review & sign', () => {
       ),
     );
     const { router } = open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(
       await screen.findByRole('button', { name: /Review & sign/ }, { timeout: 5000 }),
     );
@@ -380,7 +380,7 @@ describe('Signed note', () => {
       }),
     );
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     expect(await screen.findByText('Version 2', {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByText(/Signed by Dr Anil Mehta/)).toBeInTheDocument();
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
@@ -437,7 +437,7 @@ describe('Lab orders tab', () => {
       }),
     );
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Lab orders' }, { timeout: 5000 }));
     expect(await screen.findByText('No lab tests ordered')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Add lab tests' }));

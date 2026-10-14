@@ -112,7 +112,7 @@ describe('Prescription editor', () => {
   it('a formulary pick fills the generic name and hints; frequency "other" needs text', async () => {
     const { puts } = workspace(signableNote(), null);
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Prescription' }, { timeout: 5000 }));
     expect(
       screen.getByText(/convenience check, not clinical decision support/),
@@ -160,7 +160,7 @@ describe('Prescription editor', () => {
   it('rows can be reordered and removed', async () => {
     workspace(signableNote(), null);
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Prescription' }, { timeout: 5000 }));
     await user.click(screen.getByRole('button', { name: 'Add drug' }));
     await user.click(screen.getByRole('button', { name: 'Add drug' }));
@@ -187,7 +187,7 @@ describe('Prescription editor', () => {
       }),
     );
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('tab', { name: 'Prescription' }, { timeout: 5000 }));
     const warning = await screen.findByRole('group', { name: 'Allergy warning' });
     expect(warning).toHaveTextContent('Matches the recorded allergy “Penicillin” (Penicillins)');
@@ -267,7 +267,7 @@ describe('Print page', () => {
       http.get(url('/encounters/e1'), () => ok(signableNote({ status: 'signed' }))),
     );
     renderRoutes(routes, '/print/prescriptions/rx1', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const table = await screen.findByRole('table', { name: 'Prescribed drugs' }, { timeout: 5000 });
     expect(within(table).getByText('Three times a day')).toBeInTheDocument();
     expect(within(table).getByText('After food')).toBeInTheDocument();

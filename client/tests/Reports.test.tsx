@@ -97,7 +97,7 @@ describe('Reports page', () => {
   it('keeps report, range and grouping in the URL and asks the server for them', async () => {
     const seen = reportHandler();
     const { router } = renderRoutes(routes, '/admin/reports', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     // Default: appointments for the last 30 days.
     await screen.findByRole('table', { name: 'Appointments report' });
     const last30 = presetRange('30d');

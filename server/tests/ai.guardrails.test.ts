@@ -86,6 +86,31 @@ describe('consistency', () => {
     expect(checkConsistency(inText, input())).toContain('medicine_not_prescribed');
   });
 
+  it('allows every drug of a prescribed combination, still blocks other drugs', () => {
+    const combo = input('en', [
+      med({
+        name: 'Aceclofenac + Paracetamol',
+        genericName: 'Aceclofenac + Paracetamol',
+        strength: '100 mg + 325 mg',
+        form: 'tablet',
+        dose: '1 tablet',
+      }),
+    ]);
+    expect(checkExplanation(buildTemplateExplanation(combo), combo)).toEqual([]);
+    const both = withMedicine({
+      name: 'Aceclofenac + Paracetamol 100 mg + 325 mg',
+      whatToDo: 'Take 1 tablet by mouth.',
+      tips: ['Paracetamol is part of this tablet.'],
+    });
+    expect(checkConsistency(both, combo)).toEqual([]);
+    const other = withMedicine({
+      name: 'Aceclofenac + Paracetamol 100 mg + 325 mg',
+      whatToDo: 'Take 1 tablet by mouth.',
+      tips: ['You can also take ibuprofen.'],
+    });
+    expect(checkConsistency(other, combo)).toContain('medicine_not_prescribed');
+  });
+
   it('blocks a missing or renamed medicine', () => {
     const none = { ...good(), medicines: [] };
     expect(checkConsistency(none, input())).toEqual(['medicine_missing']);

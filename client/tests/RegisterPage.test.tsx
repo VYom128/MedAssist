@@ -8,7 +8,7 @@ import { selfView } from './patients.fixtures';
 
 describe('RegisterPage', () => {
   const fillValid = async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.type(screen.getByLabelText('First name'), 'Priya');
     await user.type(screen.getByLabelText('Last name'), 'Sharma');
     await user.type(screen.getByLabelText('Email'), 'priya@example.com');
@@ -151,7 +151,7 @@ describe('RegisterPage', () => {
   it('shows live password hints, including the name/email rule', async () => {
     renderRoutes(routes, '/register', authState(null));
     await screen.findByRole('heading', { name: 'Create your patient account' });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.type(screen.getByLabelText('First name'), 'Priya');
     await user.type(screen.getByLabelText('Password'), 'priya2026');
     const list = screen.getByRole('list', { name: 'Password requirements' });

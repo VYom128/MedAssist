@@ -657,12 +657,12 @@ For the email step set `EMAIL_TRANSPORT=smtp` and Ethereal's `SMTP_HOST=smtp.eth
 **Goal:** a reliable, demo-ready app online.
 **Spec:** §15, §17, §18
 
-- [ ] Full seed data (spec §15.3) + demo accounts in README
-- [ ] RBAC matrix test across all endpoints
-- [ ] Coverage ≥ 80 % on services and policies; frontend component tests
-- [ ] Optional Playwright end-to-end happy path
-- [ ] Responsive and accessibility pass
-- [ ] Security review (spec §10 checklist)
+- [x] Full seed data (spec §15.3) + demo accounts in README
+- [x] RBAC matrix test across all endpoints
+- [x] Coverage ≥ 80 % on services and policies; frontend component tests
+- [x] Optional Playwright end-to-end happy path
+- [x] Responsive and accessibility pass
+- [x] Security review (spec §10 checklist)
 - [ ] GitHub Actions CI (lint, format, tests, build)
 - [ ] Deploy: MongoDB Atlas, API on Render/Railway, client on Vercel, files on Cloudinary
 - [ ] Final README: setup, architecture overview, demo accounts, screenshots

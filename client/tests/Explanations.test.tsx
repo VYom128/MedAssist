@@ -64,7 +64,7 @@ describe('Explain in simple words', () => {
       http.get(url('/settings/public'), () => ok({ ...PUBLIC_SETTINGS, phone: '+918041234567' })),
     );
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await explainButton());
     const panel = await screen.findByRole('region', { name: 'Explained in simple words' });
     expect(await within(panel).findByText('Take 1 tablet')).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe('Explain in simple words', () => {
   it('notes the simplified format when the template was used – disclaimer still shown', async () => {
     setup({ answer: (language) => ok(explanation({ language, isFallback: true })) });
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await explainButton());
     expect(await screen.findByText('Shown in a simplified format.')).toBeInTheDocument();
     expect(screen.getByTestId('explanation-disclaimer')).toBeInTheDocument();
@@ -97,7 +97,7 @@ describe('Explain in simple words', () => {
   it('asks again in Hindi on the language switch and renders Devanagari', async () => {
     const { requests } = setup();
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await explainButton());
     await screen.findByText('Take 1 tablet');
     await user.click(screen.getByRole('button', { name: 'हिन्दी' }));
@@ -118,7 +118,7 @@ describe('Explain in simple words', () => {
   it('starts in the patient’s preferred language', async () => {
     const { requests } = setup({ me: selfView({ preferredLanguage: 'hi' }) });
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await explainButton());
     expect(await screen.findByText('1 गोली लें')).toBeInTheDocument();
     expect(requests).toEqual(['hi']);
@@ -127,7 +127,7 @@ describe('Explain in simple words', () => {
   it('records 👍 / 👎 with an optional comment', async () => {
     const { feedback } = setup();
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await explainButton());
     await screen.findByText('Was this helpful?');
     await user.click(screen.getByRole('button', { name: 'No' }));
@@ -163,7 +163,7 @@ describe('Explain in simple words', () => {
       http.get(url('/settings/public'), () => ok({ ...PUBLIC_SETTINGS, phone: '+918041234567' })),
     );
     open();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await explainButton());
     expect(await screen.findByText(c.text)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Contact the clinic/ })).toBeInTheDocument();
@@ -272,7 +272,7 @@ describe('Follow-up plan on the visit page', () => {
       }),
     );
     renderRoutes(routes, '/patient/visits/e1', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     expect(
       await screen.findByRole(
         'heading',

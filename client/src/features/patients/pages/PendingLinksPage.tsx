@@ -67,17 +67,19 @@ function PendingCard({
         <section aria-label="Matched patient record">
           <h2 className="mb-2 text-caption text-muted uppercase">Matched patient record</h2>
           {patient ? (
-            <dl className="space-y-1.5 text-sm">
-              <Row label="Name" value={patient.fullName} />
-              <Row label="MRN" value={patient.mrn} />
-              <Row label="Date of birth" value={formatCalendarDate(patient.dateOfBirth)} />
-              <Row label="Phone" value={formatPhone(patient.phone)} />
-              <div className="pt-1 text-right">
+            <>
+              <dl className="space-y-1.5 text-sm">
+                <Row label="Name" value={patient.fullName} />
+                <Row label="MRN" value={patient.mrn} />
+                <Row label="Date of birth" value={formatCalendarDate(patient.dateOfBirth)} />
+                <Row label="Phone" value={formatPhone(patient.phone)} />
+              </dl>
+              <p className="pt-2.5 text-right text-sm">
                 <Link to={`/reception/patients/${patient.id}`} className={linkClass}>
                   Open record
                 </Link>
-              </div>
-            </dl>
+              </p>
+            </>
           ) : (
             <p className="text-sm text-muted">The matched record no longer exists.</p>
           )}

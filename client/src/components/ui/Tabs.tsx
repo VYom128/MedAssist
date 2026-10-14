@@ -51,6 +51,8 @@ export default function Tabs({
 
   return (
     <div>
+      {/* WAI-ARIA tabs: the tab buttons take focus (roving), not the tablist itself. */}
+      {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus */}
       <div
         role="tablist"
         aria-label={label}

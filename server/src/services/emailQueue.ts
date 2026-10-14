@@ -3,7 +3,7 @@ import { NOTIFICATION_RULES } from '../config/constants.js';
 import { config } from '../config/env.js';
 import { Notification } from '../modules/notifications/model.js';
 import { logger, serializeError } from '../utils/logger.js';
-import { emailService, type EmailMessage } from './email.service.js';
+import { emailFailure, emailService, type EmailMessage } from './email.service.js';
 
 /**
  * In-process email queue for notifications (spec §11): an email is tried once, then retried
@@ -69,8 +69,9 @@ async function deliver(job: EmailJob): Promise<void> {
     } catch (err) {
       lastError = errorTag(err);
       if (attempt === attempts) {
+        // Code and SMTP status only: messages can quote the recipient's address.
         logger.warn(
-          { err: serializeError(err), type: job.type, attempts },
+          { email: emailFailure(err), type: job.type, attempts },
           'Notification email failed',
         );
         break;

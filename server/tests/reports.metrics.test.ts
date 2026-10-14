@@ -20,8 +20,10 @@ import {
   noShowRate,
   noShowsByDoctor,
   outstanding,
+  monthsIn,
   percentile,
 } from '../src/modules/reports/metrics/index.js';
+import { buildReport } from '../src/modules/reports/service.js';
 import { DoctorSchedule } from '../src/modules/schedules/model.js';
 import { calendarDate } from '../src/utils/dates.js';
 import { resetDb } from './helpers/auth.js';
@@ -358,6 +360,53 @@ describe('other metrics', () => {
     expect(percentile([], 50)).toBeNull();
     expect(percentile([7], 90)).toBe(7);
     expect(percentile([1, 2, 3, 4], 50)).toBe(2.5);
+  });
+});
+
+describe('report groupings', () => {
+  it('revenue by clinic month: Feb–Apr rows, month edges in IST, partly paid invoices billed', async () => {
+    const report = await buildReport('revenue', {
+      from: '2026-02-01',
+      to: '2026-04-30',
+      groupBy: 'month',
+      format: 'json',
+    });
+    const pick = (k: string) => {
+      const x = report.rows.find((row) => row.key === k)!;
+      return [x.invoices, x.billedPaise, x.paymentsPaise, x.refundsPaise, x.netPaise];
+    };
+    expect(report.rows.map((x) => x.key)).toEqual(['2026-02', '2026-03', '2026-04']);
+    expect(pick('2026-02')).toEqual([0, 0, 0, 0, 0]);
+    // 31 Mar 23:30 IST payment and 23:00 IST invoice stay in March.
+    expect(pick('2026-03')).toEqual([2, 200_000, 150_000, 20_000, 130_000]);
+    // 1 Apr 00:10 / 00:30 IST are April although still 31 March in UTC.
+    expect(pick('2026-04')).toEqual([1, 80_000, 70_000, 0, 70_000]);
+    expect(report.totals).toMatchObject({ invoices: 3, billedPaise: 280_000, netPaise: 200_000 });
+  });
+
+  it('every month a range touches, across a year end', () => {
+    expect(monthsIn('2025-11-20', '2026-02-03')).toEqual([
+      '2025-11',
+      '2025-12',
+      '2026-01',
+      '2026-02',
+    ]);
+    expect(monthsIn('2026-03-01', '2026-03-31')).toEqual(['2026-03']);
+  });
+
+  it('no-shows by day: one row per clinic day, adding up to the range', async () => {
+    const report = await buildReport('no-shows', {
+      from: '2026-03-01',
+      to: '2026-03-03',
+      groupBy: 'day',
+      format: 'json',
+    });
+    expect(report.rows.map((x) => [x.key, x.completed, x.noShow, x.rate])).toEqual([
+      ['2026-03-01', 0, 0, null],
+      ['2026-03-02', 1, 1, 0.5],
+      ['2026-03-03', 1, 0, 0],
+    ]);
+    expect(report.totals).toMatchObject({ completed: 2, noShow: 1 });
   });
 });
 

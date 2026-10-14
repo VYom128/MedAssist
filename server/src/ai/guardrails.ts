@@ -107,7 +107,11 @@ export function checkConsistency(output: ExplanationOutput, input: ExplanationIn
   const keysOf = input.medicines.map((m) =>
     [keyWord(m.name), keyWord(m.genericName)].filter((w): w is string => Boolean(w)),
   );
-  const prescribedWords = new Set(keysOf.flat());
+  // Every word of a prescribed name counts as prescribed, so the second drug of a combination
+  // ("Aceclofenac + Paracetamol") is not mistaken for an invented one.
+  const prescribedWords = new Set(
+    input.medicines.flatMap((m) => words(`${m.name} ${m.genericName ?? ''}`)),
+  );
 
   // Each output medicine is one of the prescribed items; each prescribed item is explained.
   const explained = new Set<number>();

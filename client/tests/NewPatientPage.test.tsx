@@ -18,7 +18,7 @@ const MATCH = {
 };
 
 async function fillForm() {
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   await user.type(screen.getByLabelText('First name'), 'Priti');
   await user.type(screen.getByLabelText('Last name'), 'Sharma');
   await user.type(screen.getByLabelText('Date of birth'), '1990-05-17');
@@ -116,7 +116,7 @@ describe('NewPatientPage', () => {
     server.use(http.get(url('/patients/check-duplicate'), () => ok({ matches: [] })));
     renderRoutes(routes, '/reception/patients/new', authState(reception));
     await screen.findByRole('heading', { name: 'New patient' });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(screen.getByRole('button', { name: 'Register patient' }));
     expect(
       await screen.findByText('Consent to data processing is required to register a patient'),

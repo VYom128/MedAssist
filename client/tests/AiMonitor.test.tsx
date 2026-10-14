@@ -98,7 +98,7 @@ describe('AI monitor', () => {
   it('filters by date range, feature and status', async () => {
     const { listParams, summaryParams } = setup();
     renderRoutes(routes, '/admin/ai-monitor', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await screen.findByRole('table', { name: 'Recent AI attempts' }, { timeout: 5000 });
     await user.selectOptions(screen.getByLabelText('Status'), 'blocked');
     await waitFor(() => expect(listParams.at(-1)?.get('status')).toBe('blocked'));

@@ -26,3 +26,8 @@ uploads/
 .idea/
 docs/design-reference/
 docs/design-reference/
+
+# Playwright (E2E)
+test-results/
+playwright-report/
+e2e/.stack/

@@ -429,7 +429,7 @@ describe('POST /invoices/:id/issue', () => {
     expect(again.status).toBe(409);
     expectErrorShape(again.body, 'INVALID_STATUS_TRANSITION');
 
-    await vi.waitFor(() => expect(emails.sent).toHaveLength(1));
+    await vi.waitFor(() => expect(emails.sent).toHaveLength(1), { timeout: 5000 });
     const mail = emails.sent[0]!;
     expect(mail.to).toBe('asha@example.com');
     const content = JSON.stringify(mail);

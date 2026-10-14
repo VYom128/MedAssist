@@ -37,7 +37,19 @@ async function safely(name: string, run: (now: Date) => Promise<unknown>) {
   }
 }
 
-/** Schedules the jobs if enabled. @returns a function that stops them (graceful shutdown). */
+/**
+ * Runs every job once, one after the other (never throws). Called at start-up: cron does not
+ * replay ticks missed while the instance slept (Render free tier), and every job catches up from
+ * its own timestamps and claims, so an extra run is always safe (D202).
+ */
+export async function catchUpJobs(now = new Date()): Promise<void> {
+  for (const { name, run } of JOBS) await safely(name, () => run(now));
+}
+
+/**
+ * Schedules the jobs if enabled and starts one catch-up run in the background.
+ * @returns a function that stops them (graceful shutdown).
+ */
 export async function startJobs(): Promise<() => Promise<void>> {
   if (!config.jobs.enabled) {
     logger.info('Background jobs are off (JOBS_ENABLED=false)');
@@ -52,6 +64,7 @@ export async function startJobs(): Promise<() => Promise<void>> {
     }),
   );
   logger.info({ jobs: JOBS.map((j) => j.name), timezone }, 'Background jobs scheduled');
+  void catchUpJobs();
   return async () => {
     await Promise.all(tasks.map((t) => t.stop()));
   };

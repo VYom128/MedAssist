@@ -63,6 +63,22 @@ describe('appointment status actions', () => {
   afterEach(() => emails.restore());
 
   describe('POST /appointments/:id/reschedule', () => {
+    it('clears the reminder marks so the new time gets its own reminder (D202)', async () => {
+      const booked = await book(setup.patient.id, '09:00');
+      const id = booked.body.data.id as string;
+      const earlier = new Date(Date.now() - 60_000);
+      await Appointment.updateOne(
+        { _id: id },
+        { $set: { reminderSentAt: earlier, reminderSkippedAt: earlier } },
+      );
+      expect((await reschedule(id, { startAt: at(day, '11:00'), reason: 'Moved' })).status).toBe(
+        200,
+      );
+      const after = await Appointment.findById(id).lean();
+      expect(after?.reminderSentAt ?? null).toBeNull();
+      expect(after?.reminderSkippedAt ?? null).toBeNull();
+    });
+
     it('moves the appointment, records history, frees the old slot, audits and notifies', async () => {
       await Patient.updateOne({ _id: setup.patient.id }, { $set: { email: 'pat@example.com' } });
       const booked = await book(setup.patient.id, '09:00');

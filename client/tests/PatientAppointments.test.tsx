@@ -79,7 +79,7 @@ describe('Patient booking wizard', () => {
       ok(appointment({ startAt: at(TOMORROW, '09:30') }), { status: 201 }),
     );
     const { router } = renderRoutes(routes, '/patient/appointments/book', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await walkTo(user, '9:30 AM');
     await user.type(screen.getByLabelText(/Reason for visit/), 'Fever for 3 days');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
@@ -105,7 +105,7 @@ describe('Patient booking wizard', () => {
         : ok(appointment({ startAt: at(TOMORROW, '09:45') }), { status: 201 }),
     );
     const { router } = renderRoutes(routes, '/patient/appointments/book', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await walkTo(user, '9:30 AM');
     await user.type(screen.getByLabelText(/Reason for visit/), 'Skin rash');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
@@ -140,7 +140,7 @@ describe('Patient booking wizard', () => {
       ),
     );
     renderRoutes(routes, '/patient/appointments/book', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await walkTo(user, '9:30 AM');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     await user.click(screen.getByRole('button', { name: 'Confirm booking' }));
@@ -224,7 +224,7 @@ describe('My appointments (patient)', () => {
       }),
     );
     renderRoutes(routes, '/patient/appointments', authState(patient));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(await screen.findByRole('button', { name: 'Cancel' }, { timeout: 5000 }));
     const dialog = await screen.findByRole('dialog', { name: 'Cancel appointment' });
     await user.click(within(dialog).getByRole('button', { name: 'Cancel appointment' }));

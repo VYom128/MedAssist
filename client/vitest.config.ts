@@ -8,7 +8,16 @@ export default defineConfig({
     globals: true,
     include: ['tests/**/*.test.{ts,tsx}'],
     setupFiles: ['./tests/setup.ts'],
+    // Full-page tests are CPU-bound (see tests/setup.ts); 15 s leaves room on slow CI runners.
+    testTimeout: 15_000,
     // The API base URL the handlers in tests/msw answer on.
     env: { VITE_API_URL: 'http://localhost:5001/api/v1', VITE_REALTIME: 'off' },
+    // Reported, not enforced (the §15.1 80 % target is for server services and policies).
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/main.tsx', 'src/**/*.d.ts'],
+      reporter: ['text-summary', 'html'],
+    },
   },
 });

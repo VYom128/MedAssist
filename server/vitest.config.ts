@@ -11,8 +11,14 @@ export default defineConfig({
     hookTimeout: 120_000,
     coverage: {
       provider: 'v8',
-      include: ['src/**'],
+      include: ['src/**/*.ts'],
       reporter: ['text', 'html'],
+      // Spec §15.1: at least 80 % of lines on services and policies (checked per group).
+      thresholds: {
+        'src/services/**': { lines: 80 },
+        'src/policies/**': { lines: 80 },
+        'src/modules/**/*service.ts': { lines: 80 },
+      },
     },
   },
 });

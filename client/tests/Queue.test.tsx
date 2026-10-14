@@ -121,7 +121,7 @@ describe('Reception queue', () => {
       }),
     );
     renderRoutes(routes, '/reception/queue?doctor=dr1', authState(reception));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const table = await screen.findByRole(
       'table',
       { name: "Today's appointments" },
@@ -166,7 +166,7 @@ describe('Doctor queue', () => {
       ),
     );
     renderRoutes(routes, '/doctor/queue', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     expect(await screen.findByText('Asha K.', {}, { timeout: 5000 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Call next' })).toBeDisabled();
 
@@ -212,7 +212,7 @@ describe('Doctor queue → consult workspace', () => {
       http.get(url('/appointments/q5/encounter'), () => new Promise(() => undefined)),
     );
     const second = renderRoutes(routes, '/doctor/queue', authState(doctor));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Call next' })).toBeEnabled(), {
       timeout: 5000,
     });
@@ -253,7 +253,7 @@ describe('Appointment drawer actions by status', () => {
         http.get(url('/appointments/a1'), () => ok(appointment({ status, startAt: started() }))),
       );
       renderRoutes(routes, '/reception/appointments', authState(reception));
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       await user.click(await screen.findByText('000045 · Priya S.', {}, { timeout: 5000 }));
       const drawer = await screen.findByRole('dialog', { name: 'Appointment APT-2026-000045' });
       await within(drawer).findByText('Fever for 3 days');

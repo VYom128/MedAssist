@@ -86,7 +86,7 @@ describe('UsersPage', () => {
   it('keeps filters in the URL and sends them to the API', async () => {
     const { router } = renderRoutes(routes, '/admin/users', authState(admin));
     await screen.findByRole('table', { name: 'Users' });
-    await userEvent.setup().selectOptions(screen.getByLabelText('Role'), 'labtech');
+    await userEvent.setup({ delay: null }).selectOptions(screen.getByLabelText('Role'), 'labtech');
 
     await waitFor(() => expect(router.state.location.search).toBe('?role=labtech'));
     await waitFor(() => expect(lastQuery.get('role')).toBe('labtech'));
@@ -106,7 +106,7 @@ describe('UsersPage', () => {
     );
     renderRoutes(routes, '/admin/users', authState(admin));
     await screen.findByRole('table', { name: 'Users' });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.click(screen.getByRole('button', { name: 'Add staff' }));
 
     const dialog = await screen.findByRole('dialog', { name: 'Add staff' });

@@ -1,10 +1,12 @@
 import type { Server } from 'node:http';
+import mongoose from 'mongoose';
 import { connectDB, disconnectDB } from './config/db.js';
 import { API_PREFIX } from './config/constants.js';
 import { config } from './config/env.js';
 import { createApp } from './app.js';
 import { startJobs } from './jobs/index.js';
 import { flushAudit } from './services/audit.service.js';
+import { drainEmailQueue } from './services/emailQueue.js';
 import { initStorage } from './services/storage/index.js';
 import { closeSocket, initSocket } from './socket/index.js';
 import { listen, PortInUseError } from './utils/listen.js';
@@ -16,7 +18,12 @@ async function start() {
   await connectDB();
   await initStorage();
 
-  const app = createApp();
+  const app = createApp(); // registers every model (routes import them)
+  if (!config.isProd) {
+    // Development: build new indexes and drop ones no schema declares any more. Production uses
+    // `npm run db:indexes` (dry run, then --apply) instead (spec §18).
+    await mongoose.syncIndexes();
+  }
   let server: Server;
   try {
     server = await listen(app, config.port);
@@ -44,6 +51,7 @@ async function start() {
     closeSocket(io); // disconnect real-time clients so server.close() can finish
     server.close(async () => {
       try {
+        await drainEmailQueue(); // emails being sent or retried (bounded by the timeout above)
         await flushAudit(); // finish queued audit writes before the connection closes
         await disconnectDB();
         logger.info('Shutdown complete');

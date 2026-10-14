@@ -18,7 +18,7 @@ describe('Lab test form', () => {
       http.get(url('/lab-tests/lt1'), () => fail(404, 'NOT_FOUND', 'Lab test not found')),
     );
     const { router } = renderRoutes(routes, '/admin/lab-tests/new', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.type(await screen.findByLabelText('Code'), 'cbc');
     await user.type(screen.getByLabelText('Test name'), 'Complete Blood Count');
     await user.type(screen.getByLabelText('Price'), '350');
@@ -108,7 +108,7 @@ describe('Lab test form', () => {
       ),
     );
     renderRoutes(routes, '/admin/lab-tests/new', authState(admin));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     await user.type(await screen.findByLabelText('Code'), 'esr');
     await user.type(screen.getByLabelText('Test name'), 'ESR');
     await user.type(screen.getByLabelText('Price'), '150');

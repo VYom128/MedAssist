@@ -15,6 +15,7 @@
     "seed": "tsx src/seed/index.ts",
     "smoke": "tsx scripts/smoke.ts",
     "ai:eval": "tsx scripts/aiEval.ts",
+    "db:indexes": "tsx src/migrations/indexes.ts",
     "migrate:link-patients": "tsx src/migrations/linkPatients.ts"
   },
   "dependencies": {
@@ -49,7 +50,7 @@
     "@types/express": "^4.17.25",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.2.0",
-    "@types/node": "^20.19.43",
+    "@types/node": "^24.19.2",
     "@types/nodemailer": "^8.0.2",
     "@types/pdfkit": "^0.17.6",
     "@types/supertest": "^7.2.1",

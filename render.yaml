@@ -1,0 +1,109 @@
+# Render Blueprint for the MedAssist API (spec §18, docs/DEPLOYMENT.md).
+# Secrets use `sync: false`: Render asks for them when the Blueprint is created – never put values
+# here. PORT and RENDER_GIT_COMMIT are set by Render itself.
+services:
+  - type: web
+    name: medassist-api
+    runtime: node
+    region: singapore
+    plan: free
+    branch: main
+    autoDeploy: true
+    # devDependencies are needed to compile TypeScript (NODE_ENV=production would skip them).
+    buildCommand: npm ci --include=dev && npm run build:server
+    startCommand: npm run start:server
+    healthCheckPath: /api/v1/health
+    envVars:
+      # Runtime
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: '24'
+      - key: LOG_LEVEL
+        value: info
+      # Vercel rewrite → Render proxy → app: trust two X-Forwarded-For hops (D197, D201)
+      - key: TRUST_PROXY
+        value: '2'
+      - key: CLIENT_URL # the Vercel URL, e.g. https://medassist.vercel.app
+        sync: false
+      - key: MONGO_URI # Atlas connection string (mongodb+srv://…)
+        sync: false
+
+      # Auth and audit (secrets: `openssl rand -hex 32` each; AUDIT_HASH_SECRET must never change)
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: AUDIT_HASH_SECRET
+        sync: false
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 15m
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: '7'
+      - key: BCRYPT_ROUNDS
+        value: '12'
+      # First-party refresh cookie through the Vercel rewrite
+      - key: COOKIE_SECURE
+        value: 'true'
+      - key: COOKIE_SAMESITE
+        value: lax
+      - key: RATE_LIMIT_WINDOW_MS
+        value: '900000'
+      - key: RATE_LIMIT_MAX
+        value: '300'
+
+      # Email: Brevo SMTP relay
+      - key: EMAIL_TRANSPORT
+        value: smtp
+      - key: SMTP_HOST
+        value: smtp-relay.brevo.com
+      - key: SMTP_PORT
+        value: '587'
+      - key: SMTP_USER # Brevo SMTP login
+        sync: false
+      - key: SMTP_PASS # Brevo SMTP key
+        sync: false
+      - key: MAIL_FROM # a verified Brevo sender, e.g. MedAssist <no-reply@your-domain>
+        sync: false
+
+      # Files: Cloudinary (private raw assets)
+      - key: STORAGE_DRIVER
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: CLOUDINARY_FOLDER
+        value: medassist
+      - key: MAX_UPLOAD_MB
+        value: '10'
+
+      # AI: Groq (OpenAI-compatible)
+      - key: AI_PROVIDER
+        value: openai_compatible
+      - key: AI_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: openai/gpt-oss-120b
+      - key: AI_FALLBACK_MODELS
+        value: qwen/qwen3.8-27b,openai/gpt-oss-20b
+      - key: AI_TIMEOUT_MS
+        value: '30000'
+      - key: AI_TEMPERATURE
+        value: '0.2'
+      - key: AI_MAX_TOKENS
+        value: '4000'
+      - key: AI_DAILY_CALL_LIMIT
+        value: '300'
+
+      # Background jobs: this single instance runs them (they catch up after the instance sleeps)
+      - key: JOBS_ENABLED
+        value: 'true'
+      # Queue board kiosk (optional; at least 24 characters)
+      - key: KIOSK_KEY
+        sync: false
+      # Only while seeding the hosted demo (npm run seed -- --demo); keep false otherwise
+      - key: ALLOW_DEMO_SEED
+        value: 'false'

@@ -1,5 +1,6 @@
 import { rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import mongoose from 'mongoose';
 import { connectDB, disconnectDB } from '../config/db.js';
 import { config } from '../config/env.js';
 import { AiInteraction } from '../modules/aiInteractions/model.js';
@@ -30,7 +31,7 @@ import { clearSettingsCache } from '../modules/settings/service.js';
 import { User } from '../modules/users/model.js';
 import * as audit from '../services/audit.service.js';
 import { setNotificationsMuted } from '../services/notification.service.js';
-import { initStorage } from '../services/storage/index.js';
+import { getStorage, initStorage } from '../services/storage/index.js';
 import { logger, serializeError } from '../utils/logger.js';
 import { seedAi } from './ai.js';
 import { seedNotifications } from './notifications.js';
@@ -78,6 +79,18 @@ const SEEDERS: { name: string; run: () => Promise<Record<string, number>> }[] = 
  * those deletes).
  */
 async function resetData() {
+  // Stored files first, through the adapter, so a reset of a hosted demo (cloud storage) leaves no
+  // orphans; the local driver's folder is removed as a whole below.
+  if (getStorage().driver !== 'local') {
+    const docs = await Document.collection
+      .find({}, { projection: { storageKey: 1, storageDriver: 1 } })
+      .toArray();
+    for (const d of docs) {
+      if (d.storageDriver === getStorage().driver && typeof d.storageKey === 'string') {
+        await getStorage().remove(d.storageKey);
+      }
+    }
+  }
   await Promise.all([
     User.deleteMany({}),
     Session.deleteMany({}),
@@ -106,8 +119,10 @@ async function resetData() {
     Notification.deleteMany({}),
     Counter.deleteMany({}), // MRN, APT, ENC, RX, LAB, INV, PAY and sample numbers, queue tokens
   ]);
-  // The stored files go with their records (development only – see runSeed).
-  await rm(config.storage.uploadDir, { recursive: true, force: true });
+  // The stored files go with their records.
+  if (getStorage().driver === 'local') {
+    await rm(config.storage.uploadDir, { recursive: true, force: true });
+  }
   clearSettingsCache();
 }
 
@@ -151,13 +166,54 @@ export function summaryTable(summary: Record<string, Record<string, number>>): s
   ]);
 }
 
+export interface SeedOptions {
+  /** Wipe the seeded collections first (`--reset`). */
+  reset?: boolean;
+  /** Seeding the hosted demo database (`--demo`), the only way to seed in production. */
+  demo?: boolean;
+}
+
 /**
- * Runs every seeder. Refuses in production; `reset` (wipe first) is development only.
- * Assumes an open database connection (a replica set: doctors are created in transactions).
+ * Whether the seed may run (D199): always outside production (`--reset` in development only);
+ * in production only with `--demo` AND `ALLOW_DEMO_SEED=true` – the hosted demo database –
+ * and then `--reset` too. Throws with the reason otherwise.
+ * @returns true when this is a production demo seed (the caller warns loudly).
  */
-export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
-  if (config.isProd) throw new Error('Refusing to seed with NODE_ENV=production');
-  if (reset && !config.isDev) throw new Error('--reset is only allowed with NODE_ENV=development');
+export function seedPermission(
+  { reset = false, demo = false }: SeedOptions,
+  env: { isProd: boolean; isDev: boolean; allowDemoSeed: boolean },
+): boolean {
+  if (env.isProd) {
+    if (!demo || !env.allowDemoSeed) {
+      throw new Error(
+        'Refusing to seed with NODE_ENV=production. To seed the hosted DEMO database, pass ' +
+          '--demo and set ALLOW_DEMO_SEED=true.',
+      );
+    }
+    return true;
+  }
+  if (reset && !env.isDev) throw new Error('--reset is only allowed with NODE_ENV=development');
+  return false;
+}
+
+const DEMO_WARNING = [
+  '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!',
+  '!!  SEEDING A PRODUCTION DATABASE WITH DEMO DATA (--demo, ALLOW_DEMO_SEED=true)',
+  '!!  Fake patients and shared demo passwords. Only for the hosted demo – never a',
+  '!!  real clinic. Unset ALLOW_DEMO_SEED afterwards.',
+  '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!',
+].join('\n');
+
+/**
+ * Runs every seeder (see `seedPermission` for when it may). Assumes an open database connection
+ * (a replica set: doctors are created in transactions).
+ */
+export async function runSeed({ reset = false, demo = false }: SeedOptions = {}) {
+  const productionDemo = seedPermission(
+    { reset, demo },
+    { isProd: config.isProd, isDev: config.isDev, allowDemoSeed: config.seed.allowDemo },
+  );
+  if (productionDemo) logger.warn(`\n${DEMO_WARNING}`);
 
   if (reset) {
     await resetData();
@@ -181,18 +237,39 @@ export async function runSeed({ reset = false }: { reset?: boolean } = {}) {
   return summary;
 }
 
+/** Plain-text table of the documents in every collection after the run. */
+export async function collectionCountsTable(): Promise<string> {
+  const db = mongoose.connection.db!;
+  const names = (await db.listCollections({}, { nameOnly: true }).toArray())
+    .map((c) => c.name)
+    .sort();
+  const counts = await Promise.all(names.map((n) => db.collection(n).countDocuments()));
+  return table([['Collection', 'Documents'], ...names.map((n, i) => [n, String(counts[i])])]);
+}
+
 async function main() {
+  const started = Date.now();
   await connectDB();
   try {
-    const summary = await runSeed({ reset: process.argv.includes('--reset') });
+    const summary = await runSeed({
+      reset: process.argv.includes('--reset'),
+      demo: process.argv.includes('--demo'),
+    });
     logger.info(`Seed complete:\n${summaryTable(summary)}`);
+    logger.info(`Documents per collection:\n${await collectionCountsTable()}`);
     // Demo-only shared password, shown on purpose (spec §15.3).
     logger.info(`Demo logins:\n${demoLoginTable()}`);
-    logger.info(
-      config.kiosk.key
-        ? `Queue board (kiosk): ${config.clientUrl}/queue-board?key=${encodeURIComponent(config.kiosk.key)}`
-        : 'Queue board: set KIOSK_KEY in server/.env to enable /queue-board',
-    );
+    if (!config.kiosk.key) {
+      logger.info('Queue board: set KIOSK_KEY to enable /queue-board');
+    } else if (config.isProd) {
+      // Never write the kiosk key into a host's logs.
+      logger.info('Queue board: /queue-board?key=<KIOSK_KEY> (the key is set)');
+    } else {
+      logger.info(
+        `Queue board (kiosk): ${config.clientUrl}/queue-board?key=${encodeURIComponent(config.kiosk.key)}`,
+      );
+    }
+    logger.info(`Seed finished in ${((Date.now() - started) / 1000).toFixed(1)} s`);
   } finally {
     await disconnectDB();
   }

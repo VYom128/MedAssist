@@ -4,7 +4,7 @@ import { FORMULARY } from '../src/data/formulary.js';
 import { patientRecipient } from '../src/modules/appointments/service.js';
 import { Notification } from '../src/modules/notifications/model.js';
 import { emailService } from '../src/services/email.service.js';
-import { configureEmailQueue } from '../src/services/emailQueue.js';
+import { configureEmailQueue, drainEmailQueue } from '../src/services/emailQueue.js';
 import { notify, notificationLink } from '../src/services/notification.service.js';
 import { NOTIFICATION_EMAILS } from '../src/services/notificationEmails/index.js';
 import { setSocketServer } from '../src/socket/emitter.js';
@@ -186,14 +186,54 @@ describe('notify()', () => {
     expect(n?.channels?.email).toMatchObject({ sent: true, attempts: 3, error: null });
 
     send.mockReset();
-    send.mockRejectedValue(Object.assign(new Error('secret body text'), { code: 'EAUTH' }));
+    // SMTP messages can quote the recipient: only the code may reach the log.
+    send.mockRejectedValue(
+      Object.assign(new Error('550 5.1.1 <p@example.com>: Recipient address rejected'), {
+        code: 'EENVELOPE',
+        responseCode: 550,
+      }),
+    );
+    const warn = vi.spyOn(logger, 'warn');
     await Notification.deleteMany({});
     await expect(booked(user._id.toString())).resolves.toBeUndefined();
     expect(send).toHaveBeenCalledTimes(4); // 1 try + 3 retries
     n = await Notification.findOne().lean();
-    expect(n?.channels?.email).toMatchObject({ sent: false, attempts: 4, error: 'EAUTH' });
+    expect(n?.channels?.email).toMatchObject({ sent: false, attempts: 4, error: 'EENVELOPE' });
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).toContain('"code":"EENVELOPE","responseCode":550');
+    expect(logged).not.toContain('p@example.com');
+    warn.mockRestore();
     send.mockRestore();
     emails = captureEmails();
+  });
+
+  it('in production mode notify() returns before the email is sent; drain waits for retries', async () => {
+    emails.restore();
+    configureEmailQueue({ inline: false, delaysMs: [20, 20, 20] });
+    let release!: () => void;
+    const firstTry = new Promise<void>((r) => (release = r));
+    const send = vi
+      .spyOn(emailService, 'send')
+      .mockImplementationOnce(async () => {
+        await firstTry;
+        throw 'not an Error object'; // a thrown non-Error value is retried like any failure
+      })
+      .mockResolvedValue(undefined);
+    try {
+      const user = await createUser('patient');
+      await booked(user._id.toString()); // resolves while the first try is still waiting
+      let n = await Notification.findOne().lean();
+      expect(n?.channels?.email?.sent).not.toBe(true);
+      release();
+      await drainEmailQueue();
+      expect(send).toHaveBeenCalledTimes(2);
+      n = await Notification.findOne().lean();
+      expect(n?.channels?.email).toMatchObject({ sent: true, attempts: 2, error: null });
+    } finally {
+      configureEmailQueue({ inline: true });
+      send.mockRestore();
+      emails = captureEmails();
+    }
   });
 
   it('builds role links from the catalogue', () => {

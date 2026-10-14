@@ -52,8 +52,8 @@ describe('Timeline', () => {
       }),
     );
     renderRoutes(routes, '/patient/timeline', authState(patient));
-    const user = userEvent.setup();
-    const feed = await screen.findByRole('feed', { name: 'My timeline' }, { timeout: 5000 });
+    const user = userEvent.setup({ delay: null });
+    const feed = await screen.findByRole('region', { name: 'My timeline' }, { timeout: 5000 });
     expect(within(feed).getAllByRole('listitem')).toHaveLength(2);
 
     await user.click(screen.getByRole('button', { name: 'Load more' }));
@@ -86,8 +86,8 @@ describe('Timeline', () => {
       }),
     );
     renderRoutes(routes, '/patient/timeline', authState(patient));
-    const user = userEvent.setup();
-    await screen.findByRole('feed', {}, { timeout: 5000 });
+    const user = userEvent.setup({ delay: null });
+    await screen.findByRole('region', { name: 'My timeline' }, { timeout: 5000 });
     await user.click(screen.getByRole('button', { name: 'Invoices' }));
     await waitFor(() => expect(queries.at(-1)?.get('types')).toBe('invoice'));
     await waitFor(() =>
@@ -134,7 +134,7 @@ describe('Reception timeline tab', () => {
       ),
     );
     renderRoutes(routes, '/reception/patients/p1?tab=timeline', authState(reception));
-    const feed = await screen.findByRole('feed', {}, { timeout: 5000 });
+    const feed = await screen.findByRole('region', { name: 'Patient timeline' }, { timeout: 5000 });
     expect(within(feed).getAllByRole('listitem')).toHaveLength(2);
     expect(screen.getByText('₹850.00 paid')).toBeInTheDocument();
     // Reception's filter chips have no clinical types.
