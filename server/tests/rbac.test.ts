@@ -52,7 +52,7 @@ import { api } from './helpers/testApp.js';
 
 /**
  * RBAC matrix (spec §2.4, §15.1): every row of tests/helpers/rbacMatrix.ts × every role. A role
- * in `roles` must get exactly `status`; every other role gets 403.
+ * in `roles` must get exactly `status` (with a full set of records); every other role gets 403.
  */
 
 let n = 0;
@@ -471,68 +471,88 @@ async function buildContext(role: Role): Promise<Ctx> {
   };
 }
 
+const zero = '0'.repeat(24);
+
+/** Ids that match no record: the context of anonymous and denied calls. */
+const PLACEHOLDER_IDS = {
+  targetId: zero,
+  inactiveId: zero,
+  otherSessionId: zero,
+  departmentId: zero,
+  inactiveDepartmentId: zero,
+  serviceId: zero,
+  inactiveServiceId: zero,
+  doctorId: zero,
+  otherDoctorId: zero,
+  leaveId: zero,
+  labTestId: zero,
+  inactiveLabTestId: zero,
+  patientId: zero,
+  otherPatientId: zero,
+  inactivePatientId: zero,
+  invitablePatientId: zero,
+  pendingUserId: zero,
+  pendingPatientId: zero,
+  appointmentId: zero,
+  appointmentDate: '2030-01-01',
+  bookStartAt: '2030-01-01T04:30:00.000Z',
+  rescheduleStartAt: '2030-01-01T05:30:00.000Z',
+  todayScheduledId: zero,
+  checkedInId: zero,
+  queueAppointmentId: zero,
+  noShowId: zero,
+  inConsultationId: zero,
+  walkInPatientId: zero,
+  encounterId: zero,
+  signableEncounterId: zero,
+  signedEncounterId: zero,
+  prescriptionId: zero,
+  reissuedDraftId: zero,
+  draftLabOrderId: zero,
+  labOrderId: zero,
+  labItemId: zero,
+  releasedLabOrderId: zero,
+  releasedLabItemId: zero,
+  collectedLabOrderId: zero,
+  rejectedLabOrderId: zero,
+  processingLabOrderId: zero,
+  processingLabItemId: zero,
+  enteredLabOrderId: zero,
+  verifiedLabOrderId: zero,
+  revisionLabOrderId: zero,
+  revisionLabItemId: zero,
+  documentId: zero,
+  myDocumentId: zero,
+  draftInvoiceId: zero,
+  issuedInvoiceId: zero,
+  paidInvoiceId: zero,
+  paymentId: zero,
+  followupId: zero,
+  summaryId: zero,
+  notificationId: zero,
+  n: 0,
+} as Ctx;
+
+const LOGIN_REUSE_MS = 5 * 60_000; // well inside the 15-minute access token
+const logins = new Map<Role, { me: Ctx['me']; at: number }>();
+
+/**
+ * Context for a role the row does not allow: `authorize()` answers 403 before any record is
+ * read, so a login of that role and ids that match nothing are enough (one login per role,
+ * renewed every few minutes). A route that wrongly let the role through would answer 2xx, 400 or
+ * 404 instead and still fail the row.
+ */
+async function deniedContext(role: Role): Promise<Ctx> {
+  const cached = logins.get(role);
+  if (cached && Date.now() - cached.at < LOGIN_REUSE_MS)
+    return { ...PLACEHOLDER_IDS, me: cached.me };
+  const me = await loginAs(role);
+  logins.set(role, { me, at: Date.now() });
+  return { ...PLACEHOLDER_IDS, me };
+}
+
 const send = (row: Row, c: Ctx | null) => {
-  const zero = '0'.repeat(24);
-  const ctx =
-    c ??
-    ({
-      targetId: zero,
-      inactiveId: zero,
-      otherSessionId: zero,
-      departmentId: zero,
-      inactiveDepartmentId: zero,
-      serviceId: zero,
-      inactiveServiceId: zero,
-      doctorId: zero,
-      otherDoctorId: zero,
-      leaveId: zero,
-      labTestId: zero,
-      inactiveLabTestId: zero,
-      patientId: zero,
-      otherPatientId: zero,
-      inactivePatientId: zero,
-      invitablePatientId: zero,
-      pendingUserId: zero,
-      pendingPatientId: zero,
-      appointmentId: zero,
-      appointmentDate: '2030-01-01',
-      bookStartAt: '2030-01-01T04:30:00.000Z',
-      rescheduleStartAt: '2030-01-01T05:30:00.000Z',
-      todayScheduledId: zero,
-      checkedInId: zero,
-      queueAppointmentId: zero,
-      noShowId: zero,
-      inConsultationId: zero,
-      walkInPatientId: zero,
-      encounterId: zero,
-      signableEncounterId: zero,
-      signedEncounterId: zero,
-      prescriptionId: zero,
-      reissuedDraftId: zero,
-      draftLabOrderId: zero,
-      labOrderId: zero,
-      labItemId: zero,
-      releasedLabOrderId: zero,
-      releasedLabItemId: zero,
-      collectedLabOrderId: zero,
-      rejectedLabOrderId: zero,
-      processingLabOrderId: zero,
-      processingLabItemId: zero,
-      enteredLabOrderId: zero,
-      verifiedLabOrderId: zero,
-      revisionLabOrderId: zero,
-      revisionLabItemId: zero,
-      documentId: zero,
-      myDocumentId: zero,
-      draftInvoiceId: zero,
-      issuedInvoiceId: zero,
-      paidInvoiceId: zero,
-      paymentId: zero,
-      followupId: zero,
-      summaryId: zero,
-      notificationId: zero,
-      n: 0,
-    } as Ctx);
+  const ctx = c ?? PLACEHOLDER_IDS;
   let req = api()[row.method](`/api/v1${row.path(ctx)}`);
   if (c) req = req.set(c.me.auth);
   if (row.multipart && c) {
@@ -588,7 +608,7 @@ describe('RBAC matrix', () => {
       const expected = allowed ? (row.statusFor?.[role] ?? row.status) : 403;
       const label = routeKey(row);
       it(`${label} as ${role} → ${expected}`, async () => {
-        const c = await buildContext(role);
+        const c = allowed ? await buildContext(role) : await deniedContext(role);
         const before = await auditCount();
         const res = await send(row, c);
         expect(res.status, JSON.stringify(res.body)).toBe(expected);

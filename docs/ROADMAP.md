@@ -657,8 +657,8 @@ For the email step set `EMAIL_TRANSPORT=smtp` and Ethereal's `SMTP_HOST=smtp.eth
 **Goal:** a reliable, demo-ready app online.
 **Spec:** §15, §17, §18
 
-- [ ] Full seed data (spec §15.3) + demo accounts in README
-- [ ] RBAC matrix test across all endpoints
+- [x] Full seed data (spec §15.3) + demo accounts in README
+- [x] RBAC matrix test across all endpoints
 - [ ] Coverage ≥ 80 % on services and policies; frontend component tests
 - [ ] Optional Playwright end-to-end happy path
 - [ ] Responsive and accessibility pass
