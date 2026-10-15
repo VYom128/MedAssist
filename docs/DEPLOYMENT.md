@@ -7,7 +7,7 @@ the **client on Vercel**, files on **Cloudinary**, email through **Brevo SMTP** 
 ```
 Browser ──► Vercel (medassist.vercel.app)
              ├─ static client (SPA fallback: every non-file route → /index.html)
-             └─ /api/*  ──rewrite──►  Render API (medassist-api.onrender.com) ──► Atlas, Cloudinary,
+             └─ /api/*  ──rewrite──►  Render API (medassist-api-hl2o.onrender.com) ──► Atlas, Cloudinary,
                                                                                    Brevo, Groq
 Browser ──► Socket.IO directly to the Render URL (access token in the handshake, no cookie)
 ```
@@ -50,7 +50,7 @@ Node 24 LTS (`.nvmrc`, `engines`, `NODE_VERSION=24` on Render). `render.yaml` an
 5. **Render** – New → Blueprint → pick the repository; Render reads `render.yaml`. Fill in every
    secret it asks for (table below). `CLIENT_URL` is not known yet: enter
    `https://medassist.vercel.app` (or the name you will give the Vercel project) and correct it in
-   step 8. Deploy, then note the service URL. **If it is not `https://medassist-api.onrender.com`**,
+   step 8. Deploy, then note the service URL. **If it is not `https://medassist-api-hl2o.onrender.com`** (Render adds a suffix when the name is taken),
    replace that host in `client/vercel.json` (rewrite and CSP `connect-src`) and push.
 6. **Indexes** – production builds no indexes on boot. From your machine, with the production
    variables in a file **outside the repository** (`~/medassist-production.env`, same values as on
@@ -140,7 +140,7 @@ Node 24 LTS (`.nvmrc`, `engines`, `NODE_VERSION=24` on Render). `render.yaml` an
 | Name | Example | Where to get it | Secret |
 | --- | --- | --- | --- |
 | `VITE_API_URL` | `/api/v1` | relative = through the rewrite (absolute only cross-site) | no |
-| `VITE_SOCKET_URL` | `https://medassist-api.onrender.com` | the Render service URL | no |
+| `VITE_SOCKET_URL` | `https://medassist-api-hl2o.onrender.com` | the Render service URL | no |
 | `VITE_APP_NAME` | `MedAssist` | optional | no |
 
 `VITE_*` values end up in the JavaScript bundle – never put a secret there. The production build
