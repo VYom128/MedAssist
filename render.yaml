@@ -21,9 +21,9 @@ services:
         value: '24'
       - key: LOG_LEVEL
         value: info
-      # Vercel rewrite → Render proxy → app: trust two X-Forwarded-For hops (D197, D201)
+      # Vercel rewrite → Render edge → Render load balancer → app: trust four hops (measured, D207)
       - key: TRUST_PROXY
-        value: '2'
+        value: '4'
       - key: CLIENT_URL # the Vercel URL, e.g. https://medassist.vercel.app
         sync: false
       - key: MONGO_URI # Atlas connection string (mongodb+srv://…)

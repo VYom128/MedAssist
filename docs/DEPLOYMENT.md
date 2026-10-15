@@ -22,7 +22,7 @@ API calls need no CORS, and only the Socket.IO connection goes to Render directl
 authenticates with the access token, not the cookie, and CORS allows only `CLIENT_URL`.
 
 The cross-site alternative stays possible through configuration (not recommended): on Render
-`COOKIE_SAMESITE=none`, `COOKIE_SECURE=true`, `TRUST_PROXY=1`; on Vercel
+`COOKIE_SAMESITE=none`, `COOKIE_SECURE=true`, `TRUST_PROXY=3`; on Vercel
 `VITE_API_URL=https://<render-host>/api/v1`, and remove the `/api` rewrite from `client/vercel.json`.
 
 ## Build and start commands
@@ -99,7 +99,7 @@ Node 24 LTS (`.nvmrc`, `engines`, `NODE_VERSION=24` on Render). `render.yaml` an
 | `NODE_ENV` | `production` | fixed | no |
 | `NODE_VERSION` | `24` | fixed | no |
 | `CLIENT_URL` | `https://medassist.vercel.app` | your Vercel URL, exact, no trailing slash | no |
-| `TRUST_PROXY` | `2` | 2 with the Vercel rewrite (1 without) | no |
+| `TRUST_PROXY` | `4` | 4 with the Vercel rewrite, 3 for Render alone (measured, D207) | no |
 | `MONGO_URI` | `mongodb+srv://<user>:<password>@<cluster>.mongodb.net/medassist?retryWrites=true&w=majority` | Atlas → Connect | **yes** |
 | `JWT_ACCESS_SECRET` | `<generate-me>` | `openssl rand -hex 32` | **yes** |
 | `AUDIT_HASH_SECRET` | `<generate-me>` | `openssl rand -hex 32` – never change it later (the audit chain depends on it) | **yes** |
@@ -202,6 +202,6 @@ the address), and the notification document in Atlas records `channels.email` (s
 error code): `EAUTH` = wrong SMTP login/key,
 `EENVELOPE` = sender not verified in Brevo.
 
-**`client.ip` in /health shows a proxy address** – set `TRUST_PROXY=2` with the rewrite (1 for
-direct calls to Render). Direct requests to the `onrender.com` URL can still claim any first
+**`client.ip` in /health shows a proxy address** – set `TRUST_PROXY=4` with the rewrite (3 for
+direct calls to Render: its edge proxy and load balancer each add a hop; D207). Direct requests to the `onrender.com` URL can still claim any first
 address (D201); per-user limits and the login lockout cover that.

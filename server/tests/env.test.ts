@@ -49,11 +49,11 @@ describe('config/env', () => {
     });
   });
 
-  it('trusts one proxy hop by default; TRUST_PROXY=2 for the Vercel rewrite', async () => {
+  it('trusts one proxy hop by default; TRUST_PROXY=4 for the Vercel rewrite to Render', async () => {
     const base = { MONGO_URI: 'mongodb://127.0.0.1:27017/x', ...SECRETS };
     expect(JSON.parse((await loadEnv(base)).stdout)).toMatchObject({ trustProxy: 1 });
-    expect(JSON.parse((await loadEnv({ ...base, TRUST_PROXY: '2' })).stdout)).toMatchObject({
-      trustProxy: 2,
+    expect(JSON.parse((await loadEnv({ ...base, TRUST_PROXY: '4' })).stdout)).toMatchObject({
+      trustProxy: 4,
     });
     expect((await loadEnv({ ...base, TRUST_PROXY: 'yes' })).code).toBe(1);
   });

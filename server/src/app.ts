@@ -25,7 +25,7 @@ export function createApp({ extraRoutes }: CreateAppOptions = {}): Express {
 
   app.disable('x-powered-by');
   // Behind proxies (spec §18): how many X-Forwarded-For hops to trust for the client IP –
-  // 1 for Render alone, 2 for the Vercel rewrite in front of Render (TRUST_PROXY, D197).
+  // on Render 3 alone, 4 with the Vercel rewrite in front (TRUST_PROXY, measured: D207).
   app.set('trust proxy', config.trustProxy);
 
   app.use(requestId);
